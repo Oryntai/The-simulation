@@ -1,0 +1,21 @@
+version = 1
+required_modes = ["контроль"]
+
+[[measurements]]
+signal = { name = "рычаг/измерение", unit = "rad" }
+rate_hz = 5000
+source = { kind = "estimate", reference = "Идеальный датчик угла стенда; 0.2+1.8·q на входе ADC задаёт control.toml." }
+transducer = { kind = "rotary_position", joint = "нажиматель/ось" }
+
+[[readouts]]
+signal = { name = "реакция пары", unit = "N" }
+rate_hz = 5000
+source = { kind = "derived", reference = "Нормальная реакция геомов рычага и клавиши в упорядоченной сцене MuJoCo." }
+formula = { kind = "contact_normal", geoms = [2, 4] }
+
+[paths."мост"]
+observation = { name = "рычаг/измерение", unit = "rad" }
+physical_response = [{ name = "qpos[0]", unit = "rad" }, { name = "qpos[1]", unit = "rad" }]
+command_delta = 0.00390625
+max_observation_age_ns = 1000000
+source = { kind = "derived", reference = "Один отсчёт LEDC 1/256 согласно настройке таймера." }

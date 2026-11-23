@@ -1,0 +1,17 @@
+format = 3
+name = "Стержень между опорой и оснасткой"
+[[links]]
+name = "опора"
+joint = { kind = "fixed" }
+mass = { kind = "massless" }
+mounts = [{ name = "заделка", kind = "mechanical", interface = "изгибная оснастка" }]
+[[links]]
+name = "стержень"
+joint = { kind = "hinge", axis = [0, 0, 1], damping = 0, friction_loss = 0, armature = 0, efforts = [{ name = "момент", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 1, com_m = [0, 0, 0], inertia_kg_m2 = [1, 1, 1, 0, 0, 0], provenance = { datasheet = "Единичная масса и инерция оснастки численного опыта." } }
+mounts = [{ name = "заделка", kind = "mechanical", interface = "изгибная оснастка" }]
+[[links.collision]]
+# Гладкий круглый образец Ø10 мм вдоль X, свободная длина 100 мм на чертеже стенда.
+shape = { kind = "cylinder", radius_m = 0.005, length_m = 0.1 }
+pose = { position_m = [0.05, 0, 0], rpy_deg = [0, 90, 0] }
+contact_mask = [0, 0]

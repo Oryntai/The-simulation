@@ -1,0 +1,13 @@
+[package]
+name = "sim-boards"
+description = "Платы конструктора: RP2040, STM32, Arduino, ESP32-C3: электрические пределы выводов и настоящая прошивка в эмуляторе"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-verify.workspace = true
+# Декодер RV32IMC из sim-mcu уже сверен с кодировками ассемблера LLVM: берём его,
+# а исполнитель и карта регистров настоящего ESP32-C3 — свои.
+sim-mcu.workspace = true

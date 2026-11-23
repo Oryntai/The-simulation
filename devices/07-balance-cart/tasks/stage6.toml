@@ -1,0 +1,61 @@
+version = 1
+control = "../stage6-control.toml"
+profile = "profile.toml"
+
+[fault_sweep]
+at_ns = 300000000
+source = { kind = "derived", reference = "Момент существующего опыта обрыва гироскопа после выхода в рабочий режим." }
+
+[[modes]]
+id = "удержание"
+horizon_ns = 700000000
+before_ns = 60000000
+after_ns = 150000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "Горизонт покрывает несколько времён 1/√(g/h) для h=0.09 м." }
+excitation = "момент"
+stimuli = [
+  { id = "момент", signal = { name = "тележка/возмущение", unit = "N*m" }, at_ns = 100000000, value = 0.015, comparison_value = 0.0, source = { kind = "derived", reference = "Известная нагрузка 1 Н на плече 15 мм в расчётном опыте." } },
+]
+
+[[modes.faults]]
+fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }
+at_ns = 300000000
+source = { kind = "derived", reference = "Искусственный обрыв канала гироскопа после выхода в рабочий режим." }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание" }
+limits = [{ kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -0.26, max = 0.26, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } }]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" } }
+limits = [{ kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } }]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание" }
+limits = [{ kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -0.26, max = 0.26, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } }]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[modes]]
+id = "разомкнутый"
+horizon_ns = 700000000
+before_ns = 60000000
+after_ns = 150000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "Горизонт покрывает несколько времён 1/√(g/h) для h=0.09 м." }
+excitation = "момент"
+stimuli = [
+  { id = "момент", signal = { name = "тележка/возмущение", unit = "N*m" }, at_ns = 100000000, value = 0.015, comparison_value = 0.0, source = { kind = "derived", reference = "Известная нагрузка 1 Н на плече 15 мм в расчётном опыте." } },
+]
+
+[[criteria]]
+case = { path = "мост левое", mode = "разомкнутый" }
+limits = [{ kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } }]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "разомкнутый" }
+limits = [{ kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } }]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }

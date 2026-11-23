@@ -1,0 +1,30 @@
+world = "../../stage4-processes/world-energy.toml"
+window_ns = [0, 4000000]
+source = "Теплоизолированный участок провода, условие I²R без утечки за 4 мс."
+hazard_witnesses = [{ class = "wiring_heat", object = "проводник", criterion = "пик температуры проводника" }]
+
+[[criteria]]
+name = "пик температуры проводника"
+series = { measurement = "проводник/conductor_k" }
+unit = "K"
+statistic = "maximum"
+upper = { value = 300.5, source = { datasheet = "Расчётная спецификация стенда: рост температуры проводника не более 0,5 К за 4 мс." } }
+tolerance = { value = 1e-10, source = { datasheet = "Допуск накопления постоянных джоулевых слагаемых на вложенных сетках." } }
+remainder = [
+  { value = 0, source = { datasheet = "Интеграл постоянного тока на каждом интервале точен." } },
+  { value = 0, source = { datasheet = "Цепь не связана с механикой." } },
+  { value = 0, source = { datasheet = "Проводник и его теплоёмкость заданы точками." } },
+]
+
+[models."проводник"]
+kind = "electrical"
+initially_closed = false
+fault = "stuck_closed"
+source = { datasheet = "Замкнутый отказ контакта задан на всём опыте, нормированные положения 0 и 1." }
+closed_ohm = { value = 1, source = { datasheet = "Спецификация стенда, 1 Ом цельного участка последовательно с идеальным ключом." } }
+open_ohm = { value = 1000000, source = { datasheet = "Спецификация стенда, 1 МОм разомкнутого контакта." } }
+source_ohm = { value = 1, source = { datasheet = "Спецификация стенда, 1 Ом внутреннего сопротивления." } }
+load_ohm = { value = 10, source = { datasheet = "Спецификация стенда, низкое сопротивление нагрузки 10 Ом." } }
+supply_v = { value = 6, source = { datasheet = "Спецификация стенда, источник 6 В." } }
+bounce_duration_s = { value = 0.001, source = { datasheet = "Граничное окно дребезга 1 мс. При вынужденном замыкании не применяется." } }
+conductor_heat = {   initial_k = { value = 300, source = { datasheet = "Условие стенда: старт при 300 К." } }, capacity_j_k = { value = 0.001, source = { datasheet = "Расчётная теплоёмкость участка 1 мДж/К, граница адиабатическая." } }, max_k = { value = 300.5, source = { datasheet = "Расчётная спецификация стенда: рост температуры проводника не более 0,5 К за 4 мс." } } }

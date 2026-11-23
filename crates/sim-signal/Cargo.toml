@@ -1,0 +1,9 @@
+[package]
+name = "sim-signal"
+description = "Общая основа платформы: время, сигналы, наблюдения, команды, детерминированная случайность"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

@@ -1,0 +1,16 @@
+version = 1
+required_modes = ["измерение"]
+sampled_drives = { "стенд/источник" = "drive.toml" }
+
+[[measurements]]
+signal = { name = "поворот", unit = "rad" }
+rate_hz = 1000
+source = { kind = "estimate", reference = "Идеальный угловой преобразователь стенда." }
+transducer = { kind = "rotary_position", joint = "стенд/поворот" }
+
+[paths."напряжение"]
+observation = { name = "поворот", unit = "rad" }
+physical_response = [{ name = "qpos[0]", unit = "rad" }]
+command_delta = 1e-7 # Больше округления f64, меньше изменения угла за 1 мс.
+max_observation_age_ns = 1000000
+source = { kind = "derived", reference = "Масштаб графа и сетка 1 мс." }

@@ -1,0 +1,28 @@
+version = 1
+control = "../ignore-control.toml"
+profile = "ignore-profile.toml"
+
+[fault_sweep]
+at_ns = 30000000
+invariant_limits = true
+source = { kind = "derived", reference = "Инъекция после возбуждения 20 мс; 30 мс оставляет полные окна до (10 мс) и после (50 мс) в горизонте 90 мс." }
+
+[[modes]]
+id = "контроль"
+horizon_ns = 90000000
+before_ns = 10000000
+after_ns = 50000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "Два переключения по 4096 преобразований ADC по 10 мкс, см. stand-controller.S." }
+diagnostic_comparison = true
+excitation = "нагрузка"
+stimuli = [
+  { id = "нагрузка", signal = { name = "нажиматель/нагрузка", unit = "N*m" }, at_ns = 20000000, value = -0.002, comparison_value = 0, source = { kind = "derived", reference = "Тестовая сила 0.25 Н на плече 8 мм." } },
+]
+
+[[criteria]]
+case = { path = "мост", mode = "контроль" }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = -0.10, max = 1.10, source = { kind = "derived", reference = "Даже исправная траектория не доказывает причинную зависимость ШИМ от ADC." } },
+]
+response = { signal = { name = "qpos[0]", unit = "rad" }, min_change = 0.01, within_ns = 50000000, source = { kind = "derived", reference = "Разрешимый сдвиг угла. Независимый счётчик даёт движение даже без обратной связи." } }

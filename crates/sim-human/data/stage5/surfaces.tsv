@@ -1,0 +1,69 @@
+r0000	g0426	b0000	mid	pelvis	Таз	Габариты сеток: r_pelvis, l_pelvis
+r0001	g0123	b0032	mid	head	Голова	Габариты сеток: jaw, skull
+r0002	g0124	b0032	mid	neck	Шея	Габариты сеток: rotatedcerv7, cerv6, cerv5, cerv4, cerv3, cerv2, cerv1
+r0003	g0406	b0028	mid	trunk	Верх грудной клетки	Габариты сеток: thoracic1, Sternum, Rib1R, Rib1L, thoracic2, Rib2R, Rib2L, thoracic3, Rib3R, Rib3L, thoracic4, Rib4R, Rib4L
+r0004	g0415	b0024	mid	trunk	Середина грудной клетки	Габариты сеток: thoracic5, Rib5R, Rib5L, thoracic6, Rib6R, Rib6L, thoracic7, Rib7R, Rib7L, thoracic8, Rib8R, Rib8L
+r0005	g0424	b0020	mid	trunk	Низ грудной клетки	Габариты сеток: thoracic9, Rib9R, Rib9L, thoracic10, Rib10R, Rib10L, thoracic11, Rib11R, Rib11L, thoracic12, Rib12R, Rib12L
+r0006	g0425	b0015	mid	lumbar	Поясница	Габариты сеток: lumbar1, lumbar2, lumbar3, lumbar4, lumbar5
+r0007	g0261	b0034	r	shoulder	Ключица	Габариты сеток: clavicle
+r0008	g0260	b0040	r	upper	Плечо	Габариты сеток: humerus
+r0009	g0259	b0041	r	lower	Предплечье	Габариты сеток: ulna
+r0010	g0258	b0042	r	lower	Лучевая сторона предплечья	Габариты сеток: radius
+r0011	g0257	b0044	r	palm	Основание ладони	Габариты сеток: capitate
+r0012	g0039	b0001	r	thigh	Бедро	femur_skin_r
+r0013	g0037	b0002	r	shin	Голень	tibia_skin_r
+r0014	g0034	b0004	r	foot	Стопа	calcn_skin_1_r
+r0015	g0035	b0004	r	foot	Стопа	calcn_skin_2_r
+r0016	g0036	b0004	r	foot	Стопа	calcn_skin_3_r
+r0017	g0032	b0005	r	foot	Пальцы стопы	toes_skin_1_r
+r0018	g0033	b0005	r	foot	Пальцы стопы	toes_skin_2_r
+r0019	g0188	b0047	r	palm	Ладонь, пястная кость 1	firstmc_skin_1_r
+r0020	g0187	b0048	r	digit1	Проксимальная фаланга, палец 1	proximal_thumb_skin_r
+r0021	g0186	b0049	r	digit1	Дистальная фаланга, палец 1	distal_thumb_skin_r
+r0022	g0211	b0052	r	palm	Ладонь, пястная кость 2	secondmc_skin_1_r
+r0023	g0210	b0053	r	digit2	Проксимальная фаланга, палец 2	2proxph_skin_r
+r0024	g0209	b0054	r	digit2	Средняя фаланга, палец 2	2midph_skin_r
+r0025	g0208	b0055	r	digit2	Дистальная фаланга, палец 2	2distph_skin_r
+r0026	g0226	b0056	r	palm	Ладонь, пястная кость 3	thirdmc_skin_r
+r0027	g0225	b0057	r	digit3	Проксимальная фаланга, палец 3	3proxph_skin_r
+r0028	g0224	b0058	r	digit3	Средняя фаланга, палец 3	3midph_skin_r
+r0029	g0223	b0059	r	digit3	Дистальная фаланга, палец 3	3distph_skin_r
+r0030	g0241	b0060	r	palm	Ладонь, пястная кость 4	fourthmc_skin_r
+r0031	g0240	b0061	r	digit4	Проксимальная фаланга, палец 4	4proxph_skin_r
+r0032	g0239	b0062	r	digit4	Средняя фаланга, палец 4	4midph_skin_r
+r0033	g0238	b0063	r	digit4	Дистальная фаланга, палец 4	4distph_skin_r
+r0034	g0256	b0064	r	palm	Ладонь, пястная кость 5	fifthmc_skin_1_r
+r0035	g0255	b0065	r	digit5	Проксимальная фаланга, палец 5	5proxph_skin_r
+r0036	g0254	b0066	r	digit5	Средняя фаланга, палец 5	5midph_skin_r
+r0037	g0253	b0067	r	digit5	Дистальная фаланга, палец 5	5distph_skin_r
+r0038	g0397	b0068	l	shoulder	Ключица	Габариты сеток: mirror_clavicle
+r0039	g0396	b0074	l	upper	Плечо	Габариты сеток: mirror_humerus
+r0040	g0395	b0075	l	lower	Предплечье	Габариты сеток: mirror_ulna
+r0041	g0394	b0076	l	lower	Лучевая сторона предплечья	Габариты сеток: mirror_radius
+r0042	g0393	b0078	l	palm	Основание ладони	Габариты сеток: mirror_capitate
+r0043	g0077	b0007	l	thigh	Бедро	femur_skin_l
+r0044	g0075	b0008	l	shin	Голень	tibia_skin_l
+r0045	g0072	b0010	l	foot	Стопа	calcn_skin_1_l
+r0046	g0073	b0010	l	foot	Стопа	calcn_skin_2_l
+r0047	g0074	b0010	l	foot	Стопа	calcn_skin_3_l
+r0048	g0070	b0011	l	foot	Пальцы стопы	toes_skin_1_l
+r0049	g0071	b0011	l	foot	Пальцы стопы	toes_skin_2_l
+r0050	g0324	b0081	l	palm	Ладонь, пястная кость 1	mirror_firstmc_skin_1_r
+r0051	g0323	b0082	l	digit1	Проксимальная фаланга, палец 1	mirror_proximal_thumb_skin_r
+r0052	g0322	b0083	l	digit1	Дистальная фаланга, палец 1	mirror_distal_thumb_skin_r
+r0053	g0347	b0086	l	palm	Ладонь, пястная кость 2	mirror_secondmc_skin_1_r
+r0054	g0346	b0087	l	digit2	Проксимальная фаланга, палец 2	mirror_2proxph_skin_r
+r0055	g0345	b0088	l	digit2	Средняя фаланга, палец 2	mirror_2midph_skin_r
+r0056	g0344	b0089	l	digit2	Дистальная фаланга, палец 2	mirror_2distph_skin_r
+r0057	g0362	b0090	l	palm	Ладонь, пястная кость 3	mirror_thirdmc_skin_r
+r0058	g0361	b0091	l	digit3	Проксимальная фаланга, палец 3	mirror_3proxph_skin_r
+r0059	g0360	b0092	l	digit3	Средняя фаланга, палец 3	mirror_3midph_skin_r
+r0060	g0359	b0093	l	digit3	Дистальная фаланга, палец 3	mirror_3distph_skin_r
+r0061	g0377	b0094	l	palm	Ладонь, пястная кость 4	mirror_fourthmc_skin_r
+r0062	g0376	b0095	l	digit4	Проксимальная фаланга, палец 4	mirror_4proxph_skin_r
+r0063	g0375	b0096	l	digit4	Средняя фаланга, палец 4	mirror_4midph_skin_r
+r0064	g0374	b0097	l	digit4	Дистальная фаланга, палец 4	mirror_4distph_skin_r
+r0065	g0392	b0098	l	palm	Ладонь, пястная кость 5	mirror_fifthmc_skin_1_r
+r0066	g0391	b0099	l	digit5	Проксимальная фаланга, палец 5	mirror_5proxph_skin_r
+r0067	g0390	b0100	l	digit5	Средняя фаланга, палец 5	mirror_5midph_skin_r
+r0068	g0389	b0101	l	digit5	Дистальная фаланга, палец 5	mirror_5distph_skin_r

@@ -1,0 +1,40 @@
+[package]
+name = "sim-scenarios"
+description = "Сценарии мастерской: экзоскелет руки, маятник, падение, балка"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-core.workspace = true
+sim-fem.workspace = true
+sim-verify.workspace = true
+sim-mujoco.workspace = true
+sim-radio.workspace = true
+sim-em.workspace = true
+sim-mcu.workspace = true
+sim-env.workspace = true
+sim-circuit.workspace = true
+
+sim-device.workspace = true
+sim-materials.workspace = true
+sim-battery.workspace = true
+sim-actuators.workspace = true
+sim-boards.workspace = true
+sim-human.workspace = true
+sim-task = { path = "../sim-task" }
+sim-world.workspace = true
+
+[dev-dependencies]
+sim-cli = { path = "../sim-cli" }
+sim-drive.workspace = true
+sim-sense.workspace = true
+sim-signal.workspace = true
+sim-runtime.workspace = true
+
+[[bin]]
+name = "verify-all"
+path = "src/bin/verify_all.rs"
+test = false

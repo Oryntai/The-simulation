@@ -1,0 +1,69 @@
+world = "world-block.toml"
+window_ns = [0, 200000000]
+source = "Один прямой удар блока по неподвижной опоре; суммарный импульс нормальной реакции."
+hazard_witnesses = [{ class = "impact", object = "опора", criterion = "импульс" }]
+
+[contacts]
+table = "../../../stage4-processes/contact-materials.toml"
+
+[contacts.solver]
+# Настройки численного решателя из нейтрального стенда контакта этапа 4.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"стенд/опора/collision/0" = "опора"
+"стенд/блок/collision/0" = "образец"
+
+
+[[contacts.pairs]]
+geometries = ["стенд/опора/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Постоянный импеданс 0,95 и форма из численного стенда опоры этапа 4." }
+mass_kg = { value = 1, source = { datasheet = "Нормальная мода блока массой 1 кг у неподвижной опоры." } }
+
+[models."нагрузка"]
+kind = "effort"
+channel = "стенд/сила"
+source = "Условие стенда: импульс 100 Н в течение 10 мс; далее свободное движение. Парная нагрузка 25 Н той же длительности."
+values = [{ at_ns = 0, value = -100 }, { at_ns = 10000000, value = 0 }]
+
+[models."опора"]
+kind = "mechanical_monitor"
+scope = "Один прямой удар блока по неподвижной опоре; суммарный импульс нормальной реакции."
+upper = { value = 0.6, source = { datasheet = "Паспорт численной опоры: нормальный импульс одиночного удара не выше 0,6 Н·с по расчётному заданию на оснастку." } }
+observation = { kind = "impact", pair = ["стенд/опора/collision/0", "стенд/блок/collision/0"] }
+
+[[criteria]]
+name = "импульс"
+series = { measurement = "опора/normal_impulse" }
+unit = "N*s"
+statistic = "maximum"
+upper = { value = 0.6, source = { datasheet = "Паспорт численной опоры: нормальный импульс одиночного удара не выше 0,6 Н·с по расчётному заданию на оснастку." } }
+tolerance = { value = 0.1, source = { datasheet = "Разрешение сравнения по импульсу: 10% падающего импульса 1 Н·с; добавочный бюджет 0,003 Н·с на неполный контактный отсчёт." } }
+remainder = [
+  { value = 0.003, source = { datasheet = "Разрешение сравнения по импульсу: 10% падающего импульса 1 Н·с; добавочный бюджет 0,003 Н·с на неполный контактный отсчёт." } },
+  { value = 0, source = { datasheet = "Сходимость контролируется на трёх сетках и отдельно сверяется с аналитикой стенда." } },
+  { value = 0, source = { datasheet = "Заданы фиксированные параметры синтетического опыта." } },
+]
+
+[[criteria]]
+name = "конечная скорость"
+series = { velocity = 0 }
+unit = "m/s"
+statistic = "end"
+tolerance = { value = 0.1, source = { datasheet = "Разрешение сравнения отскока: 10% входной скорости 1 м/с; используется в балансе импульса каждого шага." } }
+remainder = [
+  { value = 0, source = { datasheet = "Разрешение сравнения отскока: 10% входной скорости 1 м/с; используется в балансе импульса каждого шага." } },
+  { value = 0, source = { datasheet = "Сходимость контролируется на трёх сетках и отдельно сверяется с аналитикой стенда." } },
+  { value = 0, source = { datasheet = "Заданы фиксированные параметры синтетического опыта." } },
+]

@@ -1,0 +1,17 @@
+version = 1
+world = "free-world.toml"
+catalog = "catalog.toml"
+seed = 7 # Тот же номер серии, что у опыта с кареткой.
+
+[stations.stand]
+experiment = { kind = "scenario" }
+
+[stations.stand.modes.observation]
+horizon_ns = 4000000
+source = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." }
+steps = [{ id = "поддержка", target = { kind = "effort", name = "стойка/поддержка" }, at_ns = 0, value = 20, unit = "N", source = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." } }]
+criteria = [{ id = "положение блока", window = "whole", limit = { kind = "range", signal = { name = "qpos[2]", unit = "m" }, max = 0.02, source = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." } } }]
+[stations.stand.modes.observation.windows.whole]
+start_ns = 0
+end_ns = 4000000
+max_gap_ns = 1000000

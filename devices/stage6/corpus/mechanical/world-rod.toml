@@ -1,0 +1,19 @@
+format = 3
+name = "Циклический изгиб стержня"
+# Нумерация и сетка численного стенда: 1 мс, деления шага в конвейере.
+seed = 1
+physics_hz = 1000
+gravity_m_s2 = [0, 0, 0] # Горизонтальная оснастка, веса уравновешены.
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0, 0, 0]
+[[devices]]
+name = "стенд"
+file = "rod.toml"
+
+[[attachments]]
+name = "заделка"
+first = "стенд/опора/заделка"
+second = "стенд/стержень/заделка"
+mode = "design"

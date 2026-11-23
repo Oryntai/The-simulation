@@ -1,0 +1,13 @@
+version = 1
+
+[[block]]
+kind = "constant"
+value = 1
+source = "Штатное включённое состояние отдельного ключа питания стенда."
+
+[[bind]]
+output = "разрешение скважность"
+node = 0
+missing = "value"
+value = 0
+source = "При пропуске команды ключ выключен."

@@ -1,0 +1,67 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "hx711"
+kind = "bridge_adc"
+name = "HX711"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "нВ rms"
+caveats = [
+    "Ток не включает питание моста тензодатчика: его считает отдельная позиция.",
+    "Частота только 10 или 80 отсчётов/с: для быстрого контура силы мало.",
+]
+current_peak_a = "unknown"
+interface = "двухпроводной последовательный (DOUT, SCK)"
+kind = "force_adc"
+range_unit = "мВ на входе"
+resolution_unit = "бит"
+sources = ["Avia HX711: https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf"]
+what_is = "24-битный АЦП для тензодатчика: превращает милливольты моста в число."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "Avia: шум 90 нВ rms при 80 Гц, усиление 128 (50 нВ при 10 Гц)"
+value = 90.0
+
+[passport.current_a]
+provenance = "derived"
+source = "Avia: аналоговая часть 1400 мкА + цифровая 100 мкА"
+value = 0.0015
+
+[passport.range_max]
+provenance = "derived"
+source = "±0.5·AVDD/128 при AVDD = 5 В, мВ"
+value = 20.0
+
+[passport.range_min]
+provenance = "derived"
+source = "±0.5·AVDD/128 при AVDD = 5 В, мВ"
+value = -20.0
+
+[passport.resolution]
+provenance = "datasheet"
+source = "Avia HX711: https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf"
+value = 24.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): Avia HX711: https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf"
+value = 5.5
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): Avia HX711: https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf"
+value = 2.6

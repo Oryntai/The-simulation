@@ -1,0 +1,61 @@
+world = "tray.toml"
+window_ns = [0, 500000000]
+source = "При начальном зазоре 8 мм рычаг толкает блок в стенку лотка через два контакта."
+[contacts]
+table = "../../catalog/contact/fixture.toml"
+[contacts.solver]
+# Настройки общей синтетической опоры.
+method = "newton"
+elliptic = true
+impratio = 1
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+[contacts.assignments]
+"environment/collision/0" = "стенд"
+"рычаг/рычаг/collision/0" = "стенд"
+"блок/блок/collision/0" = "инструмент"
+[[contacts.pairs]]
+geometries = ["рычаг/рычаг/collision/0", "блок/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс численного стенда из общей таблицы." }
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "блок/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс численного стенда из общей таблицы." }
+
+[models."привод"]
+kind = "effort"
+channel = "рычаг/момент"
+source = "Постоянный момент 0,2 Н·м соответствует примерно 2 Н через плечо 100 мм."
+values = [{ at_ns = 0, value = 0.2 }]
+[models."отсчёт"]
+kind = "body_point"
+point = { body = "блок/блок", local_m = [0,0,0] }
+
+[[criteria]]
+name = "импульс от рычага"
+series = { normal_force = ["рычаг/рычаг/collision/0", "блок/блок/collision/0"] }
+unit = "N*s"
+statistic = "integral"
+tolerance = { value = 0.02, source = { estimate = "2 Н за 10 мс начального перехода." } }
+remainder = [{ value = 0, source = { estimate = "Диагностический опыт." } }, { value = 0, source = { estimate = "Диагностический опыт." } }, { value = 0, source = { estimate = "Диагностический опыт." } }]
+[[criteria]]
+name = "импульс в лоток"
+series = { normal_force = ["environment/collision/0", "блок/блок/collision/0"] }
+unit = "N*s"
+statistic = "integral"
+tolerance = { value = 0.02, source = { estimate = "2 Н за 10 мс начального перехода." } }
+remainder = [{ value = 0, source = { estimate = "Диагностический опыт." } }, { value = 0, source = { estimate = "Диагностический опыт." } }, { value = 0, source = { estimate = "Диагностический опыт." } }]
+[[checks]]
+name = "блок дошёл до стенки"
+signal = "отсчёт/y"
+unit = "m"
+window_ns = [400000000, 500000000]
+min = { value = 0.055, source = { estimate = "Геометрические 56 мм, окно от 55 до 57 мм." } }
+max = { value = 0.057, source = { estimate = "Геометрические 56 мм, окно от 55 до 57 мм." } }

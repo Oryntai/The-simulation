@@ -1,0 +1,51 @@
+world = "../../../stage4-processes/world-offset.toml"
+window_ns = [3000000, 8000000]
+source = "Блок удерживается осевой магнитной связью при 20 мм, затем внешняя сила ступенью превышает удержание."
+
+hazard_witnesses = [{ class = "retention", object = "стык", criterion = "дефицит удержания" }]
+
+[models."стык"]
+witness_limit = { value = 0, source = { datasheet = "Баланс для осевой магнитной характеристики: внешний отрыв минус удерживающая сила не выше нуля." } }
+kind = "attachment"
+mounts = ["стенд/опора/стык", "стенд/блок/стык"]
+available_travel_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+requests = [{ at_ns = 2000000, action = "attach" }]
+loading = { source = "Начальные 9 Н ниже удержания 10 Н при 20 мм. С 5 мс стенд прикладывает 14 Н снаружи.", steps = [{ at_ns = 0, force_n = [9, 0, 0], torque_nm = [0, 0, 0] }, { at_ns = 5000000, force_n = [14, 0, 0], torque_nm = [0, 0, 0] }] }
+
+[models."стык".limits]
+gap_m = { value = 0.03, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+lateral_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+axis_error_rad = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+speed_m_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+angular_speed_rad_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+required_travel_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_force_n = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_torque_nm = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+capacity = { force_n = { value = 100, source = { datasheet = "Расчётное условие только синтетического опыта." } }, torque_nm = { value = 1, source = { datasheet = "Расчётное условие только синтетического опыта." } } }
+
+[models."стык".law]
+type = "magnetic"
+pull = [{ displacement_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 20, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } } }]
+
+
+[[criteria]]
+name = "дефицит удержания"
+series = { measurement = "стык/holding_deficit" }
+unit = "N"
+statistic = "maximum"
+upper = { value = 0, source = { datasheet = "Баланс для осевой магнитной характеристики: внешний отрыв минус удерживающая сила не выше нуля." } }
+tolerance = { value = 0.02, source = { datasheet = "Смещение до первого отсчёта отрыва не более 4 мкм на грубой сетке, поправка F=500 Н/м·4 мкм=0,002 Н; допуск 0,02 Н для окна." } }
+remainder = [
+  { value = 0.002, source = { datasheet = "Смещение до первого отсчёта отрыва не более 4 мкм на грубой сетке, поправка F=500 Н/м·4 мкм=0,002 Н; допуск 0,02 Н для окна." } },
+  { value = 0, source = { datasheet = "Сходимость контролируется на трёх сетках и отдельно сверяется с аналитикой стенда." } },
+  { value = 0, source = { datasheet = "Заданы фиксированные параметры синтетического опыта." } },
+]
+
+[states]
+"стык" = ["Attached", "Free"]
+
+[[events]]
+name = "стык"
+state = "Free"
+applied_ns = [5250000, 6000000]
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Срыв после первого завершённого такта под ступенью нагрузки на 5 мс. Сетки от 0,25 до 1 мс." } }

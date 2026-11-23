@@ -1,0 +1,23 @@
+format = 3
+name = "Стержень"
+
+[[links]]
+name = "стержень"
+[links.joint]
+kind = "hinge"
+name = "поворот"
+axis = [0, 0, 1]
+initial_deg = 30 # π/6, ненулевое измерение на первом такте.
+armature = 0.5 # Две приведённые инерции по 0,25 кг·м², отношение 1:1.
+efforts = [{ name = "команда", dof = 0 }, { name = "допуск", dof = 0 }, { name = "проба", dof = 0 }]
+[links.mass]
+kind = "explicit"
+mass_kg = 1
+com_m = [0, 0, 0]
+inertia_kg_m2 = [1, 1, 1, 0, 0, 0]
+provenance = { derived = "Тензор 1 кг·м² по каждой оси задан для решения уравнения Эйлера." }
+
+[[drives]]
+name = "источник"
+part = "дискретный-стенд" # Модель экземпляра задаётся в drive.toml через профиль.
+effort = "команда"

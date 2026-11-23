@@ -1,0 +1,95 @@
+# Паспортные значения перенесены из sim-actuators.
+# Режим выбран для модели; настройки регулятора и монтажа задаются отдельно.
+id = "sg90"
+name = "SG90 (9 г)"
+what_is = "Самая дешёвая пластиковая микросерва: флажки и лёгкие заслонки, нагрузку руки не держит."
+kind = "hobby_servo"
+legacy_class = "hobby_servo"
+mode = "position"
+inertia = "internal"
+backdrive = "unknown"
+brake = "unknown"
+stop = "unknown"
+magnet = "unknown"
+builtin_driver = "builtin-hobby-servo"
+sources = ["TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/", "листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf", "копия листка TowerPro с 1.2 кгс·см при 4.8 В: https://bit.nkust.edu.tw/~csshieh/teach/111A/mc/datasheet/SG90.pdf", "Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/", "форум Arduino, стоповый ток 650 ± 80 мА: https://forum.arduino.cc/t/how-much-power-supply-do-i-need-for-controlling-5-sg90-9g-microservo/627666"]
+caveats = ["TowerPro указывает 1.8 кгс·см при 4.8 В, в другом листке 1.2 кгс·см: берём 1.2.", "Для напряжения берём 4.8 В с сайта TowerPro, хотя продавцы указывают до 6 В.", "Партии заметно различаются, шестерни пластиковые.", "Стоповый ток: от 360 мА (замер Protosupplies) до 650 ± 80 мА; для питания берём 730 мА."]
+
+[[voltage_points]]
+voltage_v = { value = 4.8, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/ | листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf | копия листка TowerPro с 1.2 кгс·см при 4.8 В: https://bit.nkust.edu.tw/~csshieh/teach/111A/mc/datasheet/SG90.pdf | Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/ | форум Arduino, стоповый ток 650 ± 80 мА: https://forum.arduino.cc/t/how-much-power-supply-do-i-need-for-controlling-5-sg90-9g-microservo/627666" }
+stall_torque_nm = { value = 0.1176798, source = "estimate", reference = "Точки напряжения из sim-actuators, исходные данные: TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/ | листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf | копия листка TowerPro с 1.2 кгс·см при 4.8 В: https://bit.nkust.edu.tw/~csshieh/teach/111A/mc/datasheet/SG90.pdf | Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/ | форум Arduino, стоповый ток 650 ± 80 мА: https://forum.arduino.cc/t/how-much-power-supply-do-i-need-for-controlling-5-sg90-9g-microservo/627666" }
+no_load_rpm = { value = 83.33333333333334, source = "estimate", reference = "Точки напряжения из sim-actuators, исходные данные: TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/ | листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf | копия листка TowerPro с 1.2 кгс·см при 4.8 В: https://bit.nkust.edu.tw/~csshieh/teach/111A/mc/datasheet/SG90.pdf | Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/ | форум Arduino, стоповый ток 650 ± 80 мА: https://forum.arduino.cc/t/how-much-power-supply-do-i-need-for-controlling-5-sg90-9g-microservo/627666" }
+stall_current_a = { value = 0.73, source = "estimate", reference = "Точки напряжения из sim-actuators, исходные данные: TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/ | листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf | копия листка TowerPro с 1.2 кгс·см при 4.8 В: https://bit.nkust.edu.tw/~csshieh/teach/111A/mc/datasheet/SG90.pdf | Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/ | форум Arduino, стоповый ток 650 ± 80 мА: https://forum.arduino.cc/t/how-much-power-supply-do-i-need-for-controlling-5-sg90-9g-microservo/627666" }
+
+[parameters]
+voltage_nominal_v = { value = 4.8, source = "estimate", reference = "листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf" }
+voltage_min_v = { value = 4.8, source = "estimate", reference = "листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf" }
+voltage_max_v = { value = 4.8, source = "estimate", reference = "TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/" }
+rated_torque_nm = { unknown = true, bench = "выдержать длительную нагрузку на динамометре до теплового равновесия" }
+peak_torque_nm = { value = 0.1176798, source = "estimate", reference = "копия листка TowerPro с 1.2 кгс·см при 4.8 В: https://bit.nkust.edu.tw/~csshieh/teach/111A/mc/datasheet/SG90.pdf" }
+no_load_speed_rpm = { value = 83.33333333333334, source = "estimate", reference = "Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/" }
+rated_speed_rpm = { unknown = true, bench = "измерить скорость выхода под номинальной нагрузкой" }
+no_load_current_a = { unknown = true, bench = "измерить ток при номинальном напряжении без нагрузки" }
+stall_current_a = { value = 0.73, source = "estimate", reference = "форум Arduino, стоповый ток 650 ± 80 мА: https://forum.arduino.cc/t/how-much-power-supply-do-i-need-for-controlling-5-sg90-9g-microservo/627666" }
+rated_current_a = { unknown = true, bench = "снять длительный ток при допустимом установившемся нагреве" }
+peak_current_a = { unknown = true, bench = "снять пиковый ток вместе с длительностью импульса" }
+standby_current_a = { value = 0.01, source = "estimate", reference = "Protosupplies, замер SG90: https://protosupplies.com/product/servo-motor-micro-sg90/" }
+resistance_ohm = { unknown = true, bench = "измерить сопротивление обмотки четырёхпроводным методом при известной температуре" }
+inductance_h = { unknown = true, bench = "снять переход тока коротким импульсом на неподвижном валу или измерить LCR-метром" }
+kt_motor_nm_per_a = { unknown = true, bench = "снять наклон момента по току на валу двигателя" }
+ke_motor_v_s = { unknown = true, bench = "раскрутить разомкнутый двигатель и измерить ЭДС и скорость" }
+kv_rpm_per_v = { unknown = true, bench = "снять отношение скорости вала к противо-ЭДС" }
+gear_ratio = { unknown = true, bench = "сопоставить перемещение вала двигателя и выходного вала" }
+gear_efficiency = { unknown = true, bench = "измерить механическую мощность на входе и выходе при прямом потоке" }
+rotor_inertia_kg_m2 = { unknown = true, bench = "снять ускорение ненагруженного ротора от известного момента" }
+gear_input_inertia_kg_m2 = { unknown = true, bench = "снять ускорение входа передачи от известного момента" }
+mass_kg = { value = 0.009, source = "estimate", reference = "листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf" }
+r_th_winding_housing_k_per_w = { unknown = true, bench = "оценить по перепаду обмотка–корпус при известной тепловой мощности" }
+r_th_housing_ambient_k_per_w = { unknown = true, bench = "оценить по перепаду корпус–среда при известной тепловой мощности" }
+tau_winding_s = { unknown = true, bench = "фитировать два узла по переходу температуры обмотки при ступени мощности" }
+tau_housing_s = { unknown = true, bench = "фитировать два узла по переходу температуры корпуса при ступени мощности" }
+r_th_total_k_per_w = { unknown = true, bench = "измерить установившийся перепад обмотка–среда при известной мощности" }
+max_winding_temp_c = { unknown = true, bench = "уточнить предел по классу изоляции и порогу тепловой защиты" }
+min_ambient_c = { value = 0.0, source = "estimate", reference = "TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/" }
+max_ambient_c = { value = 55.0, source = "estimate", reference = "TowerPro SG90 Analog: https://towerpro.com.tw/product/sg90-analog/" }
+heated_phases = { value = 1.0, source = "derived", reference = "Число одновременно нагреваемых обмоток в исходной модели sim-actuators; не измерение" }
+stepper_pole_pairs = { unknown = true, bench = "посчитать периоды противо-ЭДС за оборот" }
+supply_v = { value = 4.8, source = "estimate", reference = "листок SG90: https://dac70r.github.io/ELEC3300/Labs/SG90.pdf" }
+current_limit_a = { unknown = true, bench = "снять уставку ограничителя тока драйвера по осциллограмме" }
+motor_constant = { unknown = true, bench = "снять момент на ток и ЭДС на скорость в одной энергетической системе единиц" }
+resistance_ref_c = { unknown = true, bench = "записать температуру обмотки при замере сопротивления" }
+resistance_alpha_per_k = { unknown = true, bench = "снять сопротивление обмотки при двух известных температурах" }
+ambient_c = { unknown = true, bench = "измерить температуру среды у корпуса" }
+winding_loss_fraction = { unknown = true, bench = "идентифицировать долю тепла двигателя в обмотке по нагреву холостого хода" }
+gear_loss_to_housing_fraction = { unknown = true, bench = "измерить тепловой поток от передачи к корпусу привода" }
+backward_efficiency = { unknown = true, bench = "нагрузить передачу с выхода и замерить мощности на обеих сторонах" }
+coulomb_nm = { unknown = true, bench = "снять постоянную составляющую момента трения после страгивания" }
+viscous_nm_per_rad_s = { unknown = true, bench = "снять наклон момента трения по скорости" }
+static_friction_nm = { unknown = true, bench = "медленно повышать момент на валу до страгивания" }
+stribeck_rad_s = { unknown = true, bench = "снять кривую трения на малых скоростях после страгивания" }
+friction_band_rad_s = { unknown = true, bench = "снять разрешение скоростного стенда и проверить сходимость полосы регуляризации" }
+backlash = { unknown = true, bench = "измерить полный свободный ход выхода между двумя нагруженными зубьями" }
+coupling_stiffness = { unknown = true, bench = "замерить наклон сила–перемещение или момент–угол при зацеплении" }
+coupling_damping = { unknown = true, bench = "снять затухание от ступенчатого смещения передачи" }
+stop_min = { unknown = true, bench = "медленно подвезти выход к нижнему механическому упору и измерить координату" }
+stop_max = { unknown = true, bench = "медленно подвезти выход к верхнему механическому упору и измерить координату" }
+stop_stiffness = { unknown = true, bench = "измерить жёсткость контакта упора" }
+stop_damping = { unknown = true, bench = "идентифицировать затухание при контролируемом ударе об упор" }
+control_hz = { unknown = true, bench = "измерить период внутренних обновлений по реакции на серию меток" }
+bus_delay_s = { unknown = true, bench = "синхронно записать момент передачи и момент принятия команды" }
+position_min = { unknown = true, bench = "проверить нижнюю разрешённую регулятором координату" }
+position_max = { unknown = true, bench = "проверить верхнюю разрешённую регулятором координату" }
+speed_limit = { unknown = true, bench = "измерить предел задания выходной скорости" }
+position_gain = { unknown = true, bench = "снять наклон задания скорости по ошибке положения" }
+position_deadband = { unknown = true, bench = "медленно менять команду при неподвижном выходе и найти порог реакции" }
+speed_kp = { unknown = true, bench = "снять мгновенный наклон задания тока по ошибке скорости" }
+speed_ki = { unknown = true, bench = "снять скорость нарастания задания тока при постоянной ошибке скорости" }
+
+# Калибровать на экземпляре с его питанием и механической нагрузкой.
+pulse_period_min_s = { unknown = true, bench = "уменьшать период при постоянной ширине и фиксировать границу приёма" }
+pulse_period_max_s = { unknown = true, bench = "увеличивать период при постоянной ширине и фиксировать границу приёма" }
+pulse_width_min_s = { unknown = true, bench = "уменьшать ширину при допустимом периоде и снять границу диапазона команды" }
+pulse_width_max_s = { unknown = true, bench = "увеличивать ширину при допустимом периоде и снять границу диапазона команды" }
+pulse_position_at_min_width = { unknown = true, bench = "измерить координату выхода при минимальной допустимой ширине" }
+pulse_position_at_max_width = { unknown = true, bench = "измерить координату выхода при максимальной допустимой ширине" }
+pulse_timeout_s = { unknown = true, bench = "прервать импульсы под контролируемой нагрузкой и измерить время до снятия команды" }

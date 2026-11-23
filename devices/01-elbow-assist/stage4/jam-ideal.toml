@@ -1,0 +1,94 @@
+window_ns = [0, 4000000000]
+source = "Полный горизонт и сетка из манифеста исходного расчёта, без усечения до события."
+
+[control]
+wiring = "control.toml"
+packet_wiring = "scheduled-packets.toml"
+overlay = "jam-wiring.toml"
+sampled_drives = { "устройство/мотор" = "unloaded-drive.toml" }
+[[control.measurements]]
+signal = { name = "угол", unit = "rad" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "rotary_position", joint = "устройство/ось", bounds_rad = [0.0, 2.6179938779914944] }
+
+[[control.measurements]]
+signal = { name = "ток", unit = "A" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "winding_current" }
+
+[[control.measurements]]
+signal = { name = "корпус", unit = "degC" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "housing_temperature" }
+
+[[control.measurements]]
+signal = { name = "батарея", unit = "V" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "supply_voltage" }
+
+
+[[control.readouts]]
+signal = { name = "нормальная сила контакта", unit = "N" }
+rate_hz = 40000
+source = { kind = "derived", reference = "Нормальная реакция всех геомов. В режимах без препятствия сумма равна нулю." }
+formula = { kind = "contact_normal" }
+
+[reference]
+file = "../../../golden/exo_loop/fault_jam.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 4000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", normalize_from = 22, signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", normalize_from = 22, signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+
+[[criteria]]
+name = "поворот"
+unit = "rad"
+series = { position = 0 }
+statistic = "continuous"
+tolerance = { value = 0.01, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[criteria]]
+name = "скорость"
+unit = "rad/s"
+series = { velocity = 0 }
+statistic = "continuous"
+tolerance = { value = 0.05, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[models."идеальная фиксация"]
+kind = "scalar_hold"
+joint = "устройство/ось"
+at_ns = 1000000000
+source = "Мгновенная фиксация из ElbowPlant::step; секунда задана в манифесте исходного расчёта. Пик реакции не определён."
+[[events]]
+name = "идеальная фиксация"
+state = "удержание"
+requested_ns = 1000000000
+applied_ns = [1000000000, 1000000000]
+phase_tolerance_ns = { value = 0, source = { datasheet = "Секунда лежит на всех трёх сетках этапа." } }
+

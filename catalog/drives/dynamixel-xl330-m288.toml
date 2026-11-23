@@ -1,0 +1,98 @@
+# Паспортные значения перенесены из sim-actuators.
+# Режим выбран для модели; настройки регулятора и монтажа задаются отдельно.
+id = "dynamixel-xl330-m288"
+name = "Dynamixel XL330-M288-T"
+what_is = "Крошечный умный сервопривод 18 г с датчиком положения и шиной: пальцы, лёгкие механизмы."
+kind = "bus_servo"
+legacy_class = "smart_servo"
+mode = "position"
+inertia = "internal"
+backdrive = "unknown"
+brake = "unknown"
+stop = "unknown"
+magnet = "unknown"
+builtin_driver = "builtin-dynamixel-xl330"
+sources = ["ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/"]
+caveats = ["Стоповый момент — мгновенный; длительный момент ROBOTIS не публикует."]
+
+[[voltage_points]]
+voltage_v = { value = 3.7, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+stall_torque_nm = { value = 0.42, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+no_load_rpm = { value = 76.0, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+stall_current_a = { value = 1.11, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+
+[[voltage_points]]
+voltage_v = { value = 5.0, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+stall_torque_nm = { value = 0.52, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+no_load_rpm = { value = 103.0, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+stall_current_a = { value = 1.47, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+
+[[voltage_points]]
+voltage_v = { value = 6.0, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+stall_torque_nm = { value = 0.6, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+no_load_rpm = { value = 123.0, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+stall_current_a = { value = 1.74, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+
+[parameters]
+voltage_nominal_v = { value = 5.0, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+voltage_min_v = { value = 3.7, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+voltage_max_v = { value = 6.0, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+rated_torque_nm = { unknown = true, bench = "выдержать длительную нагрузку на динамометре до теплового равновесия" }
+peak_torque_nm = { value = 0.6, source = "datasheet", reference = "ROBOTIS: стоповый момент при 6 В, мгновенный предел" }
+no_load_speed_rpm = { value = 103.0, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+rated_speed_rpm = { unknown = true, bench = "измерить скорость выхода под номинальной нагрузкой" }
+no_load_current_a = { unknown = true, bench = "измерить ток при номинальном напряжении без нагрузки" }
+stall_current_a = { value = 1.47, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+rated_current_a = { unknown = true, bench = "снять длительный ток при допустимом установившемся нагреве" }
+peak_current_a = { unknown = true, bench = "снять пиковый ток вместе с длительностью импульса" }
+standby_current_a = { value = 0.017, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+resistance_ohm = { unknown = true, bench = "измерить сопротивление обмотки четырёхпроводным методом при известной температуре" }
+inductance_h = { unknown = true, bench = "снять переход тока коротким импульсом на неподвижном валу или измерить LCR-метром" }
+kt_motor_nm_per_a = { unknown = true, bench = "снять наклон момента по току на валу двигателя" }
+ke_motor_v_s = { unknown = true, bench = "раскрутить разомкнутый двигатель и измерить ЭДС и скорость" }
+kv_rpm_per_v = { unknown = true, bench = "снять отношение скорости вала к противо-ЭДС" }
+gear_ratio = { value = 288.4, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+gear_efficiency = { unknown = true, bench = "измерить механическую мощность на входе и выходе при прямом потоке" }
+rotor_inertia_kg_m2 = { unknown = true, bench = "снять ускорение ненагруженного ротора от известного момента" }
+gear_input_inertia_kg_m2 = { unknown = true, bench = "снять ускорение входа передачи от известного момента" }
+mass_kg = { value = 0.018, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+r_th_winding_housing_k_per_w = { unknown = true, bench = "оценить по перепаду обмотка–корпус при известной тепловой мощности" }
+r_th_housing_ambient_k_per_w = { unknown = true, bench = "оценить по перепаду корпус–среда при известной тепловой мощности" }
+tau_winding_s = { unknown = true, bench = "фитировать два узла по переходу температуры обмотки при ступени мощности" }
+tau_housing_s = { unknown = true, bench = "фитировать два узла по переходу температуры корпуса при ступени мощности" }
+r_th_total_k_per_w = { unknown = true, bench = "измерить установившийся перепад обмотка–среда при известной мощности" }
+max_winding_temp_c = { unknown = true, bench = "уточнить предел по классу изоляции и порогу тепловой защиты" }
+min_ambient_c = { value = -5.0, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+max_ambient_c = { value = 70.0, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+heated_phases = { value = 1.0, source = "derived", reference = "Число одновременно нагреваемых обмоток в исходной модели sim-actuators; не измерение" }
+stepper_pole_pairs = { unknown = true, bench = "посчитать периоды противо-ЭДС за оборот" }
+supply_v = { value = 5.0, source = "datasheet", reference = "ROBOTIS XL330-M288-T: https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/" }
+current_limit_a = { unknown = true, bench = "снять уставку ограничителя тока драйвера по осциллограмме" }
+motor_constant = { unknown = true, bench = "снять момент на ток и ЭДС на скорость в одной энергетической системе единиц" }
+resistance_ref_c = { unknown = true, bench = "записать температуру обмотки при замере сопротивления" }
+resistance_alpha_per_k = { unknown = true, bench = "снять сопротивление обмотки при двух известных температурах" }
+ambient_c = { unknown = true, bench = "измерить температуру среды у корпуса" }
+winding_loss_fraction = { unknown = true, bench = "идентифицировать долю тепла двигателя в обмотке по нагреву холостого хода" }
+gear_loss_to_housing_fraction = { unknown = true, bench = "измерить тепловой поток от передачи к корпусу привода" }
+backward_efficiency = { unknown = true, bench = "нагрузить передачу с выхода и замерить мощности на обеих сторонах" }
+coulomb_nm = { unknown = true, bench = "снять постоянную составляющую момента трения после страгивания" }
+viscous_nm_per_rad_s = { unknown = true, bench = "снять наклон момента трения по скорости" }
+static_friction_nm = { unknown = true, bench = "медленно повышать момент на валу до страгивания" }
+stribeck_rad_s = { unknown = true, bench = "снять кривую трения на малых скоростях после страгивания" }
+friction_band_rad_s = { unknown = true, bench = "снять разрешение скоростного стенда и проверить сходимость полосы регуляризации" }
+backlash = { unknown = true, bench = "измерить полный свободный ход выхода между двумя нагруженными зубьями" }
+coupling_stiffness = { unknown = true, bench = "замерить наклон сила–перемещение или момент–угол при зацеплении" }
+coupling_damping = { unknown = true, bench = "снять затухание от ступенчатого смещения передачи" }
+stop_min = { unknown = true, bench = "медленно подвезти выход к нижнему механическому упору и измерить координату" }
+stop_max = { unknown = true, bench = "медленно подвезти выход к верхнему механическому упору и измерить координату" }
+stop_stiffness = { unknown = true, bench = "измерить жёсткость контакта упора" }
+stop_damping = { unknown = true, bench = "идентифицировать затухание при контролируемом ударе об упор" }
+control_hz = { unknown = true, bench = "измерить период внутренних обновлений по реакции на серию меток" }
+bus_delay_s = { unknown = true, bench = "синхронно записать момент передачи и момент принятия команды" }
+position_min = { unknown = true, bench = "проверить нижнюю разрешённую регулятором координату" }
+position_max = { unknown = true, bench = "проверить верхнюю разрешённую регулятором координату" }
+speed_limit = { unknown = true, bench = "измерить предел задания выходной скорости" }
+position_gain = { unknown = true, bench = "снять наклон задания скорости по ошибке положения" }
+position_deadband = { unknown = true, bench = "медленно менять команду при неподвижном выходе и найти порог реакции" }
+speed_kp = { unknown = true, bench = "снять мгновенный наклон задания тока по ошибке скорости" }
+speed_ki = { unknown = true, bench = "снять скорость нарастания задания тока при постоянной ошибке скорости" }

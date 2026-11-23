@@ -1,0 +1,13 @@
+format = 3
+name = "Блок между опорой и кареткой"
+# Нумерация и сетка численного стенда: 10 мс для заданных 1000 Н/м и 60 Н·с/м, деления шага в конвейере.
+seed = 1
+physics_hz = 100
+gravity_m_s2 = [0, 0, 0] # Горизонтальная оснастка, веса уравновешены.
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0, 0, 0]
+[[devices]]
+name = "стенд"
+file = "../mechanical/press.toml"

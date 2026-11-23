@@ -1,0 +1,53 @@
+version = 1
+
+[[board]]
+name = "плата"
+catalog = "esp32-c3"
+image = "stand-controller.elf"
+rate_hz = 5000
+source = "ESP32-C3, TRM; обмен каждые 200 мкс, 20 преобразований ADC модели."
+
+[[board_input]]
+name = "датчик"
+board = "плата"
+signal = "рычаг/измерение"
+unit = "rad"
+kind = "adc"
+port = 0
+max_age_ns = 1000000
+scale = 1.8
+offset = 0.2
+fallback = 0
+source = "Стендовая шкала: 0.2–2.18 В на ходе 0–1.10 рад, обрыв даёт 0 В."
+
+[[driver]]
+name = "мост"
+board = "плата"
+target = "нажиматель/скважность"
+target_kind = "drive"
+unit = "1"
+ack = "нажиматель/мотор/accepted_command"
+pin = 4
+quantity = "duty"
+scale = 1
+offset = 0
+max_age_ns = 1000000
+fallback = 0
+source = "LEDC TRM, усреднённый мост из этапа 2, без импульсного интерфейса сервы."
+
+[[controller]]
+name = "питание"
+kind = "builtin"
+rate_hz = 1000
+program = "power.toml"
+source = "Стендовая стабилизированная шина 4.8 В из модели этапа 2."
+
+[[output]]
+name = "ключ питания"
+controller = "питание"
+target = "нажиматель/скважность-power"
+target_kind = "power"
+unit = "bool"
+max_age_ns = 2000000
+fallback = 0
+source = "Цифровое разрешение стабилизированной шины."

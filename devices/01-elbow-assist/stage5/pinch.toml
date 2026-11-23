@@ -1,0 +1,92 @@
+[pads."противоупор"]
+mounts = ["устройство/рычаг/ограничитель", "участник/s1901"]
+geometries = ["устройство/рычаг/collision/1", "участник/r0009"]
+normal = [[-1, 0, 0], [0, 0, -1]]
+tangent = [[0, 0, 1], [0, 1, 0]]
+area_m2 = { value = 0.0004, source = { estimate = "Квадрат 20×20 мм эскизной встречной накладки." } }
+[pads."противоупор".calibration]
+compression_m = { value = 0.03, range = [0.0, 0.06], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+offset_m = { value = 0.08, range = [0.0, 0.16], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+axis_error_rad = { value = 0.7, range = [0.0, 1.4], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+relative_speed_m_s = { value = 2.5, range = [0.0, 5.0], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+
+[pads."противоупор".law]
+free_gap_m = { value = 0.024, source = { estimate = "Геометрический зазор плюс целевой преднатяг численной постановки." } }
+# Линейная характеристика от нуля до максимума хода в численном опыте.
+compression = { points = [[0.0, 0.0], [0.06, 150.0]], source = { estimate = "Эскиз линейной характеристики; нужен замер конкретной оснастки." } }
+damping_ns_m = { value = 0.0, source = { estimate = "Упругая сверка без гашения, силу можно вычислить как kx." } }
+shear_stiffness_n_m = { value = 500.0, source = { estimate = "Синтетическая жёсткость сдвига для наблюдения связи." } }
+friction = { value = 0.55, source = { estimate = "Эскизный коэффициент пары, требует замера." } }
+capacity_n = { value = 500.0, source = { estimate = "Испытательная граница закона площадки, не паспорт удержания." } }
+
+[[checks]]
+id = "опора"
+bounds = [0.5, 60.0]
+source = "Преднатяг 2 мм × 2500 Н/м = 5 Н, номинальное окно стенда."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "опора" }
+
+[[checks]]
+id = "рычаг"
+bounds = [0.5, 90.0]
+source = "Преднатяг 2 мм × 2500 Н/м = 5 Н, плюс изменяющаяся реакция."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "рычаг" }
+
+[[checks]]
+id = "сила по закону"
+bounds = [0.0, 1e-10]
+source = "Независимая интерполяция узлов F(x) без гашения."
+min_samples = 5
+
+
+metric = { "kind" = "pad_law_residual", "patch" = "рычаг" }
+
+[[checks]]
+id = "баланс сил"
+bounds = [0.0, 1e-10]
+source = "Третий закон Ньютона, в одной мировой системе."
+min_samples = 5
+
+
+metric = { "kind" = "action_reaction_residual", "interface" = "рычаг" }
+
+[[checks]]
+id = "движение"
+bounds = [0.002, 0.15]
+source = "Опорная траектория 0.04 рад за 80 мс с ограниченным приводом."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/намерение", "statistic" = "span", "quantity" = "position" }
+
+[[checks]]
+id = "момент"
+bounds = [0.01, 242.0]
+source = "Ненулевой выход под ELF, предел 242 Н·м из sampled-drive.toml."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/joint_torque_nm", "unit" = "N*m", "statistic" = "peak" }
+
+[[checks]]
+id = "ток"
+bounds = [0.001, 15.001]
+source = "Ограничение 15 А из sampled-drive.toml; допуск разрешения 1 мА."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/current_a", "unit" = "A", "statistic" = "peak" }
+
+[[checks]]
+id = "защемление"
+bounds = [0, 2.0]
+source = "Бюджет встречного удержания 2 Н перед размыканием защитной части стенда."
+min_samples = 5
+
+required_design = true
+metric = { "kind" = "opposed_normal", "first" = "противоупор", "second" = "рычаг" }

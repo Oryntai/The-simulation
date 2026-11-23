@@ -1,0 +1,31 @@
+# Полка 10 Н и натяжение 10 Н сохраняют скорость после первого шага.
+# К 20 мс даже на сетке 4 кГц зазор превышает уставку 20,03 мм.
+window_ns = [1000000, 22000000]
+source = "Захват и штатное отпускание на линейной оси, без скачка силы поля."
+
+[models."стык"]
+requests = [{ at_ns = 2000000, action = "attach" }, { at_ns = 20000000, action = "release" }]
+loading = { source = "Постоянное натяжение 10 Н компенсирует силу поля на полке.", steps = [{ at_ns = 0, force_n = [10, 0, 0], torque_nm = [0, 0, 0] }] }
+
+[models."стык".limits]
+gap_m = { value = 0.02003, source = { datasheet = "Уставка зазора между исходным положением и положением отпускания." } }
+release_force_n = { value = 10, source = { datasheet = "Штатная тяговая нагрузка в режиме разъединения." } }
+
+[models."стык".law]
+pull = [{ displacement_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 10, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.03, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 10, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } } }]
+
+[states]
+"стык" = ["Free", "Attached", "Free"]
+
+[[events]]
+name = "стык"
+state = "Attached"
+applied_ns = [2000000, 2000000]
+requested_ns = 2000000
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Один базовый такт опыта." } }
+[[events]]
+name = "стык"
+state = "Free"
+applied_ns = [20000000, 20000000]
+requested_ns = 20000000
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Один базовый такт опыта." } }

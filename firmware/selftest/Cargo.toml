@@ -1,0 +1,16 @@
+[package]
+name = "selftest"
+description = "Самопроверка ядра VMCU-C3: команды RV32IM, CSR, ловушки, таймер, UART — результаты в UART"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "selftest"
+test = false
+bench = false
+
+[dependencies]
+vmcu-hal = { path = "../vmcu-hal" }
+selftest-core = { path = "../selftest-core" }

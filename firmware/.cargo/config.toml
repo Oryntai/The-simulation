@@ -1,0 +1,7 @@
+# Цель — ядро RV32IMC без ОС; компоновщик — rust-lld (поставляется с rustc).
+# Скрипт компоновки link.x кладёт в путь поиска build.rs крейта vmcu-hal.
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+rustflags = ["-C", "link-arg=-Tlink.x"]

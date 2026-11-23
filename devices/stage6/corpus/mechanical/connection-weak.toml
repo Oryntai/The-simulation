@@ -1,0 +1,11 @@
+[models."стык".limits.capacity]
+force_n = { value = 0.2, source = { datasheet = "Модель малой прочности 0,2 Н под заданной нагрузкой 1 Н." } }
+
+[states]
+"стык" = ["Attached", "Free"]
+
+[[events]]
+name = "стык"
+state = "Free"
+applied_ns = [5250000, 6000000]
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Размыкание за первый завершённый такт под ступенью нагрузки на 5 мс. Сетки от 0,25 до 1 мс." } }

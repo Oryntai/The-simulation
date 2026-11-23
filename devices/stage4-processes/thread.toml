@@ -1,0 +1,55 @@
+world = "world-carriage.toml"
+window_ns = [1000000, 12000000]
+source = "Осевое нагружение 1 Н с 2 до 12 мс после захвата в нулевой фазе."
+
+[models."стык"]
+kind = "attachment"
+mounts = ["стенд/опора/стык", "стенд/блок/стык"]
+available_travel_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+requests = [{ at_ns = 2000000, action = "attach" }]
+loading = { source = "Начало и величина задающей внешней осевой силы численного стенда.", steps = [{ at_ns = 0, force_n = [0, 0, 0], torque_nm = [0, 0, 0] }, { at_ns = 2000000, force_n = [1, 0, 0], torque_nm = [0, 0, 0] }] }
+
+[models."стык".limits]
+gap_m = { value = 0.03, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+lateral_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+axis_error_rad = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+speed_m_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+angular_speed_rad_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+required_travel_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_force_n = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_torque_nm = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+capacity = { force_n = { value = 100, source = { datasheet = "Расчётное условие только синтетического опыта." } }, torque_nm = { value = 1, source = { datasheet = "Расчётное условие только синтетического опыта." } } }
+
+[models."стык".law]
+type = "threaded"
+angular_joint = "стенд/поворот"
+phase_at_entry_rad = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[models."стык".law.parameters]
+lead_m_per_turn = { value = 0.006283185307179587, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+entry_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+depth_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+phase_error_rad = { value = 0.07, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+maximum_elastic_error_m = { value = 0.0002, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+stiffness_n_m = { value = 1000, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+damping_ns_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+torsional_drag_nms = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[states]
+"стык" = ["Free", "Attached"]
+
+[[events]]
+name = "стык"
+state = "Attached"
+applied_ns = [2000000, 2000000]
+requested_ns = 2000000
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Один базовый такт опыта." } }
+[[criteria]]
+name = "осевая реакция резьбы"
+series = { measurement = "стык/applied_force" }
+unit = "N"
+statistic = "end"
+lower = { value = 0.020896, source = { datasheet = "Независимый расчёт для стенда: 0.024896 N, допуск 0.004 N." } }
+upper = { value = 0.028896, source = { datasheet = "Независимый расчёт для стенда: 0.024896 N, допуск 0.004 N." } }
+tolerance = { value = 0.004, source = { datasheet = "Независимый расчёт для стенда: 0.024896 N, допуск 0.004 N." } }
+remainder = [{ value = 0.001, source = { datasheet = "Независимый расчёт для стенда: 0.024896 N, допуск 0.004 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

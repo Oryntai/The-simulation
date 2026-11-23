@@ -1,0 +1,11 @@
+[package]
+name = "sim-env"
+description = "Среда и человек: воздух, вода, ветер, холод, жара; теплообмен, терморегуляция человека, контакт кожи с материалами"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-verify.workspace = true

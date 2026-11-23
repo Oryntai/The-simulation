@@ -1,0 +1,80 @@
+world = "heat-world.toml"
+# Выдержка оснастки 1 с, затем ровно 1 мин контакта по таблице.
+window_ns = [1000000000, 61000000000]
+source = "Сухая кожа, малая площадь касания гладкого металла. Температура сохраняется тепловой массой."
+
+[screen]
+object = "поверхность"
+scope = "Гладкий металл без покрытия, сухой контакт без защиты на участке вне головы. Изотермическая поверхность с заданной контактной площадью."
+source = { kind = "datasheet", reference = "Схема расчётного стенда: фиксированное пятно 1 см², площадь тела 1 м², критерий постоянства поверхности 0,01 К." }
+limit_source = { kind = "paper", reference = "ISO 13732-1:2006 §4.1 и табл. 1, 51 °C для 1 мин, гладкий металл без покрытия: https://www.theiteh.com/catalog/standards/cen/1ead613c-b9ee-45c1-9317-aa909f44525a/en-iso-13732-1-2008; сверка с ISO/TS 16976-5:2020 табл. 1: https://cdn.standards.iteh.ai/samples/75719/068abba0a9b344a1847b3f5eae5eb75b/ISO-TS-16976-5-2020.pdf" }
+limit = 324.15 # 51 °C + 273,15 по определению шкал.
+condition = { kind = "dry_contact", surface = "smooth_uncoated_metal", limit_surface = "smooth_uncoated_metal", region = "стенд/блок/collision/0", dry_bare_skin = true, head_or_vital_face = false, contact_area_m2 = 0.0001, body_area_m2 = 1, max_area_fraction = 0.1, duration_ns = 60000000000, max_surface_drift_k = 0.01 }
+
+[[criteria]]
+name = "пик поверхности"
+series = { measurement = "поверхность/source" }
+unit = "K"
+statistic = "maximum"
+tolerance = { value = 0.00001, source = { datasheet = "10 мкК для различия трёх сеток около стационарного касания." } }
+remainder = [
+  { value = 0, source = { datasheet = "Точный тепловой переход при постоянной проводимости." } },
+  { value = 0, source = { datasheet = "Решатель проверяется по факту непрерывного касания за всё окно." } },
+  { value = 0, source = { datasheet = "Тепловые параметры численного стенда заданы точками." } },
+]
+
+[contacts]
+table = "heat-materials.toml"
+
+[contacts.solver]
+# Настройки численного решателя из нейтрального стенда контакта этапа 4.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"стенд/опора/collision/0" = "опора"
+"стенд/блок/collision/0" = "образец"
+"стенд/каретка/collision/0" = "опора"
+
+[[contacts.pairs]]
+geometries = ["стенд/опора/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Постоянный импеданс 0,95 и форма из численного стенда опоры этапа 4." }
+mass_kg = { value = 1, source = { datasheet = "Нормальная мода блока массой 1 кг у неподвижной опоры." } }
+
+[[contacts.pairs]]
+geometries = ["стенд/каретка/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Постоянный импеданс 0,95 и форма из численного стенда опоры этапа 4." }
+mass_kg = { value = 0.5, source = { datasheet = "Приведённая масса вдоль общей оси для двух тел по 1 кг." } }
+
+[models."нагрузка"]
+kind = "effort"
+channel = "стенд/прижим"
+source = "4 Н, ступень с начала прогона. Оснастка держит датчик в касании."
+values = [{ at_ns = 0, value = -4 }]
+
+[models."поверхность"]
+kind = "heat"
+source = "Стенд двух теплоёмкостей с сухим контактом. Без внешнего теплообмена и подвода мощности."
+pair = ["стенд/опора/collision/0", "стенд/блок/collision/0"]
+capacities_j_k = [
+  { value = 1000, source = { datasheet = "Тепловой резервуар стенда 1000 Дж/К." } },
+  { value = 10, source = { datasheet = "Термический имитатор пятна 10 Дж/К." } },
+]
+initial_k = [
+  { value = 350, source = { datasheet = "Начальная поверхность 350 К для опыта превышения." } },
+  { value = 300, source = { datasheet = "Начальная температура имитатора 300 К." } },
+]
+area_m2 = { value = 0.0001, source = { datasheet = "Заданная площадь термического пятна имитатора 1 см²." } }
+coefficient_w_m2_k = { value = 10, source = { datasheet = "Проводимость синтетического стенда 1 мВт/К на пятно 1 см²." } }
+power_w = [{ at_ns = 0, value = 0 }]

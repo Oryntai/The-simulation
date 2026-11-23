@@ -1,0 +1,11 @@
+version = 1
+source = "Парные нейтральные опыты механики на трёх сетках."
+
+[cases]
+fatigue = { file = "fatigue.toml", overlay = "fatigue-safe.toml" }
+retention = { file = "retention.toml", overlay = "retention-safe.toml" }
+connection_failure = "connection_failure.toml"
+impact = { file = "impact.toml", overlay = "impact-safe.toml" }
+pinch = { file = "pinch.toml", overlay = "press-safe.toml" }
+contact_structure = { file = "contact_structure.toml", overlay = "press-safe.toml" }
+dangerous_motion = { file = "dangerous_motion.toml", overlay = "impact-safe.toml" }

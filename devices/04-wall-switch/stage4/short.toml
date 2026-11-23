@@ -1,0 +1,2 @@
+[models."толкатель"]
+rest = [{ at_ns = 0, value = 0 }, { at_ns = 50000000, value = 0.085 }, { at_ns = 150000000, value = 0 }, { at_ns = 280000000, value = 0 }, { at_ns = 380000000, value = 0 }, { at_ns = 510000000, value = 0.085 }, { at_ns = 610000000, value = 0 }, { at_ns = 740000000, value = 0 }, { at_ns = 840000000, value = 0 }]

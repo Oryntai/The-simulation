@@ -1,0 +1,5 @@
+version = 1
+source = "Тот же физический опыт с независимыми идентификаторами."
+base = "setup-renamed.toml"
+[[cases]]
+id = "independent"

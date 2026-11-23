@@ -1,0 +1,24 @@
+world = "world-rod.toml"
+window_ns = [1000000, 4000000]
+source = "Короткий опыт на базовом шаге 1 мс и двух последовательных делениях пополам."
+
+[models."образец"]
+kind = "soft_object"
+nodes = [{ body = "стенд/опора", local_m = [0, 0, 0] }, { body = "стенд/блок", local_m = [0.105, 0, 0] }]
+geometries = ["стенд/блок/collision/0"]
+
+[models."образец".law]
+type = "rubber"
+free_length_m = { value = 0.125, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+damping_ns_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+compression = [{ displacement_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 20, source = { datasheet = "Расчётное условие только синтетического опыта." } } }]
+
+[[criteria]]
+name = "реакция образца"
+series = { measurement = "образец/reaction" }
+unit = "N"
+statistic = "end"
+lower = { value = 9.9999999999, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 1e-10 N." } }
+upper = { value = 10.0000000001, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 1e-10 N." } }
+tolerance = { value = 1e-10, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 1e-10 N." } }
+remainder = [{ value = 2.5e-11, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 1e-10 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

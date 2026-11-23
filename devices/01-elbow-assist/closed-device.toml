@@ -1,0 +1,47 @@
+# Предплечье с кистью на оси, груз в кисти. Положительный угол поднимает звено.
+format = 3
+name = "Экзоскелет локтя"
+
+[[links]]
+name = "предплечье"
+pose = { position_m = [0.0, 0.0, 1.0] }
+
+[links.joint]
+kind = "hinge"
+name = "ось"
+axis = [0.0, 1.0, 0.0]
+initial_deg = 90.0
+# Демпфирование 0.2 Н·м·с/рад перенесено в sampled-drive.toml для явной квадратуры.
+damping = 0.0
+friction_loss = 0.0
+# Ротор через редуктор: maxon EC 90 flat + Harmonic Drive 50:1, J·N².
+armature = 1.36825
+efforts = [{ name = "момент", dof = 0 }, { name = "момент-bridge", dof = 0 }, { name = "проверочное_усилие", dof = 0 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 1.3425982370937886
+com_m = [0.0, 0.0, -0.17537552376904827]
+# Iyy = I_оси − m·r² − 10⁻⁶, компенсируем обязательную инерцию точечного груза в MJCF.
+inertia_kg_m2 = [0.025182383069949632, 0.02518138306994963, 0.002518238306994963, 0.0, 0.0, 0.0]
+provenance = { derived = "MS-Human-700 (рука с кистью) через MuJoCo: масса поддерева, центр масс и инерция по оси" }
+
+[[links]]
+name = "груз"
+parent = "предплечье"
+pose = { position_m = [0.0, 0.0, -0.3133606681578101] }
+
+[links.joint]
+kind = "fixed"
+
+[links.mass]
+kind = "explicit"
+mass_kg = 10.0
+com_m = [0.0, 0.0, 0.0]
+inertia_kg_m2 = [1e-06, 1e-06, 1e-06, 0.0, 0.0, 0.0]
+provenance = { estimate = "точечный груз сценария эталона" }
+
+[[drives]]
+name = "мотор"
+part = "maxon-ec90-hd-csg25-50"
+effort = "момент"

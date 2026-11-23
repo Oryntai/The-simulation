@@ -1,0 +1,15 @@
+# Чистые функции самопроверки. Собираются дважды: под RISC-V в прошивку selftest
+# и нативно на хосте (dev-зависимость sim-mcu) — второй способ сверки эмулятора.
+# Поля пакета заданы явно (без наследования от workspace), чтобы крейт так же
+# собирался как path-зависимость из хостового workspace.
+[package]
+name = "selftest-core"
+description = "Чистые функции самопроверки ядра RV32IM: эталонная семантика команд и алгоритмы"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+test = false
+bench = false

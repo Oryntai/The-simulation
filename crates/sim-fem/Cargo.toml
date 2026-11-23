@@ -1,0 +1,10 @@
+[package]
+name = "sim-fem"
+description = "Конечные элементы: балка Эйлера–Бернулли (первый кирпич прочностного блока)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true

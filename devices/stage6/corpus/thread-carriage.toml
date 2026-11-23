@@ -1,0 +1,21 @@
+format = 3
+name = "Каретка"
+# Единичная инерция и положения выбраны для независимого расчёта.
+[[links]]
+name = "опора"
+joint = { kind = "fixed" }
+mounts = [{ name = "стык", kind = "mechanical", interface = "осевая посадка" }]
+mass = { kind = "massless" }
+
+[[links]]
+name = "каретка"
+joint = { kind = "slide", name = "ход", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0 }
+
+mass = { kind = "explicit", mass_kg = 1, com_m = [0, 0, 0], inertia_kg_m2 = [1, 1, 1, 0, 0, 0], provenance = { datasheet = "Спецификация идеальной осевой оснастки: масса 1 кг и инерция 1 кг·м² на звено." } }
+
+[[links]]
+name = "блок"
+joint = { kind = "hinge", name = "поворот", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0 }
+parent = "каретка"
+mounts = [{ name = "стык", kind = "mechanical", interface = "осевая посадка" }]
+mass = { kind = "explicit", mass_kg = 1, com_m = [0, 0, 0], inertia_kg_m2 = [1, 1, 1, 0, 0, 0], provenance = { datasheet = "Спецификация идеальной осевой оснастки: масса 1 кг и инерция 1 кг·м² на звено." } }

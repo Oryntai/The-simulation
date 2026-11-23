@@ -1,0 +1,7 @@
+version = 1
+source = "Проверка строгого разбора и запрета нечисловых входов."
+
+[cases]
+nan = { file = "spring.toml", overlay = "nan.toml" }
+inf = { file = "spring.toml", overlay = "inf.toml" }
+unknown-key = { file = "spring.toml", overlay = "unknown-key.toml" }

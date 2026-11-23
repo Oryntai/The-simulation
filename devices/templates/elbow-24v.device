@@ -1,0 +1,176 @@
+# Проект мастерской устройств
+# Формат sim-device 2
+
+[device]
+name = Экзоскелет локтя 24 В (рабочая схема)
+template = elbow-24v
+mount = upper_arm
+
+[use]
+ambient_c = 30
+cycles = 100000
+long_wear = false
+hours_per_day = 1
+
+[electronics]
+board = rp2040
+driver = 
+regulator = tps54360
+cell = A123 ANR26650M1B
+series = 8
+parallel = 1
+fuse_a = 10
+wire_mm2 = 1.5
+wire_m = 0.4
+bms = true
+firmware = elbow-bench.elf
+resistance_spread = 0.1
+group_spread_v = 0.02
+interconnect_ohm = 0.002
+contacts_ohm = 0.003
+wire_kind = awg
+awg = 16
+insulation = silicone
+cooling = bundled
+fuse_position_m = 0
+bms_name = TI BQ769x0
+bms_scd_min_a = 18.55
+bms_scd_max_a = 25.450000000000003
+bms_scd_delay_s = 0.00010499999999999999
+bms_ocd_min_a = 8.65
+bms_ocd_max_a = 13.350000000000001
+bms_ocd_min_s = 0.128
+bms_ocd_max_s = 0.19199999999999998
+bms_ovp_v = 3.65
+bms_uvp_v = 3.1
+mosfet_v = 100
+mosfet_a = 1440
+mosfet_s = 0.0002
+mosfet_ohm = 0.00085
+mosfet_j = 1
+enclosure_area_m2 = 0.06
+enclosure_height_mm = 100
+enclosure_wall_mm = 2
+enclosure_k = 0.18
+enclosure_h = 3
+enclosure_emissivity = 0.85
+enclosure_body_fraction = 0.3
+spacer_mm = 10
+spacer_k = 0.05
+skin_s = 900
+skin_class = plastic
+skin_fraction = 0.03
+charger_a = 2
+charger_v = 28.8
+charge_min_c = 10
+charge_max_c = 30
+rail_v = 5
+board_regulated = true
+board_avg_a = 0.08
+board_peak_a = 0.12
+board_thermal_kw = 30
+board_temp_limit_c = 70
+firmware_s = 0.0065
+
+[design]
+sex = female
+strength_pct = 5
+cold_c = 10
+accessory_mass_kg = 1.3
+
+[connection]
+spec = supply vsys 5
+
+[connection]
+spec = ground true
+
+[connection]
+spec = digital 3 0 3.3
+
+[connection]
+spec = motor 2 false
+
+[firmware_case]
+boot = true
+input_pin = 3
+input_high = false
+output_pin = 2
+pwm_min = 0
+pwm_max = 0
+reason = Кнопка разомкнута или обрыв: мотор выключен
+
+[firmware_case]
+boot = false
+input_pin = 3
+input_high = true
+output_pin = 2
+pwm_min = 0.24
+pwm_max = 0.26
+reason = Разрешение есть: ШИМ 25%
+
+[link]
+name = Поясной блок батареи
+parent = none
+offset_mm = -130 220 -400
+direction = down
+length_mm = 100
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 1
+near_body = none
+contact_lever_mm = 100
+joint = fixed
+axis = y
+min_deg = 0
+max_deg = 0
+actuator = 
+speed_limit_dps = 0
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+bolt_size = M4
+bolt_grade = 8.8
+bolt_count = 4
+thread = through
+plate_mm = 12
+edge_mm = 10
+bolt_lever_mm = 15
+
+[link]
+name = Звено предплечья
+parent = none
+offset_mm = 0 0 -300
+direction = down
+length_mm = 260
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0.3
+near_body = forearm
+contact_lever_mm = 150
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 14
+pinch_gap_mm = 125
+guarded = false
+bolt_size = M5
+bolt_grade = 8.8
+bolt_count = 4
+thread = through
+plate_mm = 12
+edge_mm = 10
+bolt_lever_mm = 30
+acceleration_s = 0.25
+move_s = 1
+rest_s = 4
+inertia_kg_m2 = 0.01
+arm_action = elbow
+motor_gpio = 2
+motor_regulated = false

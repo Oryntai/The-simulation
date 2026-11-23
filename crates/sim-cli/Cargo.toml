@@ -1,0 +1,24 @@
+[package]
+name = "sim-cli"
+description = "Запуск мира и задач без окна, результат в машиночитаемом виде"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-signal.workspace = true
+sim-world.workspace = true
+sim-runtime.workspace = true
+sim-drive.workspace = true
+sim-sense.workspace = true
+sim-human.workspace = true
+sim-task = { path = "../sim-task" }
+sim-process = { path = "../sim-process" }
+serde.workspace = true
+toml.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+[[bin]]
+name = "sim-run"
+path = "src/bin/sim_run.rs"

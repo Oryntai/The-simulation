@@ -1,0 +1,15 @@
+# Гравитация: стандартное g₀ (CGPM, 1901). Зерно фиксирует опыт, частота — нижняя сетка сходимости.
+format = 3
+name = "Натяжной механизм на кисти"
+seed = 1
+physics_hz = 10000
+gravity_m_s2 = [0.0, 0.0, -9.80665]
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+
+[[devices]]
+name = "стенд"
+file = "device-renamed.toml"
+pose = { position_m = [0, 0, 0] }

@@ -1,0 +1,32 @@
+world = "../free-world.toml"
+window_ns = [0, 4000000] # Четыре такта исходной сетки по 1 мс.
+source = "Сравнение высоты свободного блока с синтетическим рядом независимой формулы."
+
+[screen]
+object = "отметка блока"
+scope = "Синтетический ряд высоты: v1, единая шкала секунд без сдвига, та же начальная высота и ускорение, заданная абсолютная погрешность 10 мкм."
+source = { kind = "datasheet", reference = "Протокол синтетического ввода: 0,02 − 5t² м на 0–3 мс, возмущённый ряд имеет постоянное смещение 1 мм." }
+limit_source = { kind = "datasheet", reference = "Порог расхождения синтетического опыта 0,1 мм; меньше смещения 1 мм и больше ошибки шага и синтетической неопределённости." }
+limit = 0.0001
+condition = { kind = "measurement", synthetic = true, revision = "v1", mode = "curve-offset", unit = "m", uncertainty = 0.00001 }
+
+[reference]
+file = "curve-offset.csv"
+revision = "v1"
+time_column = "seconds"
+interval_ns = 1000000
+horizon_ns = 4000000
+tolerance = 0.01 # Обычная относительная диагностика. Свидетель сравнивает абсолютную ошибку.
+columns = [{ reference = "height", signal = "qpos[2]", offset_ns = 0 }]
+
+[[criteria]]
+name = "высота"
+series = { position = 2 }
+unit = "m"
+statistic = "end"
+tolerance = { value = 0.00002, source = { datasheet = "Оценка ошибки Euler |g| t h / 2 на 4 мс при шаге 1 мс." } }
+remainder = [
+  { value = 0.00002, source = { datasheet = "Оценка ошибки Euler |g| t h / 2." } },
+  { value = 0, source = { datasheet = "Свободное падение без ограничений." } },
+  { value = 0, source = { datasheet = "Постоянное ускорение и заданная начальная координата." } },
+]

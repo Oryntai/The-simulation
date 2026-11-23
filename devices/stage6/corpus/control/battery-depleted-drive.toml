@@ -1,0 +1,48 @@
+source = "Синтетический опыт: R = 1 Ом, L = 0,01 Гн, k = 1 Н·м/А, без потерь."
+bridge_effort = "допуск"
+ambient_c = 25 # Начальная температура равна опорной температуре R.
+fixture_enabled = false
+
+[supply]
+# Одна ячейка, заряженная наполовину, для проверки U = Uшины · команда.
+cell = "lg_m50"
+series = 1
+parallel = 1
+soc = 0
+electronics_a = 1 # Фиксированная нагрузка электроники стенда 1 А.
+max_regen_a = 0
+conversion_floor_v = 1 # Ниже рабочего диапазона выбранной ячейки.
+
+[motor]
+# Числа синтетического решения R–L, 4.2 В — верхняя граница напряжения ячейки.
+nominal_v = 4.2
+r_ohm = 1
+r_ref_c = 25
+l_h = 0.01
+k = 1
+j = 0.25
+coulomb = 0
+viscous = 0
+band = 1
+max_a = 4.2
+
+[gear]
+# Жёсткая передача без потерь 1:1. Паспортные поля задают границу стенда.
+ratio = 1
+eta_forward = 1
+eta_backward = 1
+friction = 0
+j = 0.25
+rated = 4.2
+repeated = 4.2
+peak = 4.2
+mass = 1
+
+[thermal]
+# Синтетическая RC-сеть с R и C по единице. Первый шаг начинается при 25 °C.
+r_wh = 1
+r_ha = 1
+tau_w = 1
+tau_h = 1
+max_c = 100
+fraction = 0

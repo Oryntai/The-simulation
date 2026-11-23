@@ -1,0 +1,85 @@
+version = 1
+
+[assemblies.01]
+scope = "Силовая рама, сравнение с эталоном и контакт участника"
+
+[assemblies.01.experiments.control]
+kind = "task"
+world = "01-elbow-assist/closed-world.toml"
+task = "01-elbow-assist/tasks/acceptance.toml"
+
+[assemblies.01.experiments.process]
+kind = "task"
+world = "01-elbow-assist/stage4/world.toml"
+task = "01-elbow-assist/stage4/acceptance.toml"
+jobs = 2
+
+[assemblies.01.experiments.interaction]
+kind = "task"
+world = "01-elbow-assist/stage5/world.toml"
+task = "01-elbow-assist/stage5/acceptance.toml"
+
+[assemblies.02]
+scope = "Натяжная трасса и отклики интерфейсов"
+
+[assemblies.02.experiments.interaction]
+kind = "task"
+world = "02-cable-assist/world.toml"
+task = "02-cable-assist/acceptance.toml"
+
+[assemblies.02.experiments.independent]
+kind = "task"
+world = "02-cable-assist/world-renamed.toml"
+task = "02-cable-assist/acceptance-renamed.toml"
+
+[assemblies.03]
+scope = "Пассивная конструкция, датчики, тепло и посадка"
+
+[assemblies.03.experiments.interaction]
+kind = "task"
+world = "03-wearable-sensors/world.toml"
+task = "03-wearable-sensors/acceptance.toml"
+
+[assemblies.04]
+scope = "Управление ходом, другой стенд переключения и нагрузка"
+
+[assemblies.04.experiments.control]
+kind = "task"
+world = "04-wall-switch/world.toml"
+task = "04-wall-switch/tasks/acceptance.toml"
+
+[assemblies.04.experiments.ignored-input]
+kind = "task"
+world = "04-wall-switch/world.toml"
+task = "04-wall-switch/tasks/ignore.toml"
+
+[assemblies.04.experiments.process]
+kind = "task"
+world = "04-wall-switch/stage4/world.toml"
+task = "04-wall-switch/stage4/acceptance.toml"
+jobs = 2
+
+[assemblies.05]
+scope = "Контур изображения, задержка и потеря связи"
+
+[assemblies.05.experiments.control]
+kind = "task"
+world = "05-camera-tracker/stage6-world.toml"
+task = "05-camera-tracker/tasks/stage6.toml"
+
+[assemblies.06]
+scope = "Операции перемещения, смены оснастки и обработки"
+
+[assemblies.06.experiments.process]
+kind = "task"
+world = "06-xyz/world.toml"
+task = "06-xyz/acceptance.toml"
+jobs = 2
+
+[assemblies.07]
+scope = "Устойчивость, парный опыт и отказы контура"
+
+[assemblies.07.experiments.control]
+kind = "task"
+world = "07-balance-cart/stage6-world.toml"
+task = "07-balance-cart/tasks/stage6.toml"

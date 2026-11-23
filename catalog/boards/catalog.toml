@@ -1,0 +1,30 @@
+# Позиций может быть несколько для одного профиля. Карта исполнения задаётся профилем.
+[[board]]
+id = "esp32-c3"
+profile = "esp32-c3"
+name = "ESP32-C3"
+source = "Espressif ESP32-C3 Datasheet"
+
+[[board]]
+id = "rp2040"
+profile = "rp2040"
+name = "Raspberry Pi Pico"
+source = "RP2040 Datasheet; Raspberry Pi Pico Datasheet"
+
+[[board]]
+id = "stm32f103c8"
+profile = "stm32f103c8"
+name = "STM32F103C8 (Blue Pill)"
+source = "ST DS5319, RM0008"
+
+[[board]]
+id = "atmega328p"
+profile = "atmega328p"
+name = "ATmega328P (Uno/Nano)"
+source = "Microchip 7810D; Arduino Uno/Nano pinout"
+
+[[board]]
+id = "vmcu-c3"
+profile = "vmcu-c3"
+name = "VMCU-C3"
+source = "crates/sim-mcu/MEMORY_MAP.md"

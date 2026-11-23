@@ -1,0 +1,58 @@
+version = 1
+
+[[controller]]
+name = "зрение"
+kind = "external"
+rate_hz = 100
+program = "../../target/debug/sim-control-worker"
+# Фокус 90 px и cx=48 из reference-rgb. Коэффициент 0.65 — проектная уставка
+# для угловой ошибки. Красный выбирается по RGB карточки в target.toml.
+args = ["rgb", "65536", "$input:подвес/кадр/image", "подвес/кадр/image", "RGB8", "$output:привод", "привод", "1", "120000000", "0.65", "0", "omit", "180000000", "120000000", "x", "200", "0", "0", "255", "70", "70", "1", "bearing", "48", "90"]
+# Профили виртуальной сети для опытов с запаздыванием. Очередь 64 больше
+# 42 запросов за весь опыт. 65536 > 96×72×3 + метаданные.
+input_latency_ns = 4000000
+input_jitter_ns = 1000000
+output_latency_ns = 3000000
+output_jitter_ns = 1000000
+request_hz = 1000
+request_max_age_ns = 180000000
+queue_capacity = 64
+max_message_bytes = 65536
+source = "Источник: этап 2, catalog/sensors/reference-rgb.toml, PROTOCOL.md и расчёт тактов стенда."
+
+[[input]]
+controller = "зрение"
+signal = "подвес/кадр/image"
+unit = "RGB8"
+kind = "rgb8"
+max_capture_age_ns = 180000000
+max_delivery_age_ns = 120000000
+source = "Источник: этап 2, catalog/sensors/reference-rgb.toml, PROTOCOL.md и расчёт тактов стенда."
+
+[[output]]
+name = "привод"
+controller = "зрение"
+target = "подвес/скважность"
+target_kind = "drive"
+unit = "1"
+ack = "подвес/мотор/accepted_command"
+max_age_ns = 120000000
+fallback = 0
+source = "Источник: этап 2, catalog/sensors/reference-rgb.toml, PROTOCOL.md и расчёт тактов стенда."
+
+[[controller]]
+name = "питание"
+kind = "builtin"
+rate_hz = 1000
+program = "stage6-power.toml"
+source = "Идеальный ключ стабилизированной шины. Шаг управления 1 мс соответствует допускаемой дискретности журнала модели."
+
+[[output]]
+name = "разрешение скважность"
+controller = "питание"
+target = "подвес/скважность-power"
+target_kind = "power"
+unit = "bool"
+max_age_ns = 2000000
+fallback = 0
+source = "Ключ данного привода, срок два такта ключа, при просрочке модель снимает питание."

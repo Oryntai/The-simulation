@@ -1,0 +1,35 @@
+version = 1
+required_modes = ["удержание", "разомкнутый"]
+mode_control = { "разомкнутый" = "open.toml" }
+
+[[readouts]]
+signal = { name = "наклон основания", unit = "rad" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Угол из кватерниона корпуса, 2 atan2(qy,qw) в плоскости опыта." }
+formula = { kind = "planar_angle", scalar_index = 3, vector_index = 5 }
+
+[[measurements]]
+signal = { name = "колесо/скорость левого", unit = "rad/s" }
+rate_hz = 250
+source = { kind = "estimate", reference = "Идеальный тахометр на соответствующей оси." }
+transducer = { kind = "rotary_velocity", joint = "тележка/левое" }
+
+[[measurements]]
+signal = { name = "колесо/скорость правого", unit = "rad/s" }
+rate_hz = 250
+source = { kind = "estimate", reference = "Идеальный тахометр на соответствующей оси." }
+transducer = { kind = "rotary_velocity", joint = "тележка/правое" }
+
+[paths."мост левое"]
+observation = { name = "тележка/иму/gy", unit = "rad/s" }
+physical_response = [{ name = "наклон основания", unit = "rad" }]
+command_delta = 0.005
+max_observation_age_ns = 8000000
+source = { kind = "derived", reference = "0.005 меньше вклада 1°/с гироскопа: 0.42·π/180≈0.0073." }
+
+[paths."мост правое"]
+observation = { name = "тележка/иму/gy", unit = "rad/s" }
+physical_response = [{ name = "наклон основания", unit = "rad" }]
+command_delta = 0.005
+max_observation_age_ns = 8000000
+source = { kind = "derived", reference = "0.005 меньше вклада 1°/с гироскопа: 0.42·π/180≈0.0073." }

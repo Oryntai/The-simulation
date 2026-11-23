@@ -1,0 +1,65 @@
+world = "world-bond.toml"
+window_ns = [1000000, 200000000]
+source = "Две мс отверждения после запроса, затем 1 Н до установления реакции."
+
+[models."стык"]
+kind = "attachment"
+mounts = ["стенд/опора/стык", "стенд/блок/стык"]
+available_travel_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+requests = [{ at_ns = 1000000, action = "attach" }]
+loading = { source = "Начало и величина задающей внешней осевой силы численного стенда.", steps = [{ at_ns = 0, force_n = [0, 0, 0], torque_nm = [0, 0, 0] }, { at_ns = 5000000, force_n = [1, 0, 0], torque_nm = [0, 0, 0] }] }
+
+[models."стык".limits]
+gap_m = { value = 0.03, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+lateral_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+axis_error_rad = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+speed_m_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+angular_speed_rad_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+required_travel_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_force_n = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_torque_nm = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+capacity = { force_n = { value = 2, source = { datasheet = "Расчётное условие только синтетического опыта." } }, torque_nm = { value = 1, source = { datasheet = "Расчётное условие только синтетического опыта." } } }
+
+[models."стык".law]
+type = "adhesive"
+weld = "контакт"
+
+[models."стык".law.parameters]
+cure_s = { value = 0.002, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+compression_n = { value = 1, range = [0.8, 1.2], source = { datasheet = "Расчётное условие только синтетического опыта." } }
+temperature_k = { value = 300, range = [299, 301], source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[models."стык".law.cure_observation]
+# Условия зажима и камеры заданы для полного интервала отверждения. Прижим
+# уравновешен оснасткой, поэтому до снятия оснастки нет результирующей внешней силы.
+compression_n = { value = 1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+temperature_k = { value = 300, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+gap_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+lateral_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+axis_error_rad = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+speed_m_s = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+angular_speed_rad_s = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[states]
+"стык" = ["Engaging", "Attached"]
+
+[[events]]
+name = "стык"
+state = "Engaging"
+applied_ns = [1000000, 1000000]
+requested_ns = 1000000
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Один базовый такт опыта." } }
+[[events]]
+name = "стык"
+state = "Attached"
+applied_ns = [3000000, 3000000]
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Один базовый такт опыта." } }
+[[criteria]]
+name = "реакция связи"
+series = { measurement = "стык/measured_force" }
+unit = "N"
+statistic = "end"
+lower = { value = 0.998, source = { datasheet = "Независимый расчёт для стенда: 1 N, допуск 0.002 N." } }
+upper = { value = 1.002, source = { datasheet = "Независимый расчёт для стенда: 1 N, допуск 0.002 N." } }
+tolerance = { value = 0.002, source = { datasheet = "Независимый расчёт для стенда: 1 N, допуск 0.002 N." } }
+remainder = [{ value = 0.0005, source = { datasheet = "Независимый расчёт для стенда: 1 N, допуск 0.002 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

@@ -1,0 +1,7 @@
+version = 1
+source = "Контроль причинности по живому журналу."
+[cases]
+"поперечная опора" = "no-path.toml"
+"рычаг и лоток" = "push.toml"
+"упор до столкновения" = { file = "push.toml", overlay = "stop.toml" }
+"координата без удержания" = { file = "push.toml", overlay = "unsupported.toml" }

@@ -1,0 +1,4 @@
+version = 1
+source = "Протокол парной численной проверки предела"
+[cases]
+heat-pair = { file = "heat.toml", overlay = "heat-pair.toml" }

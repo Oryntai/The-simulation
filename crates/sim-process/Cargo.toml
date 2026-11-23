@@ -1,0 +1,15 @@
+[package]
+name = "sim-process"
+description = "Контракты контакта, креплений и рабочих процессов"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-circuit.workspace = true
+sim-env.workspace = true
+sim-materials.workspace = true
+sim-radio.workspace = true
+sim-signal.workspace = true
+sim-world.workspace = true

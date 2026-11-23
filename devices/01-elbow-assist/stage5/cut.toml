@@ -1,0 +1,90 @@
+[power_loss]
+id = "отключение"
+target = "power:устройство/момент-bridge"
+at_ns = 20000000
+loaded_patch = "опора"
+signal = "устройство/мотор/bridge_enabled"
+unit = "bool"
+before = { value = 1, source = { datasheet = "Булев уровень по контракту GPIO2 и bridge_enabled дискретной модели." } }
+after = { value = 0, source = { datasheet = "Булев уровень по контракту fault power_off и bridge_enabled дискретной модели." } }
+
+[[checks]]
+id = "опора"
+bounds = [0.5, 60.0]
+source = "Преднатяг 2 мм × 2500 Н/м = 5 Н, номинальное окно стенда."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "опора" }
+
+[[checks]]
+id = "рычаг"
+bounds = [0.5, 90.0]
+source = "Преднатяг 2 мм × 2500 Н/м = 5 Н, плюс изменяющаяся реакция."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "рычаг" }
+
+[[checks]]
+id = "сила по закону"
+bounds = [0.0, 1e-10]
+source = "Независимая интерполяция узлов F(x) без гашения."
+min_samples = 5
+
+
+metric = { "kind" = "pad_law_residual", "patch" = "рычаг" }
+
+[[checks]]
+id = "баланс сил"
+bounds = [0.0, 1e-10]
+source = "Третий закон Ньютона, в одной мировой системе."
+min_samples = 5
+
+
+metric = { "kind" = "action_reaction_residual", "interface" = "рычаг" }
+
+[[checks]]
+id = "движение"
+bounds = [0.002, 0.15]
+source = "Опорная траектория 0.04 рад за 80 мс с ограниченным приводом."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/намерение", "statistic" = "span", "quantity" = "position" }
+
+[[checks]]
+id = "момент"
+bounds = [0.01, 242.0]
+source = "Ненулевой выход под ELF, предел 242 Н·м из sampled-drive.toml."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/joint_torque_nm", "unit" = "N*m", "statistic" = "peak" }
+
+[[checks]]
+id = "ток"
+bounds = [0.001, 15.001]
+source = "Ограничение 15 А из sampled-drive.toml; допуск разрешения 1 мА."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/current_a", "unit" = "A", "statistic" = "peak" }
+
+[[checks]]
+id = "снятие питания"
+bounds = [1, 1]
+source = "Подтверждённый переход силового входа по failure event."
+min_samples = 1
+
+
+metric = { "kind" = "power_cut" }
+
+[[checks]]
+id = "обесточенный мост"
+bounds = [0, 0.0001]
+source = "Выбег в sampled-drive гасит ток; разрешение сравнения 0,1 мА."
+min_samples = 5
+window_ns = [21000000, 80000000]
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/current_a", "unit" = "A", "statistic" = "peak" }

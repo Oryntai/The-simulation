@@ -1,0 +1,20 @@
+version = 1
+
+[[block]]
+kind = "constant"
+value = 1
+source = "Штатное включённое состояние отдельного ключа питания стенда."
+
+[[bind]]
+output = "разрешение момент_левое"
+node = 0
+missing = "value"
+value = 0
+source = "При пропуске команды ключ выключен."
+
+[[bind]]
+output = "разрешение момент_правое"
+node = 0
+missing = "value"
+value = 0
+source = "При пропуске команды ключ выключен."

@@ -1,0 +1,18 @@
+format = 3
+name = "Одноточечный контактный регистратор без исполнительных осей"
+
+[[links]]
+name = "блок"
+joint = { kind = "free", name = "положение" }
+# Контрольная масса 48 г на одной сфере R=10 мм, I=2mR²/5.
+mass = { kind = "explicit", mass_kg = 0.048, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [1.92e-6, 1.92e-6, 1.92e-6, 0, 0, 0], provenance = { derived = "Однородная контрольная сфера: 2mR²/5." } }
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.01 }
+contact_mask = [1, 0]
+
+[[links.mounts]]
+name = "контакт"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [-0.00755805229305852, 0.0, -0.00654796499191867] }

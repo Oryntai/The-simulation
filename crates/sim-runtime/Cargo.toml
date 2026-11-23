@@ -1,0 +1,22 @@
+[package]
+name = "sim-runtime"
+description = "Рантайм: расписание, наблюдение, действие, снимки, ветвление, лог и воспроизведение"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-signal.workspace = true
+sim-world.workspace = true
+sim-mujoco.workspace = true
+sim-boards.workspace = true
+sim-radio.workspace = true
+sim-control = { path = "../sim-control" }
+sim-process = { path = "../sim-process" }
+
+[[bin]]
+name = "sim-runtime-control-fixture"
+path = "tests/support/worker.rs"
+test = false
+bench = false

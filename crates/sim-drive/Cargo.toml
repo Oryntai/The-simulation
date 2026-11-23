@@ -1,0 +1,21 @@
+[package]
+name = "sim-drive"
+description = "Приводы и передачи в динамике: общая модель по данным каталога"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-signal.workspace = true
+sim-world.workspace = true
+sim-runtime.workspace = true
+sim-mujoco.workspace = true
+sim-circuit.workspace = true
+sim-em.workspace = true
+serde.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+sim-actuators.workspace = true
+sim-verify.workspace = true

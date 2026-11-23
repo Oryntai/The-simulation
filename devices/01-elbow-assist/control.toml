@@ -1,0 +1,124 @@
+version = 1
+[[board]]
+name = "плата"
+catalog = "vmcu-c3"
+image = "../../assets/firmware/exo-ctrl.elf"
+config = "config-0.bin"
+rate_hz = 40000
+end_sample = true
+source = "Исполняемый образ и численная сетка 25 мкс из манифеста golden."
+
+[[board_action]]
+id = "исходный уровень"
+board = "плата"
+kind = "gpio"
+at_ns = 0
+pin = 0
+high = true
+source = "Исправный уровень аварийной кнопки, контракт GPIO прошивки."
+
+[[driver]]
+name = "драйвер"
+board = "плата"
+target = "устройство/момент"
+target_kind = "drive"
+unit = "1"
+ack = "устройство/мотор/accepted_command"
+pin = 0
+direction_pin = 1
+quantity = "duty"
+scale = 1
+offset = 0
+max_age_ns = 25000
+fallback = 0
+source = "ABI прошивки: PWM0, GPIO1 направление."
+
+[[driver]]
+name = "разрешение моста"
+board = "плата"
+target = "устройство/момент-bridge"
+target_kind = "power"
+unit = "bool"
+pin = 2
+quantity = "logic"
+scale = 1
+offset = 0
+max_age_ns = 25000
+fallback = 0
+source = "ABI прошивки: GPIO2, высокий уровень разрешает мост."
+
+[[packet]]
+name = "радио"
+kind = "scheduled_radio"
+to_board = "плата"
+to_port = 0
+capacity = 16
+max_bytes = 32
+max_age_ns = 25000
+rssi_dbm = -60
+delay_ns = 0
+source = "Расписание слотов BLE вычислено build-inputs.py; RSSI метаданных взят из значения типовой модели PacketChannel."
+
+[[packet]]
+name = "ответ"
+kind = "scheduled_radio"
+from_board = "плата"
+from_port = 0
+capacity = 16
+max_bytes = 32
+max_age_ns = 15025000
+rssi_dbm = -60
+slots_asset = "telemetry-slots.csv"
+source = "Слоты BLE 15 мс и сетка хоста 25 мкс из build-inputs.py. Максимум ожидания на сетке хоста 15 мс + 25 мкс."
+
+[[board_input]]
+name = "вход угол"
+board = "плата"
+signal = "угол"
+unit = "rad"
+kind = "adc"
+port = 0
+max_age_ns = 25000
+scale = 1.0313240312354819
+offset = 0.3
+fallback = 0
+source = "Шкала ADC из контракта образа, полная разводка в sim-mcu/src/exo.rs."
+
+[[board_input]]
+name = "вход ток"
+board = "плата"
+signal = "ток"
+unit = "A"
+kind = "adc"
+port = 1
+max_age_ns = 25000
+scale = 0.1
+offset = 1.65
+fallback = 0
+source = "Шкала ADC из контракта образа, полная разводка в sim-mcu/src/exo.rs."
+
+[[board_input]]
+name = "вход корпус"
+board = "плата"
+signal = "корпус"
+unit = "degC"
+kind = "adc"
+port = 2
+max_age_ns = 25000
+scale = 0.01
+offset = 0.5
+fallback = 0
+source = "Шкала ADC из контракта образа, полная разводка в sim-mcu/src/exo.rs."
+
+[[board_input]]
+name = "вход батарея"
+board = "плата"
+signal = "батарея"
+unit = "V"
+kind = "adc"
+port = 3
+max_age_ns = 25000
+scale = 0.09090909090909091
+offset = 0
+fallback = 0
+source = "Шкала ADC из контракта образа, полная разводка в sim-mcu/src/exo.rs."

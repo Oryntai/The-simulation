@@ -1,0 +1,2 @@
+[models."стык".law]
+pull = [{ displacement_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 4, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } } }]

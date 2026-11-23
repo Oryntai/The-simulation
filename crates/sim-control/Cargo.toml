@@ -1,0 +1,10 @@
+[package]
+name = "sim-control"
+description = "Контракты контроллеров и транспорта наблюдений и команд"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-signal.workspace = true

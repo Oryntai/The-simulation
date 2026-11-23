@@ -1,0 +1,2 @@
+[models."стык".law.parameters]
+maximum_elastic_error_m = { value = 5e-06, source = { datasheet = "Срыв после 5 мкм осевой невязки в синтетической модели." } }

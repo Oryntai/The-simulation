@@ -1,0 +1,60 @@
+version = 1
+source = "Приёмка задачи 5 этапа 4. Численный и физический исход имеют разное покрытие."
+
+[[runs]]
+world = "04-wall-switch/stage4/world.toml"
+task = "04-wall-switch/stage4/acceptance.toml"
+exit = 1
+[runs.cases]
+"переключение" = { outcome = "not_analyzed", trials = 6, events = 8, satisfied = true }
+"разрыв" = { outcome = "fail", trials = 6, events = 4, violated = "удержание после отвода" }
+"залипание" = { outcome = "fail", trials = 6, events = 4, violated = "размыкание после возврата" }
+"промах" = { outcome = "fail", trials = 6, events = 0, violated = "механический ход под нагрузкой" }
+"слабое питание" = { outcome = "fail", trials = 6, events = 8, violated = "удержание после отвода" }
+"неизвестная пара" = { outcome = "not_analyzed", trials = 6, events = 0, rejected = "неизвестна пара материалов" }
+"нет цепи" = { outcome = "not_analyzed", trials = 6, events = 4, missing_check = "удержание после отвода" }
+"жёсткость упора" = { outcome = "not_analyzed", trials = 3, events = 0, metric = "угол исходной геометрии", range = [0.2094, 0.3463] }
+"приближение жёсткого упора" = { outcome = "not_analyzed", trials = 3, events = 0, metric = "угол исходной геометрии", range = [0.20, 0.3463] }
+
+[[runs]]
+world = "06-xyz/world.toml"
+task = "06-xyz/acceptance.toml"
+exit = 0
+[runs.cases]
+"портал" = { outcome = "not_analyzed", trials = 6, events = 8, satisfied = true, metric = "след/length", range = [0.011, 0.013] }
+"слабый захват" = { outcome = "fail", trials = 6, events = 8, violated = "Кулонов запас удержания" }
+
+[[runs]]
+world = "01-elbow-assist/stage4/world.toml"
+task = "01-elbow-assist/stage4/acceptance.toml"
+exit = 0
+jobs = 2
+[runs.cases]
+jam = { outcome = "not_analyzed", trials = 3, events = 1, reference_samples = 800, reference_passed = true }
+water = { outcome = "not_analyzed", trials = 3, events = 0, reference_samples = 600, reference_passed = true }
+obstacle = { outcome = "not_analyzed", trials = 3, events = 0, reference_samples = 800, reference_passed = true }
+# Минимумы чувствительности взяты из зафиксированных расхождений в ARCHITECTURE.md,
+# с округлением вниз (96,68%, 94,88% и 98,86%).
+jam-geometry = { outcome = "not_analyzed", trials = 3, events = 1, reference_samples = 800, reference_passed = false, sensitivity = { against = "jam", column = "omega", minimum = 0.96 } }
+water-geometry = { outcome = "not_analyzed", trials = 3, events = 0, reference_samples = 600, reference_passed = false, sensitivity = { against = "water", column = "human_torque", minimum = 0.94 } }
+obstacle-geometry = { outcome = "not_analyzed", trials = 6, events = 0, reference_samples = 800, reference_passed = false, sensitivity = { against = "obstacle", column = "contact_n", minimum = 0.98 }, nonconvergent_peak = "удар/пик", metric = "удар/импульс", range = [40.378, 40.418] }
+water-radio = { outcome = "not_analyzed", trials = 3, events = 0, wet_routes = ["радио", "ответ"] }
+
+[[runs]]
+world = "06-xyz/fixtures/world.toml"
+task = "06-xyz/fixtures/acceptance.toml"
+exit = 0
+[runs.cases]
+"захват положения" = { outcome = "not_analyzed", trials = 3, events = 0, satisfied = true, metric = "координата", range = [0.00999, 0.01001] }
+
+[[runs]]
+world = "06-xyz/fixtures/world.toml"
+task = "06-xyz/fixtures/incomplete.toml"
+exit = 2
+error = "непустой профиль процессов"
+
+[[runs]]
+world = "06-xyz/fixtures/world.toml"
+task = "06-xyz/fixtures/nonfinite.toml"
+exit = 2
+error = "только конечные числа"

@@ -1,0 +1,13 @@
+# Отрицательный случай должен провалиться по опасности кромки.
+[models."кромка"]
+measured_radius_m = { value = 0.0002, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[[criteria]]
+name = "опорная сила"
+series = { measurement = "кромка/contact_force" }
+unit = "N"
+statistic = "end"
+lower = { value = 9.8, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+upper = { value = 10.2, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+tolerance = { value = 0.2, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+remainder = [{ value = 0.05, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

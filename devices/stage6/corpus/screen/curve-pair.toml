@@ -1,0 +1,5 @@
+[screen.condition]
+mode = "curve-pair"
+
+[reference]
+file = "curve-pair.csv"

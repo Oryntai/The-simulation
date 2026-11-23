@@ -1,0 +1,17 @@
+[package]
+name = "sim-verify"
+description = "Сверка с эталоном: аналитические решения, тип Check, эталонные кейсы"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-core.workspace = true
+sim-fem.workspace = true
+
+[[bin]]
+name = "verify-report"
+path = "src/bin/verify_report.rs"
+test = false

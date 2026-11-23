@@ -1,0 +1,91 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/sim-core",
+    "crates/sim-fem",
+    "crates/sim-verify",
+    "crates/sim-scenarios",
+    "crates/sim-mujoco",
+    "crates/workshop",
+    "crates/sim-circuit",
+    "crates/sim-mcu",
+    "crates/sim-em",
+    "crates/sim-env",
+    "crates/sim-radio",
+    "crates/sim-materials",
+    "crates/sim-battery",
+    "crates/sim-boards",
+    "crates/sim-actuators",
+    "crates/sim-device",
+    "crates/sim-human",
+    "crates/sim-signal",
+    "crates/sim-world",
+    "crates/sim-runtime",
+    "crates/sim-cli",
+    "crates/sim-drive",
+    "crates/sim-sense",
+    "crates/sim-control",
+    "crates/sim-process",
+    "crates/sim-reality",
+]
+# Прошивки собираются под RISC-V отдельным workspace (firmware/), не хостом.
+exclude = ["firmware"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+nalgebra = "0.35"
+bevy = { version = "0.20.1", default-features = false, features = ["3d"] }
+bevy_egui = "0.43.1"
+egui_plot = "0.37"
+sim-core = { path = "crates/sim-core" }
+sim-fem = { path = "crates/sim-fem" }
+sim-verify = { path = "crates/sim-verify" }
+sim-scenarios = { path = "crates/sim-scenarios" }
+sim-mujoco = { path = "crates/sim-mujoco" }
+sim-circuit = { path = "crates/sim-circuit" }
+sim-mcu = { path = "crates/sim-mcu" }
+sim-em = { path = "crates/sim-em" }
+sim-env = { path = "crates/sim-env" }
+sim-radio = { path = "crates/sim-radio" }
+sim-materials = { path = "crates/sim-materials" }
+sim-battery = { path = "crates/sim-battery" }
+sim-boards = { path = "crates/sim-boards" }
+sim-actuators = { path = "crates/sim-actuators" }
+sim-device = { path = "crates/sim-device" }
+sim-human = { path = "crates/sim-human" }
+sim-signal = { path = "crates/sim-signal" }
+sim-world = { path = "crates/sim-world" }
+sim-runtime = { path = "crates/sim-runtime" }
+sim-drive = { path = "crates/sim-drive" }
+sim-sense = { path = "crates/sim-sense" }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+serde_json = "1"
+quick-xml = "0.41"
+
+# Наш код в отладке чуть оптимизирован (тесты физики считают тысячи шагов),
+# зависимости (Bevy, nalgebra) — полностью: иначе 3D и линейная алгебра тормозят.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Эмулятор процессора крутит миллионы инструкций — даже в отладке собираем его с оптимизацией.
+[profile.dev.package.sim-mcu]
+opt-level = 3
+
+[profile.dev.package.sim-boards]
+opt-level = 3
+
+# Подшаги приводов и программный рендер камер считаются на каждом такте.
+[profile.dev.package.sim-drive]
+opt-level = 3
+
+[profile.dev.package.sim-sense]
+opt-level = 3

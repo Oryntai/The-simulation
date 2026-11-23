@@ -1,0 +1,12 @@
+version = 1
+source = "Программа приёмочных опытов этапа 4."
+[cases]
+"переключение" = "cycle.toml"
+"разрыв" = { file = "cycle.toml", overlay = "open.toml" }
+"залипание" = { file = "cycle.toml", overlay = "stuck.toml" }
+"промах" = { file = "cycle.toml", overlay = "short.toml" }
+"слабое питание" = { file = "cycle.toml", overlay = "weak.toml" }
+"неизвестная пара" = { file = "cycle.toml", overlay = "unknown.toml" }
+"нет цепи" = { file = "cycle.toml", overlay = "missing.toml", remove_models = ["цепь"] }
+"жёсткость упора" = "tight-stop.toml"
+"приближение жёсткого упора" = "rigid-stop.toml"

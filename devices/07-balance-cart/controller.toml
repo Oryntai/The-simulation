@@ -1,0 +1,64 @@
+version = 1
+
+[[block]]
+kind = "scalar"
+signal = "тележка/иму/x"
+source = "Подключённый датчик из control.toml."
+
+[[block]]
+kind = "scalar"
+signal = "тележка/иму/z"
+source = "Подключённый датчик из control.toml."
+
+[[block]]
+kind = "scalar"
+signal = "тележка/иму/gy"
+source = "Подключённый датчик из control.toml."
+
+[[block]]
+kind = "scalar"
+signal = "колесо/скорость левого"
+source = "Подключённый датчик из control.toml."
+
+[[block]]
+kind = "scalar"
+signal = "колесо/скорость правого"
+source = "Подключённый датчик из control.toml."
+
+[[block]]
+kind = "affine"
+nodes = [0]
+weights = [-1]
+offset = 0
+source = "Для положительного наклона вокруг Y проекция g на −X."
+
+[[block]]
+kind = "tilt"
+sin = 5
+cos = 1
+rate = 2
+acceleration_min = 7
+acceleration_max = 13
+time_constant_s = 0.30
+source = "Комплементарная оценка стенда, полоса 7–13 м/с² вокруг g; постоянная 0.30 с для ослабления продольного ускорения."
+
+[[block]]
+kind = "affine"
+nodes = [6, 2, 3, 4]
+weights = [4.0, 0.42, 0.018, 0.018]
+offset = 0
+source = "Проектные усиления. Рост наклона требует ускорения основания; положительная связь по скорости регулирует положение корпуса над осью."
+
+[[bind]]
+output = "мост левое"
+node = 7
+missing = "value"
+value = 0
+source = "Без пригодной оценки команда ноль."
+
+[[bind]]
+output = "мост правое"
+node = 7
+missing = "value"
+value = 0
+source = "Без пригодной оценки команда ноль."

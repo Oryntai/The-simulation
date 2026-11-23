@@ -1,0 +1,27 @@
+version = 1
+control = "safe-wiring.toml"
+profile = "profile.toml"
+
+[fault_sweep]
+at_ns = 5000000
+invariant_limits = true
+source = { kind = "datasheet", reference = "Протокол стенда: пять тактов предварительной работы и семь после воздействия." }
+
+[[modes]]
+id = "контур"
+horizon_ns = 12000000
+before_ns = 2000000
+after_ns = 5000000
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Такт управления и физики 1 мс по файлам стенда." }
+excitation = "момент"
+stimuli = [
+  { id = "момент", signal = { name = "стенд/проба", unit = "N*m" }, at_ns = 3000000, value = 1, comparison_value = 0, source = { kind = "datasheet", reference = "Ступень независимой нагрузки 1 Н·м." } },
+]
+
+[[criteria]]
+case = { path = "напряжение", mode = "контур" }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 1, source = { kind = "datasheet", reference = "Зазор нейтральной оснастки 0–1 рад. Без выводов о железе." } },
+]
+response = { signal = { name = "qpos[0]", unit = "rad" }, min_change = 1e-7, within_ns = 1000000, source = { kind = "datasheet", reference = "При ступени 1 Н·м и инерции 1,5 кг·м² изменение за шаг порядка 0,67 мкрад." } }

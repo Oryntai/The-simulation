@@ -1,0 +1,13 @@
+<!-- Мастерская: туловище MyoSuite как неподвижный каркас для MyoArm (как make_torso_passive
+     в myo_sim/build/compose.py). Фрагменты не менялись — см. ../third_party/PROVENANCE.md. -->
+<mujoco model="myotorso_attach">
+  <include file="../third_party/myo_sim/myo_sim/models/torso/assets/myotorso_assets.xml"/>
+  <include file="../third_party/myo_sim/myo_sim/models/head/assets/myohead_simple_assets.xml"/>
+  <compiler angle="radian" meshdir="../third_party/myo_sim/myo_sim/models" texturedir="../third_party/myo_sim/myo_sim/models"/>
+  <worldbody>
+    <body name="Full Body" pos="0 0 1">
+      <site name="torso_root_attach" size="0.01"/>
+      <include file="../third_party/myo_sim/myo_sim/models/torso/assets/myotorso_chain.xml"/>
+    </body>
+  </worldbody>
+</mujoco>

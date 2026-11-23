@@ -1,0 +1,250 @@
+# Проект мастерской устройств
+# Формат sim-device 2
+
+[device]
+name = Экзоскелет рук и ног
+template = full
+mount = torso
+
+[use]
+ambient_c = 25
+cycles = 100000
+long_wear = false
+hours_per_day = 2
+
+[electronics]
+board = rp2040
+driver = 
+regulator = lm2596-adj
+cell = Molicel INR21700-P42A
+series = 6
+parallel = 1
+fuse_a = 10
+wire_mm2 = 1.5
+wire_m = 0.5
+bms = false
+firmware = 
+board_regulated = true
+
+[design]
+sex = female
+strength_pct = 5
+
+[link]
+name = Рама спины
+parent = none
+offset_mm = 0 0 0
+direction = down
+length_mm = 420
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = torso
+contact_lever_mm = 420
+joint = fixed
+axis = y
+min_deg = 0
+max_deg = 0
+actuator = 
+speed_limit_dps = 0
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+
+[link]
+name = Плечевое звено
+parent = 1
+offset_mm = 0 -220 0
+direction = down
+length_mm = 300
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = upper_arm
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+arm_action = shoulder
+motor_regulated = false
+
+[link]
+name = Звено предплечья
+parent = 2
+offset_mm = 0 0 -300
+direction = down
+length_mm = 260
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 1
+near_body = forearm
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+arm_action = elbow
+motor_regulated = false
+
+[link]
+name = Бедренное звено
+parent = 1
+offset_mm = 0 -110 -420
+direction = down
+length_mm = 420
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = thigh
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+motor_regulated = false
+
+[link]
+name = Звено голени
+parent = 4
+offset_mm = 0 0 -420
+direction = down
+length_mm = 420
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = shank
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+motor_regulated = false
+
+[link]
+name = Плечевое звено
+parent = 1
+offset_mm = 0 220 0
+direction = down
+length_mm = 300
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = upper_arm
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+arm_action = shoulder
+motor_regulated = false
+
+[link]
+name = Звено предплечья
+parent = 6
+offset_mm = 0 0 -300
+direction = down
+length_mm = 260
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 1
+near_body = forearm
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+arm_action = elbow
+motor_regulated = false
+
+[link]
+name = Бедренное звено
+parent = 1
+offset_mm = 0 110 -420
+direction = down
+length_mm = 420
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = thigh
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+motor_regulated = false
+
+[link]
+name = Звено голени
+parent = 8
+offset_mm = 0 0 -420
+direction = down
+length_mm = 420
+section = rect 12 30
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = shank
+contact_lever_mm = 16.155494421403514
+joint = hinge
+axis = y
+min_deg = 0
+max_deg = 90
+actuator = cubemars-ak70-10
+speed_limit_dps = 30
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+motor_regulated = false

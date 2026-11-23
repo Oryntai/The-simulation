@@ -1,0 +1,89 @@
+window_ns = [10000000, 80000000]
+source = "Аналитический опыт: нормаль к плоскости Z ортогональна осевой подаче в XY."
+[contacts]
+table = "../../catalog/contact/fixture.toml"
+[contacts.solver]
+# Параметры численного контакта как в общем каталожном стенде.
+method = "newton"
+elliptic = true
+impratio = 1
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+[contacts.assignments]
+"environment/collision/0" = "стенд"
+"environment/collision/1" = "стенд"
+"привод/стержень/collision/0" = "инструмент"
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "привод/стержень/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс численного стенда из общей таблицы." }
+[[contacts.pairs]]
+geometries = ["environment/collision/1", "привод/стержень/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс численного стенда из общей таблицы." }
+
+[models."момент"]
+kind = "effort"
+channel = "привод/момент"
+values = [{ at_ns = 0, value = 1 }]
+source = "Единичный момент для прямого хода без осевого сопротивления."
+[models."проход"]
+kind = "thread"
+pair = ["environment/collision/0", "привод/стержень/collision/0"]
+angular = "привод/вращение"
+axial = "привод/подача"
+lead_m = { value = 0.002, source = { estimate = "Шаг связи из модели стержня." } }
+travel_tolerance_m = { value = 1e-5, source = { estimate = "10 мкм, контроль потактовой невязки податливой связи." } }
+efficiency = { value = 1, source = { estimate = "Идеальная передача без потерь." } }
+torque_effort = "момент"
+source = "Заведомо поперечная реакция не может создать осевую нагрузку."
+[models."тепловая пара"]
+kind = "heat"
+pair = ["environment/collision/1", "привод/стержень/collision/0"]
+capacities_j_k = [{ value = 1, source = { estimate = "Единичные ёмкости контрольного опыта." } }, { value = 1, source = { estimate = "Единичные ёмкости контрольного опыта." } }]
+initial_k = [{ value = 300, source = { estimate = "Одинаковая начальная температура опыта." } }, { value = 300, source = { estimate = "Одинаковая начальная температура опыта." } }]
+area_m2 = { value = 0.001, source = { estimate = "Гипотеза площади при касании." } }
+coefficient_w_m2_k = { value = 1000, source = { estimate = "Единичная проводимость при касании." } }
+power_w = [{ at_ns = 0, value = 1 }]
+source = "Единичная мощность и зазор 30 мм между телами."
+
+[models."отпечаток"]
+kind = "trace"
+pair = ["environment/collision/1", "привод/стержень/collision/0"]
+plane = [{ value = 0, source = { estimate = "Поза второй опоры." } }, { value = 0, source = { estimate = "Поза второй опоры." } }, { value = -0.05, source = { estimate = "Верхняя грань второй опоры." } }]
+normal = [{ value = 0, source = { estimate = "Нормаль второй опоры." } }, { value = 0, source = { estimate = "Нормаль второй опоры." } }, { value = 1, source = { estimate = "Нормаль второй опоры." } }]
+tolerance_m = { value = 0.001, source = { estimate = "Окно плоскости 1 мм." } }
+path = [[{ value = 0, source = { estimate = "Начало пробного отрезка." } }, { value = 0, source = { estimate = "Начало пробного отрезка." } }, { value = -0.05, source = { estimate = "Высота плоскости." } }], [{ value = 0.01, source = { estimate = "Конец пробного отрезка длиной 10 мм." } }, { value = 0, source = { estimate = "Конец пробного отрезка." } }, { value = -0.05, source = { estimate = "Высота плоскости." } }]]
+
+[[criteria]]
+name = "реальная поперечная реакция"
+series = { normal_force = ["environment/collision/0", "привод/стержень/collision/0"] }
+unit = "N"
+statistic = "maximum"
+tolerance = { value = 0.01, source = { estimate = "Численная регистрация ненулевой реакции." } }
+remainder = [{ value = 0, source = { estimate = "Диагностический опыт." } }, { value = 0, source = { estimate = "Диагностический опыт." } }, { value = 0, source = { estimate = "Диагностический опыт." } }]
+
+[[checks]]
+name = "осевая нагрузка"
+signal = "проход/peak_axial_force"
+unit = "N"
+window_ns = [40000000, 80000000]
+min = { value = 1, source = { estimate = "Заданный порог для различения нуля и виртуальных 3141,59 Н." } }
+[[checks]]
+name = "переданный нагрев"
+signal = "тепловая пара/target"
+unit = "K"
+window_ns = [40000000, 80000000]
+min = { value = 300.00001, source = { estimate = "Положительный прирост от исходных 300 К." } }
+[[checks]]
+name = "длина отпечатка"
+signal = "отпечаток/length"
+unit = "m"
+window_ns = [40000000, 80000000]
+min = { value = 0.001, source = { estimate = "Положительная длина на отрезке 10 мм." } }

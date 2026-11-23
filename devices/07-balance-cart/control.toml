@@ -1,0 +1,69 @@
+version = 1
+[[controller]]
+name = "регулятор"
+kind = "builtin"
+rate_hz = 250
+program = "controller.toml"
+source = "T = 4 мс, такт BMI270 в closed-device.toml."
+
+[[input]]
+controller = "регулятор"
+signal = "тележка/иму/x"
+unit = "m/s^2"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "тележка/иму/z"
+unit = "m/s^2"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "тележка/иму/gy"
+unit = "rad/s"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "колесо/скорость левого"
+unit = "rad/s"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "колесо/скорость правого"
+unit = "rad/s"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[output]]
+name = "мост левое"
+controller = "регулятор"
+target = "тележка/момент_левое"
+target_kind = "drive"
+unit = "1"
+ack = "тележка/мотор_левое/accepted_command"
+max_age_ns = 8000000
+fallback = 0
+source = "Нормированная команда моста, ноль при потере измерения."
+
+[[output]]
+name = "мост правое"
+controller = "регулятор"
+target = "тележка/момент_правое"
+target_kind = "drive"
+unit = "1"
+ack = "тележка/мотор_правое/accepted_command"
+max_age_ns = 8000000
+fallback = 0
+source = "Нормированная команда моста, ноль при потере измерения."

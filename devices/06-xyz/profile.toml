@@ -1,0 +1,5 @@
+version = 1
+source = "Программа приёмочных опытов этапа 4."
+[cases]
+"портал" = "operations.toml"
+"слабый захват" = { file = "operations.toml", overlay = "weak-grip.toml" }

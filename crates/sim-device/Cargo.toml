@@ -1,0 +1,12 @@
+[package]
+name = "sim-device"
+description = "Конструктор: описание устройства, файл проекта, механика, контакт с телом, вердикт"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-core.workspace = true
+sim-boards.workspace = true

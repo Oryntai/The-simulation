@@ -1,0 +1,59 @@
+# Точки и ось из MS-Human-700 в нейтральной позе. Манжета отведена на 5 мм.
+# Приведённая инерция ротора 1.36825 кг·м² из схемы closed-device.toml.
+format = 3
+name = "Экзоскелет локтя, мягкая постановка"
+
+[[links]]
+name = "опора"
+
+pose = { position_m = [0, 0, 0] }
+joint = { kind = "fixed" }
+mass = { kind = "explicit", mass_kg = 0.5, com_m = [0, 0, 0], inertia_kg_m2 = [8e-05, 8e-05, 8e-05, 0, 0, 0], provenance = { estimate = "Эскизные масса и инерция стендового звена, требуется обмер." } }
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.02 }
+pose = { position_m = [-0.045447482511272466, -0.006607160058320932, 0.14947421660614824] }
+contact_mask = [0, 0]
+
+
+[[links.mounts]]
+name = "крепление"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [-0.045447482511272466, -0.006607160058320932, 0.14947421660614824], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links]]
+name = "рычаг"
+parent = "опора"
+pose = { position_m = [0, 0, 0] }
+joint = { kind = "hinge", name = "ось", axis = [0.1330163161162694, -0.9900040703546027, 0.04688923467252837], damping = 0.0, friction_loss = 0.0, armature = 1.36825,  efforts = [{ name = "момент", dof = 0 }, { name = "момент-bridge", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.35, com_m = [-0.01, -0.02, -0.075], inertia_kg_m2 = [0.003, 0.003, 0.0004, 0, 0, 0], provenance = { estimate = "Эскизные масса и инерция стендового звена, требуется обмер." } }
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.02 }
+pose = { position_m = [-0.022497209540357117, -0.024132665755025207, -0.12122484619693263] }
+contact_mask = [0, 0]
+
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.012 }
+pose = { position_m = [0.03104265037245018, -0.01943460046501075, -0.11712646969347462] }
+contact_mask = [0, 0]
+
+
+[[links.mounts]]
+name = "крепление"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [-0.022497209540357117, -0.024132665755025207, -0.12122484619693263], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links.mounts]]
+name = "ограничитель"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [0.03104265037245018, -0.01943460046501075, -0.11712646969347462], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[drives]]
+name = "мотор"
+part = "maxon-ec90-hd-csg25-50"
+effort = "момент"

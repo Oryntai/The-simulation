@@ -1,0 +1,65 @@
+# Данные численного оракула, не аттестация конструкции.
+source = "Параметры MotorParams и ElbowPlant исходной модели из sim-em и sim-scenarios."
+bridge_effort = "момент-bridge"
+ambient_c = 22
+fixture_enabled = true
+
+[supply]
+# LG INR21700-M50, модель ячейки Chen 2020 в sim-circuit, сборка 6S2P.
+cell = "lg_m50"
+series = 6
+parallel = 2
+soc = 0.9
+electronics_a = 0.12
+max_regen_a = 50
+conversion_floor_v = 1
+
+[motor]
+# sim-em: maxon EC 90 flat 260 Вт, 500267.
+nominal_v = 48
+r_ohm = 0.844
+r_ref_c = 25
+l_h = 0.00107
+k = 0.231
+j = 0.000506
+# Половина Kt·I0 на Кулоново трение, половина на вязкое при 1960 об/мин.
+coulomb = 0.032109000000000006
+viscous = 0.0001564379408491123
+band = 0.5
+max_a = 15
+
+[gear]
+# Harmonic Drive CSG-25-50, обратный КПД 2−1/η.
+ratio = 50
+eta_forward = 0.85
+eta_backward = 0.8235294117647058
+friction = 0.13
+j = 0.0000413
+rated = 51
+repeated = 127
+peak = 242
+mass = 0.42
+
+[thermal]
+# Двухузловая тепловая сеть и доля потерь sim-em.
+r_wh = 1.82
+# apply_medium: Rwet = 0,05·Rdry. τ масштабируется так же, чтобы сохранить C = τ/R.
+r_ha = 0.08900000000000001
+tau_w = 54.3
+tau_h = 13.250000000000002
+max_c = 125
+fraction = 0.5
+
+[fixture]
+# Оценочная опора исходной модели. Граница 2.2 рад взята из MS-Human-700.
+damping = 0.2
+min = 0
+max = 2.2
+stop_k = 400
+stop_damping = 8
+target = 1.5707963267948966
+kp = 150
+ki = 300
+kd = 8
+integral_limit = 2
+torque_limit = 60

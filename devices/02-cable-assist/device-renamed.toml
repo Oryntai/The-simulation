@@ -1,0 +1,86 @@
+# Геометрия трассы приведена к нейтральному кадру модельа, см. r0022..r0025.
+# Барабан: радиус 12 мм из эскиза трассы, значение передано закону свободной длины.
+format = 3
+name = "Тросовая ортеза кисти"
+
+[[links]]
+name = "станина"
+
+pose = { position_m = [0, 0, 0] }
+joint = { kind = "fixed" }
+mass = { kind = "explicit", mass_kg = 0.12, com_m = [0, 0, 0], inertia_kg_m2 = [1.9200000000000003e-05, 1.9200000000000003e-05, 1.9200000000000003e-05, 0, 0, 0], provenance = { estimate = "Эскизные масса и инерция стендового звена, требуется обмер." } }
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.015 }
+pose = { position_m = [0.015944843413587463, -0.21087079773156975, 0.8059277710142011] }
+contact_mask = [0, 0]
+
+
+[[links.mounts]]
+name = "прижим"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [0.015944843413587463, -0.21087079773156975, 0.8059277710142011], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links.mounts]]
+name = "возврат"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [-0.027, -0.155, 0.696], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links]]
+name = "барабан"
+parent = "станина"
+pose = { position_m = [-0.025, -0.15, 0.814] }
+joint = { kind = "hinge", name = "подача", axis = [0.0, 0.0, 1.0], damping = 0.002, friction_loss = 0.0, efforts = [{ name = "выход", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.025, com_m = [0, 0, 0], inertia_kg_m2 = [1e-05, 1e-05, 1e-05, 0, 0, 0], provenance = { estimate = "Эскизные масса и инерция стендового звена, требуется обмер." } }
+
+[[links.mounts]]
+name = "выход"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [0, 0, 0], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[drives]]
+name = "двигатель"
+part = "n20-100-6v-hp"
+effort = "выход"
+
+[drives.params]
+# Паспорт Pololu #2214: 310 об/мин, 6 В, I0=0,1 А и Istall=1,6 A.
+# k=(6−3,75·0,1)/(100,37·310·2π/60). η=(Tstall/Istall)/(k·100,37).
+motor_constant = 0.0017263477807439788
+gear_efficiency = 0.601336269898666
+# Гипотеза симметрии прямого и обратного КПД.
+backward_efficiency = 0.601336269898666
+# 25% стопового тока — длительный режим из каталога.
+current_limit_a = 0.4
+# L=Rτ для испытательного τ=0,5 мс. Ротор от аналога DCX 6 M
+# из постановки этапа 2; ни L, ни J конкретного мотора не измерены.
+inductance_h = 0.001875
+rotor_inertia_kg_m2 = 1.79e-9
+gear_input_inertia_kg_m2 = 0.0
+# Эскиз: 3 мрад под 6 мН·м. Гашение выбрано для затухающего хода.
+coupling_stiffness = 2.0
+coupling_damping = 0.006
+backlash = 0.0
+# Потери холостого хода отнесены к вязкому трению, B=k·I0/ωротора.
+viscous_nm_per_rad_s = 5.298269617919397e-8
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 3258.323764621678
+friction_band_rad_s = 3258.323764621678
+# Гипотезы тепловой сети на коротком ходе, требуются отдельные замеры.
+resistance_ref_c = 25.0
+resistance_alpha_per_k = 0.00393
+ambient_c = 22.0
+r_th_winding_housing_k_per_w = 10.0
+r_th_housing_ambient_k_per_w = 20.0
+tau_winding_s = 1.0
+tau_housing_s = 5.0
+max_winding_temp_c = 90.0
+winding_loss_fraction = 1.0
+gear_loss_to_housing_fraction = 1.0
+# Внешний регулятор численного опыта с тактом 1 мс, моста без задержки.
+control_hz = 1000.0
+bus_delay_s = 0.0

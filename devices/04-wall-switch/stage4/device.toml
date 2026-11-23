@@ -1,0 +1,28 @@
+format = 3
+name = "Клавиша с обратимым толкателем"
+
+# Масса клавиши получается из плотности и габарита ABS предыдущего эскиза.
+# Две площадки по 7 мм дают размер 28 мм и зеркальное плечо 8 мм для возврата.
+[[links]]
+name = "клавиша"
+joint = { kind = "hinge", name = "ход", axis = [0.0, 1.0, 0.0], limits_deg = [0.0, 12.0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{name = "защёлка", dof = 0}] }
+mass = { kind = "geometry", material = { name = "ABS", density_kg_m3 = 1050.0, provenance = { estimate = "Плотность ABS из ../switch.toml." } } }
+[[links.collision]]
+shape = { kind = "box", size_m = [0.028, 0.015, 0.002] }
+contact_mask = [1, 2]
+
+[[links]]
+name = "толкатель"
+# Радиус 2 мм, зазор 1 мм к нейтральной лицевой плоскости на z=1 мм.
+pose = { position_m = [0.0, 0.0, 0.004] }
+joint = { kind = "hinge", name = "поворот", axis = [0.0, 1.0, 0.0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{name = "привод", dof = 0}] }
+mass = { kind = "explicit", mass_kg = 0.002, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [1e-8, 1.28e-7, 1.28e-7, 0.0, 0.0, 0.0], provenance = { estimate = "Идеальный стенд: две сосредоточенные массы по 1 г на плече 8 мм, добавлена оценка поперечной инерции." } }
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.002 }
+pose = { position_m = [0.008, 0.0, 0.0] }
+contact_mask = [2, 1]
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.002 }
+pose = { position_m = [-0.008, 0.0, 0.0] }
+contact_mask = [2, 1]

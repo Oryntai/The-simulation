@@ -1,0 +1,110 @@
+[pads."зажим"]
+events = [{ at_ns = 44000000, event = { kind = "release" } }]
+
+[[checks]]
+id = "реакция зажима"
+bounds = [0.5, 50]
+source = "Преднатяг 2 мм × 1800 Н/м даёт 3,6 Н."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "зажим" }
+
+[[checks]]
+id = "сдвиг зажима"
+bounds = [0.01, 25]
+source = "Синтетический диапазон: μ=0,55 и реакция до 50 Н."
+min_samples = 5
+
+
+metric = { "kind" = "shear", "patch" = "зажим" }
+
+[[checks]]
+id = "провис"
+bounds = [0, 1e-08]
+source = "Нулевая тяга при длине L0 = Lгеом + 2 мм."
+min_samples = 5
+window_ns = [0, 1000000]
+
+metric = { "kind" = "tension", "route" = "тяга" }
+
+[[checks]]
+id = "тяга"
+bounds = [0.045, 36]
+source = "Разрешение растяжения 0,1 мм × 450 Н/м = 0,045 Н; верх характеристики 36 Н."
+min_samples = 5
+
+
+metric = { "kind" = "tension", "route" = "тяга" }
+
+[[checks]]
+id = "ближнее пятно"
+bounds = [0.01, 72]
+source = "Результирующая двух ветвей до 2·36 Н."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "ближний" }
+
+[[checks]]
+id = "дальнее пятно"
+bounds = [0.01, 72]
+source = "Результирующая двух ветвей до 2·36 Н."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "дальний" }
+
+[[checks]]
+id = "виртуальная работа"
+bounds = [0, 1e-10]
+source = "Q = −T de/dq = T·(-0,012 м/рад)."
+min_samples = 5
+
+
+metric = { "kind" = "virtual_work_residual", "route" = "тяга" }
+
+[[checks]]
+id = "знак длины"
+bounds = [0, 1e-10]
+source = "Проверка e = L − Lсвободная."
+min_samples = 5
+
+
+metric = { "kind" = "length_residual", "route" = "тяга" }
+
+[[checks]]
+id = "длина в нейтрали"
+bounds = [0.2692522757093416, 0.27325227570934163]
+source = "Ручная сумма расстояний между точками нейтрального кадра, запас 2 мм."
+min_samples = 5
+window_ns = [0, 1000000]
+
+metric = { "kind" = "probe", "name" = "длина", "unit" = "m", "statistic" = "peak" }
+
+[[checks]]
+id = "кинематика"
+bounds = [0.015, 0.8]
+source = "Стендовое задание 0,18 рад."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/намерение", "statistic" = "span", "quantity" = "position" }
+
+[[checks]]
+id = "разгрузка"
+bounds = [0, 1.0]
+source = "Обратная подача возвращает длину трассы выше требуемой."
+min_samples = 5
+window_ns = [112000000, 120000000]
+
+metric = { "kind" = "tension", "route" = "тяга" }
+
+[[checks]]
+id = "удержание крепления"
+bounds = [0, 0]
+source = "Требование оснастки: потеря площадки запрещена во всём окне."
+min_samples = 5
+
+required_design = true
+metric = { "kind" = "interface_state", "interface" = "зажим", "state" = "released" }

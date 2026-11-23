@@ -1,0 +1,21 @@
+version = 1
+[[block]]
+kind = "scalar"
+signal = "цель"
+source = "Нижний уровень получает команду от верхнего через канал цели."
+[[block]]
+kind = "affine"
+nodes = [0]
+weights = [0]
+offset = 1
+source = "На валидную цель мост включён."
+[[bind]]
+output = "напряжение"
+node = 1
+missing = "omit"
+source = "Удержание полной шкалы при любой валидной цели, при её отсутствии команды нет."
+[[bind]]
+output = "разрешение"
+node = 1
+missing = "omit"
+source = "Без валидной цели подтверждения разрешения нет."

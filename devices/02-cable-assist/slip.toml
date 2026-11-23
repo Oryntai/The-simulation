@@ -1,0 +1,18 @@
+[routes."тяга"]
+# Давший слабину зажим: выдача тех же 2 мм, что заданы для исходного провиса.
+events = [{ at_ns = 48000000, event = { kind = "slip", payout_m = 0.002 } }]
+
+[[checks]]
+id = "выданная длина"
+bounds = [0.002, 0.002]
+source = "Подтверждённое стендовое событие выдаёт 2 мм свободной длины."
+min_samples = 5
+metric = { kind = "route_payout", route = "тяга" }
+
+[[checks]]
+id = "сползание крепления"
+bounds = [0, 0]
+source = "Требование оснастки: обнаруженное проскальзывание запрещено."
+min_samples = 5
+required_design = true
+metric = { kind = "interface_state", interface = "тяга", state = "sliding" }

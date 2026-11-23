@@ -1,0 +1,30 @@
+world = "../../stage4-processes/world-energy.toml"
+window_ns = [0, 4000000]
+source = "Синтетический стенд резистивной цепи. Предел тока применяется к любому импульсу на зафиксированном контакте."
+hazard_witnesses = [{ class = "overcurrent", object = "цепь", criterion = "пиковый ток" }]
+
+[[criteria]]
+name = "пиковый ток"
+series = { measurement = "цепь/current" }
+unit = "A"
+statistic = "maximum"
+upper = { value = 0.25, source = { datasheet = "Паспорт синтетической цепи: нагрузка допускает импульс до 0,25 А." } }
+tolerance = { value = 1e-10, source = { datasheet = "Проверка линейной резистивной цепи: абсолютная численная невязка до 1e-10 А." } }
+remainder = [
+  { value = 0, source = { datasheet = "Цепь без накопителей, ток постоянен на каждом шаге." } },
+  { value = 0, source = { datasheet = "Здесь отсутствует механическая связь с решателем." } },
+  { value = 0, source = { datasheet = "Сопротивления заданы точками в синтетической постановке." } },
+]
+
+[models."цепь"]
+kind = "electrical"
+initially_closed = false
+fault = "stuck_closed"
+source = { datasheet = "Замкнутый отказ контакта задан на всём опыте, нормированные положения 0 и 1." }
+closed_ohm = { value = 1, source = { datasheet = "Спецификация стенда, 1 Ом замкнутого контакта." } }
+open_ohm = { value = 1000000, source = { datasheet = "Спецификация стенда, 1 МОм разомкнутого контакта." } }
+source_ohm = { value = 1, source = { datasheet = "Спецификация стенда, 1 Ом внутреннего сопротивления." } }
+load_ohm = { value = 10, source = { datasheet = "Спецификация стенда, низкое сопротивление нагрузки 10 Ом." } }
+supply_v = { value = 6, source = { datasheet = "Спецификация стенда, источник 6 В." } }
+bounce_duration_s = { value = 0.001, source = { datasheet = "Граничное окно дребезга 1 мс. При вынужденном замыкании не применяется." } }
+current_limit_a = { value = 0.25, source = { datasheet = "Паспорт синтетической цепи: нагрузка допускает импульс до 0,25 А." } }

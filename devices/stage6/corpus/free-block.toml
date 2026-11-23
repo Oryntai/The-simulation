@@ -1,0 +1,16 @@
+format = 3
+name = "Блок"
+[[links]]
+name = "блок"
+[links.joint]
+kind = "free"
+damping = 0
+friction_loss = 0
+armature = 0
+efforts = [{ name = "поддержка", dof = 2 }]
+[links.mass]
+kind = "explicit"
+mass_kg = 2
+com_m = [0, 0, 0]
+inertia_kg_m2 = [0.01, 0.01, 0.01, 0, 0, 0] # Узлы идеального блока из спецификации стенда.
+provenance = { datasheet = "Синтетический стенд с массой 2 кг и одинаковыми инерциями по осям." }

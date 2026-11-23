@@ -1,0 +1,58 @@
+world = "world-contact.toml"
+window_ns = [40000000, 80000000]
+source = "Окно контакта после переходного процесса сферического образца, нагрузка около 10 Н."
+
+[contacts]
+table = "contact-materials.toml"
+
+[contacts.solver]
+# Параметры численной сетки по образцу существующего процессного стенда.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"environment/collision/0" = "опора"
+"стенд/блок/collision/0" = "образец"
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Условия синтетической пары, постоянный импеданс 0,95." }
+mass_kg = { value = 1, source = { datasheet = "Нормальная мода одной каретки в этом опыте имеет массу 1 кг." } }
+
+[models."кромка"]
+kind = "sharp_edge"
+pair = ["environment/collision/0", "стенд/блок/collision/0"]
+scope = "Только условный критерий радиуса в паре блока и тела-образца на опоре."
+measured_radius_m = { value = 0.002, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+minimum_radius_m = { value = 0.001, source = { datasheet = "Условный порог радиуса в синтетическом опыте. Порога для ткани человека здесь нет." } }
+force_envelope_n = { value = 10, range = [9, 11], source = { datasheet = "Бюджет квазистатического контакта веса 1 кг при 10 м/с²." } }
+calibration = { contact_force_n = { value = 10, range = [9, 11], source = { datasheet = "Расчётное условие только синтетического опыта." } }, source = { datasheet = "Условие применимости численного контроля 9–11 Н." } }
+
+[[criteria]]
+name = "запас радиуса"
+series = { measurement = "кромка/radius_margin" }
+unit = "m"
+statistic = "end"
+lower = { value = 0.0009999999, source = { datasheet = "Независимый расчёт для стенда: 0.001 m, допуск 1e-10 m." } }
+upper = { value = 0.0010000001, source = { datasheet = "Независимый расчёт для стенда: 0.001 m, допуск 1e-10 m." } }
+tolerance = { value = 1e-10, source = { datasheet = "Независимый расчёт для стенда: 0.001 m, допуск 1e-10 m." } }
+remainder = [{ value = 2.5e-11, source = { datasheet = "Независимый расчёт для стенда: 0.001 m, допуск 1e-10 m." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]
+[[criteria]]
+name = "опорная сила"
+series = { measurement = "кромка/contact_force" }
+unit = "N"
+statistic = "end"
+lower = { value = 9.8, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+upper = { value = 10.2, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+tolerance = { value = 0.2, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+remainder = [{ value = 0.05, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

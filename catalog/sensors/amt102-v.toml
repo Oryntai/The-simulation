@@ -1,0 +1,67 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "amt102-v"
+kind = "encoder"
+name = "AMT102-V"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "°"
+caveats = [
+    "6 мА типовые для выходов без нагрузки. Верхний ток с обвязкой не опубликован.",
+    "Энкодер относительный: после включения нужен поиск нуля.",
+]
+current_peak_a = "unknown"
+interface = "квадратурный A/B + индекс"
+kind = "encoder"
+range_unit = "об/мин"
+resolution_unit = "импульсов/об"
+sources = ["Same Sky AMT10: https://www.sameskydevices.com/product/resource/amt10-v.pdf"]
+what_is = "Ёмкостный инкрементальный энкодер на вал мотора, до 2048 импульсов на оборот."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "Same Sky AMT10: https://www.sameskydevices.com/product/resource/amt10-v.pdf"
+value = 0.25
+
+[passport.current_a]
+provenance = "datasheet"
+source = "Same Sky, типовой ток без нагрузки выходов"
+value = 0.006
+
+[passport.range_max]
+provenance = "datasheet"
+source = "Same Sky: 7500/15000 об/мин, зависит от разрешения; берём меньшее"
+value = 7500.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "Same Sky AMT10: https://www.sameskydevices.com/product/resource/amt10-v.pdf"
+value = 0.0
+
+[passport.resolution]
+provenance = "datasheet"
+source = "Same Sky AMT10: https://www.sameskydevices.com/product/resource/amt10-v.pdf"
+value = 2048.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): Same Sky AMT10: https://www.sameskydevices.com/product/resource/amt10-v.pdf"
+value = 5.5
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): Same Sky AMT10: https://www.sameskydevices.com/product/resource/amt10-v.pdf"
+value = 3.6

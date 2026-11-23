@@ -1,0 +1,31 @@
+version = 1
+required_modes = ["контур"]
+sampled_drives = { "стенд/источник" = "battery-charged-drive.toml" }
+
+[[measurements]]
+signal = { name = "поворот", unit = "rad" }
+rate_hz = 1000
+source = { kind = "datasheet", reference = "Идеальный преобразователь синтетического стенда." }
+transducer = { kind = "rotary_position", joint = "стенд/поворот" }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур" }
+class = "battery"
+object = "стенд/источник"
+window_ns = [0, 1000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "LG Chem Product Specification INR21700 M50 18.2Wh, LRB-PS-CY18.2Wh-M50, 2017-09-22: нижний предел на клеммах 2,50 В." }
+scope = "Одна ячейка при 25 °C под постоянной нагрузкой 1 А до включения моста. OCV Chen 2020, R0/R1/C1 по модели ячейки."
+check = { kind = "truth", signal = { name = "стенд/источник/bus_next_v", unit = "V" }, min = 2.5 }
+
+[paths."напряжение"]
+observation = { name = "цель", unit = "1" }
+physical_response = [{ name = "qpos[0]", unit = "rad" }]
+command_delta = 0.25 # Различает ноль, половину и полную шкалу.
+max_observation_age_ns = 1000000
+source = { kind = "datasheet", reference = "Такт контура 1 мс и квант сравнения 1/4 полной шкалы." }
+hops = [
+  { target = "transport:верхний/request", direction = "input", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 1000000, source = { kind = "datasheet", reference = "Пакет запроса при нулевой задержке и такте 1 мс." } },
+  { target = "transport:верхний/response", direction = "output", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 1000000, source = { kind = "datasheet", reference = "Пакет ответа при нулевой задержке и такте 1 мс." } },
+  { target = "channel:цель", direction = "input", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 1000000, source = { kind = "datasheet", reference = "Внутреннее звено передачи цели, такт приёмника 1 мс." } },
+]

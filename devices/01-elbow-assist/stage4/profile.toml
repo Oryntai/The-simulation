@@ -1,0 +1,10 @@
+version = 1
+source = "Программа приёмочных опытов этапа 4."
+[cases]
+"jam" = "jam-ideal.toml"
+"jam-geometry" = "jam.toml"
+"water" = "water-ideal.toml"
+"water-geometry" = "water.toml"
+"obstacle" = "obstacle-ideal.toml"
+"obstacle-geometry" = "obstacle.toml"
+water-radio = { file = "water.toml", overlay = "water-radio.toml", remove_reference = true }

@@ -1,0 +1,4 @@
+# Короткие команды: `cargo sim` — открыть мастерскую, `cargo verify` — отчёт эталонных проверок.
+[alias]
+sim = "run -p workshop"
+verify = "run -p sim-scenarios --bin verify-all"

@@ -1,0 +1,2 @@
+[models."контакт"]
+supply_v = { value = 12, source = { datasheet = "Заданный источник 12 В для парного опыта." } }

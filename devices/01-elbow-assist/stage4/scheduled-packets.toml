@@ -1,0 +1,24 @@
+[[packet]]
+name = "радио"
+kind = "scheduled_radio"
+to_board = "плата"
+to_port = 0
+capacity = 16
+max_bytes = 32
+max_age_ns = 25000
+rssi_dbm = -60
+delay_ns = 0
+source = "Расписание слотов BLE вычислено build-inputs.py; RSSI метаданных взят из значения типовой модели PacketChannel."
+
+[[packet]]
+name = "ответ"
+kind = "scheduled_radio"
+from_board = "плата"
+from_port = 0
+capacity = 16
+max_bytes = 32
+max_age_ns = 15025000
+rssi_dbm = -60
+slots_asset = "telemetry-slots.csv"
+source = "Слоты BLE 15 мс и сетка хоста 25 мкс из build-inputs.py. Максимум ожидания на сетке хоста 15 мс + 25 мкс."
+

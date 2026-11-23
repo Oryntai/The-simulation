@@ -1,0 +1,228 @@
+version = 1
+world = "world-block.toml"
+task = "acceptance.toml"
+source = "Расчётные стенды. Численные значения сверяются на 1, 2 и 4 кГц, а отрицательные варианты дополнительно по состояниям и причинам отказов."
+
+[cases.magnet]
+outcome = "not_analyzed"
+states = ["Free", "Attached"]
+
+[[cases.magnet.metrics]]
+name = "осевая сила поля"
+value = 10
+absolute_tolerance = 0.01
+outcome = "pass"
+source = "Линейная интерполяция 20 Н при нулевом зазоре и 0 Н при 40 мм по положению 20 мм."
+
+[cases.magnet-weak]
+outcome = "fail"
+states = ["Free"]
+missing = "крепление «стык»: запрос не подтверждён"
+
+[[cases.magnet-weak.metrics]]
+name = "осевая сила поля"
+value = 2
+absolute_tolerance = 0.01
+outcome = "fail"
+source = "4 Н при нулевом зазоре, 0 Н при 40 мм. Вблизи 20 мм тяга меньше заданных внешних 8 Н."
+
+[cases.magnet-release]
+outcome = "not_analyzed"
+states = ["Free", "Attached", "Free"]
+
+[[cases.magnet-release.metrics]]
+name = "осевая сила поля"
+value = 10
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "Между 0 и 30 мм задана постоянная сила 10 Н."
+
+[cases.latch]
+outcome = "not_analyzed"
+states = ["Free", "Attached"]
+
+[[cases.latch.metrics]]
+name = "реакция опоры"
+value = 5
+absolute_tolerance = 0.02
+outcome = "pass"
+source = "Вес минус реакция от сиденья: 10 − 1000·(0,020 − 0,015) ≈ 5 Н."
+
+[cases.latch-open]
+outcome = "fail"
+states = ["Free"]
+missing = "крепление «стык»: запрос не подтверждён"
+
+[[cases.latch-open.metrics]]
+name = "реакция опоры"
+value = 25
+absolute_tolerance = 0.03
+outcome = "fail"
+source = "В свободном состоянии вес плюс усилие защёлки: 10 + 1000·0,015 ≈ 25 Н, ниже порога 50 Н."
+
+[cases.thread]
+outcome = "not_analyzed"
+states = ["Free", "Attached"]
+
+[[cases.thread.metrics]]
+name = "осевая реакция резьбы"
+value = 0.024896006581881
+absolute_tolerance = 0.003
+outcome = "pass"
+source = "Для e=x−aφ решаем e″+k(1/M+a²/J)e=F/M на интервале 10 мс. Реакция равна k·e."
+
+[cases.thread-strip]
+outcome = "fail"
+states = ["Free", "Attached", "Free"]
+violation = "разрушение крепления"
+
+[[cases.thread-strip.metrics]]
+name = "осевая реакция резьбы"
+value = 0
+absolute_tolerance = 1e-10
+outcome = "fail"
+source = "После срыва резьба не передаёт усилия."
+
+[cases.adhesive]
+outcome = "not_analyzed"
+states = ["Engaging", "Attached"]
+
+[[cases.adhesive.metrics]]
+name = "реакция связи"
+value = 1
+absolute_tolerance = 0.0002
+outcome = "pass"
+source = "Из установившегося баланса сил 1 Н приложенной тяги уравновешивает 1 Н реакции связи."
+
+[cases.adhesive-peel]
+outcome = "fail"
+states = ["Engaging", "Attached", "Free"]
+violation = "разрушение крепления"
+
+[cases.cable]
+outcome = "not_analyzed"
+
+[[cases.cable.metrics]]
+name = "реакция образца"
+value = 10
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "EA·ΔL/L = 100·(0,11−0,10)/0,10."
+
+[cases.cable-broken]
+outcome = "not_analyzed"
+missing = "удлинение ветви вне калиброванного диапазона"
+
+[cases.rubber]
+outcome = "not_analyzed"
+
+[[cases.rubber.metrics]]
+name = "реакция образца"
+value = 10
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "Линейный участок: 20 Н при 40 мм, значит 10 Н при 20 мм."
+
+[cases.rubber-outside]
+outcome = "not_analyzed"
+missing = "нет участка кривой для наблюдаемого сжатия"
+
+[cases.foam]
+outcome = "not_analyzed"
+
+[[cases.foam.metrics]]
+name = "реакция образца"
+value = 2.9586975559704
+absolute_tolerance = 0.06
+outcome = "pass"
+source = "6·[1−cos(√300·0,060)] Н из решения уравнения движения массы 1 кг."
+
+[cases.foam-outside]
+outcome = "not_analyzed"
+missing = "нет участка кривой для наблюдаемого сжатия"
+
+[cases.soft-missing]
+outcome = "not_analyzed"
+missing = "неполное покрытие «образец» / StoredEnergy"
+
+[cases.spring]
+outcome = "pass"
+
+[[cases.spring.metrics]]
+name = "запас энергии"
+value = 0.04
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "k·x²/2 = 200·0,020²/2."
+
+[cases.spring-energy]
+outcome = "fail"
+violation = "StoredEnergy"
+
+[[cases.spring-energy.metrics]]
+name = "запас энергии"
+value = 1
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "k·x²/2 = 200·0,10²/2."
+
+[cases.spring-missing]
+outcome = "not_analyzed"
+missing = "неполное покрытие «накопитель» / StoredEnergy"
+
+[cases.capacitor]
+outcome = "pass"
+
+[[cases.capacitor.metrics]]
+name = "запас энергии"
+value = 0.064
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "C·U²/2 = 0,002·8²/2."
+
+[cases.capacitor-energy]
+outcome = "fail"
+violation = "StoredEnergy"
+
+[[cases.capacitor-energy.metrics]]
+name = "запас энергии"
+value = 0.9
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "C·U²/2 = 0,002·30²/2."
+
+[cases.energy-combined]
+outcome = "not_analyzed"
+missing = "совместный выброс энергии нескольких накопителей"
+
+[cases.edge]
+outcome = "not_analyzed"
+
+[[cases.edge.metrics]]
+name = "запас радиуса"
+value = 0.001
+absolute_tolerance = 1e-10
+outcome = "pass"
+source = "2 мм радиуса минус предел 1 мм синтетического образца."
+
+[[cases.edge.metrics]]
+name = "опорная сила"
+value = 10
+absolute_tolerance = 0.001
+outcome = "pass"
+source = "Статическая реакция равна весу 1 кг·10 м/с²."
+
+[cases.edge-sharp]
+outcome = "fail"
+violation = "SharpEdge"
+
+[[cases.edge-sharp.metrics]]
+name = "опорная сила"
+value = 10
+absolute_tolerance = 0.001
+outcome = "pass"
+source = "Достаточная нагрузка для применения условного теста радиуса."
+
+[cases.edge-uncovered]
+outcome = "not_analyzed"
+missing = "неполное покрытие «кромка» / SharpEdge"

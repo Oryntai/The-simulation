@@ -1,0 +1,13 @@
+firmware_fnv = 733904fbe2ac21ab
+step_s = 25e-6
+assist steps=120000 hash=6673e0855a8be080
+wrong_payload steps=120000 hash=abcd58b217ac986c
+hold_relaxed steps=120000 hash=23ed411eac4b9e36
+cold steps=120000 hash=30b0cc89cde0a953
+water steps=120000 hash=3da215098c246930
+obstacle steps=160000 hash=3bb8b40a7142fa38
+fault_estop steps=120000 hash=6e7de7e4451cb787
+fault_sensor steps=120000 hash=c45384f8d1a7578f
+fault_jam steps=160000 hash=6f696a422c84e160
+fault_radio steps=120000 hash=5503b3850156d310
+fault_hang steps=120000 hash=88223d588f475a10

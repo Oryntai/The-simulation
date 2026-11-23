@@ -1,0 +1,12 @@
+[package]
+name = "sim-radio"
+description = "Радио: бюджет линии Wi-Fi/Bluetooth, потери в теле, воде и стенах, пакетный канал"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-verify.workspace = true
+sim-signal.workspace = true

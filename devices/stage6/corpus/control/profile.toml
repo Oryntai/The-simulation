@@ -1,0 +1,101 @@
+version = 1
+required_modes = ["контур"]
+sampled_drives = { "стенд/источник" = "drive.toml" }
+
+[[measurements]]
+signal = { name = "поворот", unit = "rad" }
+rate_hz = 1000
+source = { kind = "datasheet", reference = "Идеальный преобразователь синтетического стенда." }
+transducer = { kind = "rotary_position", joint = "стенд/поворот" }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур", fault = { node = "sensor:поворот", kind = "sensor_unavailable" } }
+class = "sensor_fault"
+object = "sensor:поворот"
+window_ns = [8000000, 11000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Протокол нейтрального стенда: после трёх тактов на истечение наблюдения, цели и команды питание или команда отказавшего пути должны быть нулевыми." }
+scope = "Синтетическая оснастка, ступенчатая потеря одного звена, сохранение или снятие воздействия после исчерпания сроков данных."
+check = { kind = "truth", signal = { name = "стенд/источник/bridge_enabled", unit = "bool" }, min = 0, max = 0 }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур", fault = { node = "wire:разрешение", kind = "wire_open" } }
+class = "wire_fault"
+object = "wire:разрешение"
+window_ns = [8000000, 11000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Протокол нейтрального стенда: после трёх тактов на истечение наблюдения, цели и команды питание или команда отказавшего пути должны быть нулевыми." }
+scope = "Синтетическая оснастка, ступенчатая потеря одного звена, сохранение или снятие воздействия после исчерпания сроков данных."
+check = { kind = "truth", signal = { name = "стенд/источник/bridge_enabled", unit = "bool" }, min = 0, max = 0 }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур", fault = { node = "transport:верхний/request", kind = "packet_loss" } }
+class = "link_fault"
+object = "transport:верхний/request"
+window_ns = [8000000, 11000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Протокол нейтрального стенда: после трёх тактов на истечение наблюдения, цели и команды питание или команда отказавшего пути должны быть нулевыми." }
+scope = "Синтетическая оснастка, ступенчатая потеря одного звена, сохранение или снятие воздействия после исчерпания сроков данных."
+check = { kind = "truth", signal = { name = "стенд/источник/bridge_enabled", unit = "bool" }, min = 0, max = 0 }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур", fault = { node = "controller:регулятор", kind = "controller_halted" } }
+class = "controller_halt"
+object = "controller:регулятор"
+window_ns = [8000000, 11000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Протокол нейтрального стенда: после трёх тактов на истечение наблюдения, цели и команды питание или команда отказавшего пути должны быть нулевыми." }
+scope = "Синтетическая оснастка, ступенчатая потеря одного звена, сохранение или снятие воздействия после исчерпания сроков данных."
+check = { kind = "truth", signal = { name = "стенд/источник/bridge_enabled", unit = "bool" }, min = 0, max = 0 }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур", fault = { node = "wire:напряжение", kind = "driver_disabled" } }
+class = "output_fault"
+object = "wire:напряжение"
+window_ns = [8000000, 11000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Протокол нейтрального стенда: после трёх тактов на истечение наблюдения, цели и команды питание или команда отказавшего пути должны быть нулевыми." }
+scope = "Синтетическая оснастка, ступенчатая потеря одного звена, сохранение или снятие воздействия после исчерпания сроков данных."
+check = { kind = "truth", signal = { name = "стенд/источник/accepted_command", unit = "1" }, min = 0, max = 0 }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур" }
+class = "program_identity"
+object = "регулятор"
+window_ns = [2000000, 11000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Паспорт нейтрального стенда утверждает approved.toml. Отпечаток FNV-1a вычислен отдельно по точным байтам этого файла." }
+scope = "Идентичность файла встроенного графа, принятая исполнительной моделью команда с этого пути."
+check = { kind = "program", approved_digest = "8f7be1373222c0d7" }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур" }
+class = "drive_overload"
+object = "стенд/источник"
+window_ns = [2000000, 3000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Паспорт синтетической нагрузки: огибающая раннего импульса до 0,7 А в интервале 2–3 мс." }
+scope = "Ток R–L обмотки при известной температуре и начальном покое; до изменения нагрузки пробой."
+check = { kind = "truth", signal = { name = "стенд/источник/current_a", unit = "A" }, min = -0.7, max = 0.7 }
+
+[[hazard_witnesses]]
+case = { path = "напряжение", mode = "контур", fault = { node = "power:стенд/допуск", kind = "power_cut" } }
+class = "emergency_stop"
+object = "power:стенд/допуск"
+window_ns = [6000000, 7000000]
+max_gap_ns = 1000000
+source = { kind = "datasheet", reference = "Программа стенда: через такт после снятия питания энергия обмотки 10 мГн не более 1,25 мДж, эквивалент |I| ≤ 0,5 А." }
+scope = "Остаточная электромагнитная энергия после подтверждённого отключения моста, диодный выбег."
+check = { kind = "truth", signal = { name = "стенд/источник/current_a", unit = "A" }, min = -0.5, max = 0.5 }
+
+[paths."напряжение"]
+observation = { name = "цель", unit = "1" }
+physical_response = [{ name = "qpos[0]", unit = "rad" }]
+command_delta = 0.25 # Различает ноль, половину и полную шкалу.
+max_observation_age_ns = 1000000
+source = { kind = "datasheet", reference = "Такт контура 1 мс и квант сравнения 1/4 полной шкалы." }
+hops = [
+  { target = "transport:верхний/request", direction = "input", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 1000000, source = { kind = "datasheet", reference = "Пакет запроса при нулевой задержке и такте 1 мс." } },
+  { target = "transport:верхний/response", direction = "output", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 1000000, source = { kind = "datasheet", reference = "Пакет ответа при нулевой задержке и такте 1 мс." } },
+  { target = "channel:цель", direction = "input", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 1000000, source = { kind = "datasheet", reference = "Внутреннее звено передачи цели, такт приёмника 1 мс." } },
+]

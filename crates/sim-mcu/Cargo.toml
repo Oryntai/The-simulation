@@ -1,0 +1,18 @@
+[package]
+name = "sim-mcu"
+description = "Виртуальный микроконтроллер RV32IMC (как ESP32-C3) с периферией: исполняет настоящие прошивки"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-verify.workspace = true
+
+# Второй способ сверки самопроверки: те же чистые функции, что в прошивке selftest,
+# собираются нативно для хоста (тесты сравнивают каждое значение).
+[dev-dependencies]
+selftest-core = { path = "../../firmware/selftest-core" }
+# Тепловая модель двигателя из sim-em — независимый эталон для оценки обмотки (только тесты).
+sim-em = { path = "../sim-em" }

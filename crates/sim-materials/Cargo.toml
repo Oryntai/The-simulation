@@ -1,0 +1,10 @@
+[package]
+name = "sim-materials"
+description = "Материалы конструктора: печатные пластики, металлы, усталость, можно ли напечатать"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-verify.workspace = true

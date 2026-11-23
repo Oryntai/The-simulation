@@ -1,0 +1,83 @@
+format = 3
+name = "Настольный XYZ, четырёхпозиционный стенд"
+seed = 6
+# Сетка стендового опыта, 0.5 мс и ещё два деления.
+physics_hz = 2000
+# Невесомая парковка насадок. Вес переносимого образца внесён отдельно.
+gravity_m_s2 = [0.0, 0.0, 0.0]
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.036, 0.03, 0.004] }
+pose = { position_m = [0.007, 0, -0.028] }
+contact_mask = [2, 1]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.09, 0.055, 0.004] }
+pose = { position_m = [0.05, 0.03, -0.031] }
+contact_mask = [8, 4]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.022, 0.022, 0.004] }
+pose = { position_m = [0.1, 0, -0.028] }
+contact_mask = [32, 16]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.022, 0.022, 0.004] }
+pose = { position_m = [0.15, 0.02, -0.031] }
+contact_mask = [128, 64]
+
+[[devices]]
+name = "портал"
+file = "axes.toml"
+[[devices]]
+name = "деталь"
+file = "sample.toml"
+pose = { position_m = [0.05, 0.02, -0.023] }
+
+[[devices]]
+name = "перо"
+file = "перо.toml"
+pose = { position_m = [0, 0, 0] }
+
+[[attachments]]
+name = "перо"
+first = "портал/каретка-z/фланец"
+second = "перо/основание/фланец"
+mode = "runtime"
+
+[[devices]]
+name = "губки"
+file = "губки.toml"
+pose = { position_m = [0.05, 0.02, 0] }
+
+[[attachments]]
+name = "губки"
+first = "портал/каретка-z/фланец"
+second = "губки/основание/фланец"
+mode = "runtime"
+
+[[devices]]
+name = "нагреватель"
+file = "нагреватель.toml"
+pose = { position_m = [0.1, 0, 0] }
+
+[[attachments]]
+name = "нагреватель"
+first = "портал/каретка-z/фланец"
+second = "нагреватель/основание/фланец"
+mode = "runtime"
+
+[[devices]]
+name = "отвёртка"
+file = "отвёртка.toml"
+pose = { position_m = [0.15, 0.02, 0] }
+
+[[attachments]]
+name = "отвёртка"
+first = "портал/каретка-z/фланец"
+second = "отвёртка/основание/фланец"
+mode = "runtime"

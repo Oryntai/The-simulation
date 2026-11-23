@@ -1,0 +1,29 @@
+version = 1
+source = "Численные опыты на блоках и каретках с положительными режимами, отказами и пропусками данных."
+
+[cases]
+magnet = "magnet.toml"
+magnet-weak = { file = "magnet.toml", overlay = "magnet-weak.toml" }
+latch = "latch.toml"
+latch-open = { file = "latch.toml", overlay = "latch-open.toml" }
+thread = "thread.toml"
+thread-strip = { file = "thread.toml", overlay = "thread-strip.toml" }
+adhesive = "adhesive.toml"
+adhesive-peel = { file = "adhesive.toml", overlay = "adhesive-peel.toml" }
+cable = "cable.toml"
+cable-broken = { file = "cable.toml", overlay = "cable-broken.toml" }
+rubber = "rubber.toml"
+rubber-outside = { file = "rubber.toml", overlay = "compression-outside.toml" }
+foam = "foam.toml"
+foam-outside = { file = "foam.toml", overlay = "compression-outside.toml" }
+spring = "spring.toml"
+spring-energy = { file = "spring.toml", overlay = "spring-energy.toml" }
+capacitor = "capacitor.toml"
+capacitor-energy = { file = "capacitor.toml", overlay = "capacitor-energy.toml" }
+edge = "edge.toml"
+edge-sharp = { file = "edge.toml", overlay = "edge-sharp.toml" }
+edge-uncovered = { file = "edge.toml", overlay = "unknown-edge.toml" }
+soft-missing = { file = "foam.toml", overlay = "empty-overlay.toml", remove_models = ["образец"] }
+spring-missing = "missing-spring-case.toml"
+magnet-release = { file = "magnet.toml", overlay = "magnet-release.toml" }
+energy-combined = { file = "spring.toml", overlay = "energy-combined.toml" }

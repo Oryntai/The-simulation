@@ -1,0 +1,4 @@
+version = 1
+source = "Протокол парной численной проверки предела"
+[cases]
+curve-pair = { file = "curve.toml", overlay = "curve-pair.toml" }

@@ -1,0 +1,71 @@
+version = 1
+
+[[controller]]
+name = "верхний"
+kind = "external"
+rate_hz = 1000
+program = "../../../../target/debug/sim-control-worker"
+# Линейный работник: 0·угол + 1/2; срок запроса и ответа равен такту стенда.
+args = ["scalar", "4096", "$input:поворот", "поворот", "rad", "$output:задание", "задание", "1", "1000000", "0", "0.5", "omit", "1000000"]
+input_latency_ns = 0
+input_jitter_ns = 0
+output_latency_ns = 0
+output_jitter_ns = 0
+request_hz = 1000
+request_max_age_ns = 1000000
+queue_capacity = 4
+max_message_bytes = 4096
+source = "Такт стенда 1 мс."
+
+[[input]]
+controller = "верхний"
+signal = "поворот"
+unit = "rad"
+kind = "scalar"
+max_age_ns = 1000000
+source = "Отсчёт действителен один такт."
+
+[[output]]
+name = "задание"
+controller = "верхний"
+target = "цель"
+target_kind = "goal"
+unit = "1"
+max_age_ns = 1000000
+source = "Цель обновляется раз за такт. При разрыве свежая цель отсутствует."
+
+[[controller]]
+name = "регулятор"
+kind = "builtin"
+rate_hz = 1000
+program = "approved.toml"
+source = "Такт стенда 1 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "цель"
+unit = "1"
+kind = "scalar"
+max_age_ns = 1000000
+source = "Срок действия цели составляет один такт."
+
+[[output]]
+name = "напряжение"
+controller = "регулятор"
+target = "стенд/команда"
+target_kind = "drive"
+unit = "1"
+ack = "стенд/источник/accepted_command"
+max_age_ns = 1000000
+fallback = 0
+source = "Парные сборки различаются состоянием выхода при отсутствии команды."
+
+[[output]]
+name = "разрешение"
+controller = "регулятор"
+target = "стенд/допуск"
+target_kind = "power"
+unit = "bool"
+max_age_ns = 1000000
+fallback = 0
+source = "Без валидной цели безопасное разрешение равно нулю."

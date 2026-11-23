@@ -1,0 +1,17 @@
+version = 1
+source = "Вес и движение рамы, кадры, обезличенная радиопередача, потеря и задержка."
+base = "setup.toml"
+[[cases]]
+id = "nominal"
+[[cases]]
+id = "radio-delay"
+overlay = "delay.toml"
+[[cases]]
+id = "radio-loss"
+overlay = "loss.toml"
+[[cases]]
+id = "heat"
+overlay = "heat.toml"
+[[cases]]
+id = "displaced"
+overlay = "displaced.toml"

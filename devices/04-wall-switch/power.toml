@@ -1,0 +1,11 @@
+version = 1
+[[block]]
+kind = "constant"
+value = 1
+source = "Штатное состояние ключа питания стенда."
+[[bind]]
+output = "ключ питания"
+node = 0
+missing = "value"
+value = 0
+source = "При отсутствии команды питание выключено."

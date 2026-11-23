@@ -1,0 +1,77 @@
+# Корпус на свободном основании, начало кадра на оси колёс. Размеры — оценка компоновки.
+format = 3
+name = "Балансирующая тележка"
+
+[[links]]
+name = "корпус"
+
+[links.joint]
+kind = "free"
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.8
+com_m = [0.0, 0.0, 0.09]
+# Брусок 0.10 × 0.06 × 0.18 м: I = m(a² + b²)/12.
+inertia_kg_m2 = [0.00240, 0.00283, 0.00091, 0.0, 0.0, 0.0]
+provenance = { estimate = "масса и размеры компоновки, не взвешено" }
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.10, 0.06, 0.18] }
+pose = { position_m = [0.0, 0.0, 0.09] }
+
+[[links.visual]]
+shape = { kind = "box", size_m = [0.10, 0.06, 0.18] }
+pose = { position_m = [0.0, 0.0, 0.09] }
+
+[[links]]
+name = "левое"
+parent = "корпус"
+pose = { position_m = [0.0, 0.05, 0.0] }
+
+[links.joint]
+kind = "hinge"
+axis = [0.0, 1.0, 0.0]
+damping = 0.001
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "момент_левое", dof = 0 }]
+
+[links.mass]
+kind = "geometry"
+material = { name = "PETG", density_kg_m3 = 1270.0, provenance = { estimate = "типовая плотность PETG, заменить паспортом филамента" } }
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+friction = [0.8, 0.005, 0.0001]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+
+[[links]]
+name = "правое"
+parent = "корпус"
+pose = { position_m = [0.0, -0.05, 0.0] }
+
+[links.joint]
+kind = "hinge"
+axis = [0.0, 1.0, 0.0]
+damping = 0.001
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "момент_правое", dof = 0 }]
+
+[links.mass]
+kind = "geometry"
+material = { name = "PETG", density_kg_m3 = 1270.0, provenance = { estimate = "типовая плотность PETG, заменить паспортом филамента" } }
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+friction = [0.8, 0.005, 0.0001]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }

@@ -1,0 +1,189 @@
+version = 1
+
+[[runs]]
+id = 1
+world = "01-elbow-assist/closed-world.toml"
+task = "01-elbow-assist/tasks/acceptance.toml"
+outcome = "fail"
+reference_modes = ["assist", "wrong_payload", "hold_relaxed", "cold", "fault_hang", "estop", "sensor", "radio"]
+deferred_modes = ["jam", "water", "obstacle"]
+
+[[runs.cases]]
+path = "драйвер"
+mode = "assist"
+read = true
+accepted = true
+changes = true
+
+[[runs.cases]]
+path = "драйвер"
+mode = "fault_hang"
+watchdog = true
+accepted = true
+
+[[runs.cases]]
+path = "драйвер"
+mode = "estop"
+action = "аварийная кнопка"
+
+[[runs.cases]]
+path = "драйвер"
+mode = "sensor"
+applied = "sensor:угол"
+applied_at_ns = 1000000000
+
+[[runs.cases]]
+path = "драйвер"
+mode = "radio"
+applied = "channel:радио"
+applied_at_ns = 1000000000
+last_packet_before = "радио"
+
+[[runs.cases]]
+path = "драйвер"
+mode = "open"
+changes = false
+
+[[runs]]
+id = 4
+world = "04-wall-switch/world.toml"
+task = "04-wall-switch/tasks/acceptance.toml"
+outcome = "fail"
+
+[[runs.cases]]
+path = "мост"
+mode = "нажатие"
+read = true
+accepted = true
+changes = true
+# Контакт пары и ход сверх эскизного предела 12° из switch.toml.
+metrics = [
+  { signal = "реакция пары", field = "max", gt = 0 },
+  { signal = "qpos[1]", field = "max", gt = 0.20943951023931953 },
+]
+
+[[runs.cases]]
+path = "мост"
+mode = "разомкнутый"
+accepted = false
+metrics = [{ signal = "реакция пары", field = "max", equals = 0 }]
+
+[[runs.cases]]
+path = "мост"
+mode = "нажатие"
+fault = { node = "power:нажиматель/скважность-power", kind = "power_cut" }
+applied = "power:нажиматель/скважность-power"
+applied_at_ns = 145000000
+metrics = [{ signal = "нажиматель/мотор/current_a", field = "last", equals = 0 }]
+
+[[runs.cases]]
+path = "мост"
+mode = "нажатие"
+fault = { node = "sensor:рычаг/измерение", kind = "sensor_unavailable" }
+applied = "sensor:рычаг/измерение"
+applied_at_ns = 145000000
+# Ток после обрыва ниже одного кванта датчика этапа 2 (1 мА).
+metrics = [{ signal = "нажиматель/мотор/current_a", field = "last", min = -0.001, max = 0.001 }]
+
+[[runs]]
+id = 5
+world = "05-camera-tracker/world.toml"
+task = "05-camera-tracker/tasks/acceptance.toml"
+outcome = "not_analyzed"
+
+[[runs.cases]]
+path = "привод"
+mode = "слежение"
+read = true
+accepted = true
+changes = true
+delays = [
+  { hop = "transport:зрение/request", min_ns = 3000000, max_ns = 6000000 },
+  { hop = "transport:зрение/response", min_ns = 2000000, max_ns = 14000000 },
+]
+
+[[runs.cases]]
+path = "привод"
+mode = "разомкнутый"
+accepted = false
+comparison = { mode = "слежение", signal = "ошибка линии визирования", field = "rms" }
+
+[[runs.cases]]
+path = "привод"
+mode = "слежение"
+fault = { node = "transport:зрение/request", kind = "packet_delay" }
+applied = "transport:зрение/request"
+applied_at_ns = 150000000
+delays = [{ hop = "transport:зрение/request", min_ns = 83000000, max_ns = 86000000 }]
+comparison = { mode = "слежение", signal = "ошибка линии визирования", field = "rms" }
+
+[[runs.cases]]
+path = "привод"
+mode = "слежение"
+fault = { node = "transport:зрение/response", kind = "packet_delay" }
+applied = "transport:зрение/response"
+applied_at_ns = 150000000
+expired = true
+comparison = { mode = "слежение", signal = "ошибка линии визирования", field = "rms" }
+
+[[runs.cases]]
+path = "привод"
+mode = "слежение"
+fault = { node = "sensor:подвес/кадр/image", kind = "sensor_unavailable" }
+applied = "sensor:подвес/кадр/image"
+applied_at_ns = 150000000
+comparison = { mode = "слежение", signal = "ошибка линии визирования", field = "rms" }
+
+[[runs]]
+id = 7
+world = "07-balance-cart/closed-world.toml"
+task = "07-balance-cart/tasks/acceptance.toml"
+outcome = "not_analyzed"
+
+[[runs.cases]]
+path = "мост левое"
+mode = "удержание"
+read = true
+accepted = true
+changes = true
+# Предел 15° из опыта удержания.
+metrics = [{ signal = "наклон основания", field = "max", min = 0, max = 0.26 }]
+
+[[runs.cases]]
+path = "мост правое"
+mode = "удержание"
+accepted = true
+changes = true
+
+[[runs.cases]]
+path = "мост левое"
+mode = "разомкнутый"
+accepted = false
+# 45°: критерий наблюдаемого падения из проверки платформы.
+metrics = [{ signal = "наклон основания", field = "last", gt = 0.7853981633974483 }]
+
+[[runs.cases]]
+path = "мост левое"
+mode = "удержание"
+fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }
+applied = "sensor:тележка/иму/gy"
+applied_at_ns = 300000000
+metrics = [{ signal = "наклон основания", field = "last", gt = 0.7853981633974483 }]
+
+# Отрицательный образ из того же стенда меняет ШИМ по счётчику, ADC
+# читается, физика движется. Доказательство причинной связи отсутствует.
+[[runs]]
+id = 4
+world = "04-wall-switch/world.toml"
+task = "04-wall-switch/tasks/ignore.toml"
+outcome = "not_analyzed"
+
+[[runs.cases]]
+path = "мост"
+mode = "контроль"
+read = true
+accepted = true
+changes = true
+unchanged_pair = true
+# Прочитанные углы и фактическое движение отличают опыт от пустого запуска.
+metrics = [{ signal = "qpos[0]", field = "max", gt = 0.0 }]

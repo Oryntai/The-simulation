@@ -1,0 +1,76 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "as5048a"
+kind = "encoder"
+name = "AS5048A"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "°"
+caveats = ["±0.8° только при идеальной установке магнита и 25 °C."]
+current_peak_a = "unknown"
+interface = "SPI, ШИМ"
+kind = "encoder"
+range_unit = "°"
+resolution_unit = "°"
+sources = ["ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"]
+what_is = "Магнитный абсолютный энкодер 14 бит: знает угол сразу после включения."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "ams: ±1.2° при смещении магнита и по всей температуре"
+value = 1.2
+
+[passport.current_a]
+provenance = "datasheet"
+source = "ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 0.015
+
+[passport.range_max]
+provenance = "datasheet"
+source = "ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 360.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 0.0
+
+[passport.resolution]
+provenance = "datasheet"
+source = "ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 0.0219
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 3.6
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 3.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 5.5
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5048A/B v1-11: https://cdn.sparkfun.com/assets/e/d/e/1/d/AS5048_DS000298_4-00.pdf"
+value = 4.5

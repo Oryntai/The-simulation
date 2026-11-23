@@ -1,0 +1,296 @@
+window_ns = [10000000, 960000000]
+source = "Два полных цикла нажатия, отвода, обратного нажатия и повторного отвода за 0.96 с."
+
+[contacts]
+table = "../../../catalog/contact/fixture.toml"
+
+[contacts.solver]
+# Параметры опыта. Удвоение числа итераций — независимая проба сходимости решателя.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.alternative_solver]
+# Параметры опыта. Удвоение числа итераций — независимая проба сходимости решателя.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 200
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"стенд/клавиша/collision/0" = "пластина"
+"стенд/толкатель/collision/0" = "шток"
+"стенд/толкатель/collision/1" = "шток"
+
+[[contacts.pairs]]
+geometries = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { estimate = "Постоянный импеданс для численного стенда, физическая калибровка требуется." }
+
+[[contacts.pairs]]
+geometries = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/1"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { estimate = "Постоянный импеданс для численного стенда, физическая калибровка требуется." }
+
+[models."ход"]
+kind = "coordinate"
+joint = "стенд/ход"
+
+[models."детент"]
+kind = "elastic_axis"
+joint = "стенд/ход"
+channel = "стенд/защёлка"
+source = "Эскизный бистабильный механизм. Устойчивые положения 0.025 и 0.145 рад внутри прежнего предела, пороги переключения 0.06 и 0.115 рад. Пружина и демпфер — гипотезы стенда, нужна кривая усилия."
+stiffness = 0.02
+damping = 0.0001
+seats = [0.025, 0.145]
+detent = { below = 0.06, above = 0.115, minimum_contact_n = 0.02, positive_pair = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/0"], negative_pair = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/1"] }
+[models."толкатель"]
+kind = "elastic_axis"
+joint = "стенд/поворот"
+channel = "стенд/привод"
+source = "Стендовый задающий кулачок: плечо 8 мм, ход 0.30 рад покрывает зазор 1 мм и рабочие 0.145 рад. Для обратного порога 0.06 рад нужно около 0.065 рад геометрического хода плюс 0.02·(0.145−0.06)/0.05≈0.034 рад упругого смещения. Команда −0.12 рад даёт запас 0.021 рад до срабатывания и оставляет нейтральный зазор при 0 рад клавиши. Жёсткость 0.05 Н·м/рад и демпфер 0.00017 Н·м·с/рад (порядка критического)."
+stiffness = 0.05
+damping = 0.00017
+seats = [0.0, 0.0]
+rest = [{ at_ns = 0, value = 0 }, { at_ns = 50000000, value = 0.3 }, { at_ns = 150000000, value = 0 }, { at_ns = 280000000, value = -0.12 }, { at_ns = 380000000, value = 0 }, { at_ns = 510000000, value = 0.30 }, { at_ns = 610000000, value = 0 }, { at_ns = 740000000, value = -0.12 }, { at_ns = 840000000, value = 0 }]
+[models."цепь"]
+kind = "electrical"
+latch = "детент"
+initially_closed = false
+
+source = { estimate = "Нормированная шкала бистабильного механизма стенда." }
+closed_ohm = { value = 0.1, source = { estimate = "Условный резистивный контакт стенда. Требуется четырёхпроводный замер." } }
+open_ohm = { value = 1000000000.0, source = { estimate = "Допущение модели изоляции сухой цепи." } }
+source_ohm = { value = 0.15, source = { estimate = "Эскиз источника, нужно измерение внутреннего сопротивления." } }
+load_ohm = { value = 100, source = { datasheet = "Тестовая резистивная нагрузка по схеме стенда." } }
+supply_v = { value = 4.8, range = [0, 4.8], source = { estimate = "Стабилизированная шина этапа 2 и опыт слабой шины." } }
+bounce_duration_s = { value = 0.001, source = { estimate = "Диагностическая модель без дребезга: весь первый интервал 1 мс следует новому состоянию." } }
+[states]
+"детент" = ["свободно", "зафиксировано", "свободно", "зафиксировано", "свободно"]
+"цепь" = ["разомкнуто", "замкнуто", "разомкнуто", "замкнуто", "разомкнуто"]
+
+[[events]]
+name = "детент"
+state = "зафиксировано"
+applied_ns = [50000000, 150000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "цепь"
+state = "замкнуто"
+applied_ns = [50000000, 150000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "детент"
+state = "свободно"
+applied_ns = [280000000, 380000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "цепь"
+state = "разомкнуто"
+applied_ns = [280000000, 380000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "детент"
+state = "зафиксировано"
+applied_ns = [510000000, 610000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "цепь"
+state = "замкнуто"
+applied_ns = [510000000, 610000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "детент"
+state = "свободно"
+applied_ns = [740000000, 840000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[events]]
+name = "цепь"
+state = "разомкнуто"
+applied_ns = [740000000, 840000000]
+phase_tolerance_ns = { value = 200000, source = { datasheet = "Один такт базовой сетки стенда." } }
+
+[[criteria]]
+name = "угол, предел 12°"
+unit = "rad"
+series = { measurement = "ход/position" }
+statistic = "maximum"
+tolerance = { value = 0.002, source = { datasheet = "Порог переключения в эскизе стенда, предел 12° из ../switch.toml." } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+lower = { value = 0.115, source = { datasheet = "Порог переключения в эскизе стенда, предел 12° из ../switch.toml." } }
+upper = { value = 0.20943951023931953, source = { datasheet = "Порог переключения в эскизе стенда, предел 12° из ../switch.toml." } }
+
+[[criteria]]
+name = "угол после возврата"
+unit = "rad"
+series = { measurement = "ход/position" }
+statistic = "end"
+tolerance = { value = 0.002, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+lower = { value = 0, source = { datasheet = "Проектный допуск численного опыта" } }
+upper = { value = 0.06, source = { datasheet = "Проектный допуск численного опыта" } }
+
+[[criteria]]
+name = "ток замкнутой цепи"
+unit = "A"
+series = { measurement = "цепь/current" }
+statistic = "maximum"
+tolerance = { value = 0.0001, source = { datasheet = "I=4.8/(100+0.15+0.1), рабочее окно нагрузки стенда." } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+lower = { value = 0.04, source = { datasheet = "I=4.8/(100+0.15+0.1), рабочее окно нагрузки стенда." } }
+upper = { value = 0.05, source = { datasheet = "I=4.8/(100+0.15+0.1), рабочее окно нагрузки стенда." } }
+
+[[criteria]]
+name = "ток разомкнутой цепи"
+unit = "A"
+series = { measurement = "цепь/current" }
+statistic = "end"
+tolerance = { value = 1e-06, source = { datasheet = "I=4.8/(1e9+100+0.15)." } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+lower = { value = 0, source = { datasheet = "I=4.8/(1e9+100+0.15)." } }
+upper = { value = 1e-07, source = { datasheet = "I=4.8/(1e9+100+0.15)." } }
+
+[[criteria]]
+name = "баланс Ома"
+unit = "A"
+series = { measurement = "цепь/ohm_residual" }
+statistic = "absolute_peak"
+tolerance = { value = 1e-09, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+lower = { value = 0, source = { datasheet = "Проектный допуск численного опыта" } }
+upper = { value = 1e-09, source = { datasheet = "Проектный допуск численного опыта" } }
+
+[[criteria]]
+name = "нажатие/пик"
+unit = "N"
+series = { normal_force = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/0"] }
+statistic = "maximum"
+tolerance = { value = 0.3, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[criteria]]
+name = "нажатие/импульс"
+unit = "N*s"
+series = { normal_force = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/0"] }
+statistic = "integral"
+tolerance = { value = 0.02, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[criteria]]
+name = "нажатие/вдавливание"
+unit = "m"
+series = { penetration = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/0"] }
+statistic = "maximum"
+tolerance = { value = 0.0001, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[criteria]]
+name = "возврат/пик"
+unit = "N"
+series = { normal_force = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/1"] }
+statistic = "maximum"
+tolerance = { value = 0.3, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[criteria]]
+name = "возврат/импульс"
+unit = "N*s"
+series = { normal_force = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/1"] }
+statistic = "integral"
+tolerance = { value = 0.02, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[criteria]]
+name = "возврат/вдавливание"
+unit = "m"
+series = { penetration = ["стенд/клавиша/collision/0", "стенд/толкатель/collision/1"] }
+statistic = "maximum"
+tolerance = { value = 0.0001, source = { datasheet = "Проектный допуск численного опыта" } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+
+[[checks]]
+name = "удержание после отвода"
+signal = "цепь/current"
+unit = "A"
+window_ns = [190000000, 270000000]
+min = { value = 0.04, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+max = { value = 0.05, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+
+[[checks]]
+name = "размыкание после возврата"
+signal = "цепь/current"
+unit = "A"
+window_ns = [420000000, 490000000]
+min = { value = 0, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+max = { value = 1e-07, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+
+[[checks]]
+name = "повтор после отвода"
+signal = "цепь/current"
+unit = "A"
+window_ns = [650000000, 730000000]
+min = { value = 0.04, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+max = { value = 0.05, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+
+[[checks]]
+name = "окончательно разомкнуто"
+signal = "цепь/current"
+unit = "A"
+window_ns = [880000000, 950000000]
+min = { value = 0, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+max = { value = 1e-07, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+
+[[checks]]
+name = "механический ход под нагрузкой"
+signal = "ход/position"
+unit = "rad"
+window_ns = [80000000, 130000000]
+min = { value = 0.115, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+max = { value = 0.20943951023931953, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+
+[[checks]]
+name = "неизменный предел 0–12°"
+signal = "ход/position"
+unit = "rad"
+window_ns = [10000000, 950000000]
+min = { value = 0, source = { derived = "Нижний предел исходного эскиза 0°." } }
+max = { value = 0.20943951023931953, source = { estimate = "Предел исходного механического или нагрузочного опыта." } }
+
+[[checks]]
+name = "напряжение нагрузки при удержании"
+signal = "цепь/voltage"
+unit = "V"
+window_ns = [190000000, 270000000]
+min = { value = 4, source = { derived = "Порог для I·R нагрузки 100 Ом по тому же нагрузочному опыту." } }
+max = { value = 5, source = { derived = "Порог для I·R нагрузки 100 Ом по тому же нагрузочному опыту." } }
+
+[[checks]]
+name = "напряжение нагрузки при размыкании"
+signal = "цепь/voltage"
+unit = "V"
+window_ns = [420000000, 490000000]
+min = { value = 0, source = { derived = "Порог для I·R нагрузки 100 Ом по тому же нагрузочному опыту." } }
+max = { value = 1e-05, source = { derived = "Порог для I·R нагрузки 100 Ом по тому же нагрузочному опыту." } }

@@ -1,0 +1,63 @@
+world = "world-press.toml"
+window_ns = [200000000, 220000000]
+source = "Сферический контрольный блок между неподвижной опорой и кареткой; одновременное встречное сжатие. Квазистатика после 200 мс выдержки."
+hazard_witnesses = [{ class = "pinch", object = "зазор", criterion = "сжатие" }]
+
+[contacts]
+table = "../../../stage4-processes/contact-materials.toml"
+
+[contacts.solver]
+# Настройки численного решателя из нейтрального стенда контакта этапа 4.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"стенд/опора/collision/0" = "опора"
+"стенд/блок/collision/0" = "образец"
+"стенд/каретка/collision/0" = "опора"
+
+[[contacts.pairs]]
+geometries = ["стенд/опора/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Постоянный импеданс 0,95 и форма из численного стенда опоры этапа 4." }
+mass_kg = { value = 1, source = { datasheet = "Нормальная мода блока массой 1 кг у неподвижной опоры." } }
+
+[[contacts.pairs]]
+geometries = ["стенд/каретка/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Постоянный импеданс 0,95 и форма из численного стенда опоры этапа 4." }
+mass_kg = { value = 0.5, source = { datasheet = "Приведённая масса вдоль общей оси для двух тел по 1 кг." } }
+
+[models."нагрузка"]
+kind = "effort"
+channel = "стенд/прижим"
+source = "Постоянная внешняя сила 4 Н; парная постановка с 1 Н. На установившемся участке обе реакции равны приложенной силе."
+values = [{ at_ns = 0, value = -4 }]
+
+[models."зазор"]
+kind = "mechanical_monitor"
+scope = "Сферический контрольный блок между неподвижной опорой и кареткой; одновременное встречное сжатие. Квазистатика после 200 мс выдержки."
+upper = { value = 2, source = { datasheet = "Спецификация лабораторной контрольной вставки: 2 Н осевого встречного сжатия по заданию на оснастку." } }
+observation = { kind = "pinch", pairs = [["стенд/опора/collision/0", "стенд/блок/collision/0"], ["стенд/каретка/collision/0", "стенд/блок/collision/0"]], axis = [1, 0, 0] }
+
+[[criteria]]
+name = "сжатие"
+series = { measurement = "зазор/opposed_load" }
+unit = "N"
+statistic = "maximum"
+upper = { value = 2, source = { datasheet = "Спецификация лабораторной контрольной вставки: 2 Н осевого встречного сжатия по заданию на оснастку." } }
+tolerance = { value = 0.01, source = { datasheet = "Допуск 1% от меньшей нагрузки 1 Н; запас остатка решения 0,1% меньшей нагрузки." } }
+remainder = [
+  { value = 0.001, source = { datasheet = "Допуск 1% от меньшей нагрузки 1 Н; запас остатка решения 0,1% меньшей нагрузки." } },
+  { value = 0, source = { datasheet = "Сходимость контролируется на трёх сетках и отдельно сверяется с аналитикой стенда." } },
+  { value = 0, source = { datasheet = "Заданы фиксированные параметры синтетического опыта." } },
+]

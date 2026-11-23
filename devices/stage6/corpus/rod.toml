@@ -1,0 +1,23 @@
+format = 3
+name = "Стержень"
+[[links]]
+name = "стержень"
+[links.joint]
+kind = "slide"
+axis = [1.0, 0.0, 0.0]
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "сила", dof = 0 }]
+[links.mass]
+kind = "explicit"
+mass_kg = 2.0
+com_m = [0.0, 0.0, 0.0]
+# Однородный прямоугольный образец: I = m(b² + h²)/12 и циклические перестановки.
+inertia_kg_m2 = [0.0003333333333333333, 0.16693333333333333, 0.16673333333333332, 0.0, 0.0, 0.0]
+provenance = { datasheet = "Спецификация синтетического стенда: масса 2 кг, сечение 20×40 мм, длина 1 м." }
+
+[[links.collision]]
+shape = { kind = "box", size_m = [1.0, 0.02, 0.04] }
+contact_mask = [0, 0] # Контакт условиями стенда исключён.
+friction = [0.0, 0.0, 0.0]

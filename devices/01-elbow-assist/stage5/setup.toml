@@ -1,0 +1,196 @@
+source = "Сценарная рама и MS-Human-700, 6S2P из прежней схемы. Независимая ось и две площадки."
+horizon_ns = 80000000
+audit_from_ns = 0
+construction_complete = true
+
+[participant]
+name = "участник"
+population = "male"
+stature_m = { value = 1.754, source = { paper = "NHANES 2015–2018, табл. 11, медиана мужчин 20+." } }
+mass_kg = { value = 87.4, source = { paper = "NHANES 2015–2018, табл. 5, медиана мужчин 20+." } }
+pose = {}
+
+[motion.axes.j0053]
+channel = "намерение"
+# Углы измеряются от нейтрального кадра MS-Human-700, задание полином minimum jerk.
+initial_position = 0.0
+initial_velocity = 0.0
+stiffness = { value = 80, source = { estimate = "Эскиз замкнутого стендового регулятора, частота и отклик нуждаются в калибровке." } }
+damping = { value = 3, source = { estimate = "Настройка синтетической обратной связи, требуется проверка на измеренном движении." } }
+effort_limit = { value = 12, source = { estimate = "Проектный диапазон возбуждения численного опыта. Это не индивидуальная сила." } }
+reference = { knots = [[0, 0.0], [80000000, 0.04]], source = { estimate = "Синтетическое опорное движение с нулевыми концевыми скоростями." } }
+
+[pads."опора"]
+mounts = ["устройство/опора/крепление", "участник/s1906"]
+geometries = ["устройство/опора/collision/0", "участник/r0008"]
+normal = [[1, 0, 0], [0, 0, -1]]
+tangent = [[0, 0, 1], [0, 1, 0]]
+area_m2 = { value = 0.002, source = { estimate = "Эскизное пятно 40×50 мм, эффективная площадь требует отпечатка." } }
+[pads."опора".calibration]
+compression_m = { value = 0.03, range = [0.0, 0.06], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+offset_m = { value = 0.08, range = [0.0, 0.16], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+axis_error_rad = { value = 0.7, range = [0.0, 1.4], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+relative_speed_m_s = { value = 2.5, range = [0.0, 5.0], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+
+[pads."опора".law]
+free_gap_m = { value = 0.007, source = { estimate = "Геометрический зазор плюс целевой преднатяг численной постановки." } }
+# Линейная характеристика от нуля до максимума хода в численном опыте.
+compression = { points = [[0.0, 0.0], [0.06, 150.0]], source = { estimate = "Эскиз линейной характеристики; нужен замер конкретной оснастки." } }
+damping_ns_m = { value = 0.0, source = { estimate = "Упругая сверка без гашения, силу можно вычислить как kx." } }
+shear_stiffness_n_m = { value = 500.0, source = { estimate = "Синтетическая жёсткость сдвига для наблюдения связи." } }
+friction = { value = 0.55, source = { estimate = "Эскизный коэффициент пары, требует замера." } }
+capacity_n = { value = 500.0, source = { estimate = "Испытательная граница закона площадки, не паспорт удержания." } }
+
+[pads."рычаг"]
+mounts = ["устройство/рычаг/крепление", "участник/s1900"]
+geometries = ["устройство/рычаг/collision/0", "участник/r0009"]
+normal = [[1, 0, 0], [0, 0, -1]]
+tangent = [[0, 0, 1], [0, 1, 0]]
+area_m2 = { value = 0.002, source = { estimate = "Эскизное пятно 40×50 мм, эффективная площадь требует отпечатка." } }
+[pads."рычаг".calibration]
+compression_m = { value = 0.03, range = [0.0, 0.06], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+offset_m = { value = 0.08, range = [0.0, 0.16], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+axis_error_rad = { value = 0.7, range = [0.0, 1.4], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+relative_speed_m_s = { value = 2.5, range = [0.0, 5.0], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+
+[pads."рычаг".law]
+free_gap_m = { value = 0.007, source = { estimate = "Геометрический зазор плюс целевой преднатяг численной постановки." } }
+# Линейная характеристика от нуля до максимума хода в численном опыте.
+compression = { points = [[0.0, 0.0], [0.06, 150.0]], source = { estimate = "Эскиз линейной характеристики; нужен замер конкретной оснастки." } }
+damping_ns_m = { value = 0.0, source = { estimate = "Упругая сверка без гашения, силу можно вычислить как kx." } }
+shear_stiffness_n_m = { value = 500.0, source = { estimate = "Синтетическая жёсткость сдвига для наблюдения связи." } }
+friction = { value = 0.55, source = { estimate = "Эскизный коэффициент пары, требует замера." } }
+capacity_n = { value = 500.0, source = { estimate = "Испытательная граница закона площадки, не паспорт удержания." } }
+
+[contacts]
+table = "../../../catalog/contact/stage5.toml"
+assignments = {}
+pairs = []
+
+# Параметры численного опыта Euler/Newton: эталонный профиль MuJoCo 4.0.1.
+[contacts.solver]
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-8
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 35
+
+[control]
+wiring = "../control.toml"
+overlay = "commands.toml"
+sampled_drives = { "устройство/мотор" = "../sampled-drive.toml" }
+[sampled_mode]
+fixture_enabled = false
+[[control.measurements]]
+signal = { name = "угол", unit = "rad" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "rotary_position", joint = "устройство/ось", bounds_rad = [0.0, 2.6179938779914944] }
+
+[[control.measurements]]
+signal = { name = "ток", unit = "A" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "winding_current" }
+
+[[control.measurements]]
+signal = { name = "корпус", unit = "degC" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "housing_temperature" }
+
+[[control.measurements]]
+signal = { name = "батарея", unit = "V" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "supply_voltage" }
+
+
+[power]
+topology = { estimate = "Декларация численной сборки. Полнота конструкции и безопасная отдача при отказе требуют проверки." }
+required = ["устройство/мотор", "батарея 6S2P"]
+
+[power.sources."устройство/мотор"]
+reach = "reachable"
+
+[power.sources."батарея 6S2P"]
+reach = "reachable"
+
+[power.sources."батарея 6S2P".electrical]
+stored_j = { value = 777600, source = { derived = "12 × 18 Вт·ч × 3600 по модели LG M50, номинальная паспортная оценка запаса." } }
+
+[tolerances]
+onset_s = { value = 0.001, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+force_n = { value = 3.0, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+impulse_ns = { value = 0.01, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+duration_s = { value = 0.001, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+drift_m = { value = 0.0006, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+stress_pa = { value = 2000, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+[[checks]]
+id = "опора"
+bounds = [0.5, 60.0]
+source = "Преднатяг 2 мм × 2500 Н/м = 5 Н, номинальное окно стенда."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "опора" }
+
+[[checks]]
+id = "рычаг"
+bounds = [0.5, 90.0]
+source = "Преднатяг 2 мм × 2500 Н/м = 5 Н, плюс изменяющаяся реакция."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "рычаг" }
+
+[[checks]]
+id = "сила по закону"
+bounds = [0.0, 1e-10]
+source = "Независимая интерполяция узлов F(x) без гашения."
+min_samples = 5
+
+
+metric = { "kind" = "pad_law_residual", "patch" = "рычаг" }
+
+[[checks]]
+id = "баланс сил"
+bounds = [0.0, 1e-10]
+source = "Третий закон Ньютона, в одной мировой системе."
+min_samples = 5
+
+
+metric = { "kind" = "action_reaction_residual", "interface" = "рычаг" }
+
+[[checks]]
+id = "движение"
+bounds = [0.002, 0.15]
+source = "Опорная траектория 0.04 рад за 80 мс с ограниченным приводом."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/намерение", "statistic" = "span", "quantity" = "position" }
+
+[[checks]]
+id = "момент"
+bounds = [0.01, 242.0]
+source = "Ненулевой выход под ELF, предел 242 Н·м из sampled-drive.toml."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/joint_torque_nm", "unit" = "N*m", "statistic" = "peak" }
+
+[[checks]]
+id = "ток"
+bounds = [0.001, 15.001]
+source = "Ограничение 15 А из sampled-drive.toml; допуск разрешения 1 мА."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/мотор/current_a", "unit" = "A", "statistic" = "peak" }

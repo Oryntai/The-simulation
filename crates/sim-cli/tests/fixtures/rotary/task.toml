@@ -1,0 +1,23 @@
+version = 1
+control = "control.toml"
+profile = "profile.toml"
+
+# Опыт на 8 шагов, проба на третьем шаге.
+[[modes]]
+id = "измерение"
+horizon_ns = 8000000
+before_ns = 2000000
+after_ns = 4000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "Сетка стенда 1 мс по world.toml." }
+excitation = "момент"
+stimuli = [
+  { id = "момент", signal = { name = "стенд/проба", unit = "N*m" }, at_ns = 3000000, value = 1, comparison_value = 0, source = { kind = "derived", reference = "Одиночный ступенчатый момент 1 Н·м на тензоре стенда." } },
+]
+
+[[criteria]]
+case = { path = "напряжение", mode = "измерение" }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 1, source = { kind = "derived", reference = "За 8 шагов ожидается малое отклонение от π/6." } },
+]
+response = { signal = { name = "qpos[0]", unit = "rad" }, min_change = 1e-7, within_ns = 1000000, source = { kind = "derived", reference = "1e-6 / 1.5 рад от пробной ступени без вклада привода." } }

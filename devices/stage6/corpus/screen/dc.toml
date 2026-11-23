@@ -1,0 +1,36 @@
+world = "../../../stage4-processes/world-energy.toml"
+# После первого такта DC-ветвь наблюдается ровно 10 с по определению IEC.
+window_ns = [1000000, 10001000000]
+source = "Синтетическая DC-цепь контакта без кожной динамики: постоянное сопротивление заменяет путь тока снизу вверх."
+
+[screen]
+object = "контакт"
+scope = "Доступные полюса без ограждения и отключения. Установившийся постоянный ток от стоп к руке, 10 с."
+source = { kind = "datasheet", reference = "Численный стенд: резистивный эквивалент пути 1 кОм при заданных контактах, постоянное напряжение, отсутствие ограждения и отключения." }
+limit_source = { kind = "paper", reference = "IEC 60479-1:2018 §3.3.2 и рис. 22: около 300 мА при 10 с (ориентир c2, риск фибрилляции около 50 %): https://iso.ieclist.ink/iec/IEC%2060479-1-2018%20PDF.pdf" }
+limit = 0.3
+condition = { kind = "accessible_dc", live_parts = ["контакт/рука", "контакт/стопы"], guarding = false, ripple_free = true, voltage_only_protection = true, path = "upward_hand_to_feet", duration_ns = 10000000000, elv_ceiling_v = 120, elv_source = "IEC 61058-1:2016 §3.2.2, необходимая граница 120 В DC для SELV с отсылкой к IEC 61140: https://preview.sist.si/sist-preview/21577/52745aa986ee4d2c83e256721c1638f6/IEC-61058-1-2016.pdf" }
+
+[[criteria]]
+name = "ток контакта"
+series = { measurement = "контакт/current" }
+unit = "A"
+statistic = "minimum"
+tolerance = { value = 1e-10, source = { datasheet = "Допуск обратной сверки резистивной цепи по Кирхгофу." } }
+remainder = [
+  { value = 0, source = { datasheet = "Ток постоянен без накопителей." } },
+  { value = 0, source = { datasheet = "Электрическая цепь развязана с механикой." } },
+  { value = 0, source = { datasheet = "Сопротивления цепи заданы точками." } },
+]
+
+[models."контакт"]
+kind = "electrical"
+initially_closed = false
+fault = "stuck_closed"
+source = { datasheet = "Оба доступных полюса подключены к эквиваленту тела на весь тест." }
+closed_ohm = { value = 1, source = { datasheet = "Сопротивление контактов численного стенда суммарно 1 Ом." } }
+open_ohm = { value = 1000000, source = { datasheet = "Номинал разомкнутого контакта численного стенда, здесь не применяется." } }
+source_ohm = { value = 1, source = { datasheet = "Внутреннее сопротивление 1 Ом по схеме стенда." } }
+load_ohm = { value = 1000, source = { datasheet = "Фиксированное сопротивление эквивалента пути 1 кОм для численной проверки." } }
+supply_v = { value = 500, source = { datasheet = "Заданный идеальный источник 500 В без пульсаций для опыта превышения." } }
+bounce_duration_s = { value = 0.001, source = { datasheet = "Параметр синтетического ключа, при постоянном замыкании не применяется." } }

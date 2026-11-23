@@ -1,0 +1,35 @@
+world = "world-sliding.toml"
+window_ns = [1000000, 62000000]
+source = "Свободная пена, начальная длина 0,125 м. Нагружение 6 Н с 2 мс до 62 мс."
+
+[inventory]
+"образец" = ["stored_energy"]
+
+[models."образец"]
+kind = "soft_object"
+nodes = [{ body = "стенд/опора", local_m = [0, 0, 0] }, { body = "стенд/блок", local_m = [0.125, 0, 0] }]
+geometries = ["стенд/блок/collision/0"]
+
+[models."образец".law]
+type = "foam"
+free_length_m = { value = 0.125, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+loading = [{ displacement_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 12, source = { datasheet = "Расчётное условие только синтетического опыта." } } }]
+unloading = [{ displacement_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.02, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 4, source = { datasheet = "Расчётное условие только синтетического опыта." } } }, { displacement_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }, force_n = { value = 12, source = { datasheet = "Расчётное условие только синтетического опыта." } } }]
+
+
+[models."нажим"]
+kind = "effort"
+channel = "стенд/нажим"
+values = [{ at_ns = 0, value = 0 }, { at_ns = 2000000, value = -6 }]
+source = "Заданная ступень осевого усилия 6 Н в численном опыте."
+
+# 6·(1 − cos(√300·0,060)) Н для массы 1 кг, пружины 300 Н/м и ступени 6 Н.
+[[criteria]]
+name = "реакция образца"
+series = { measurement = "образец/reaction" }
+unit = "N"
+statistic = "end"
+lower = { value = 2.81869755597, source = { datasheet = "Независимый расчёт для стенда: 2.958698 Н, допуск 0,14 Н." } }
+upper = { value = 3.09869755597, source = { datasheet = "Независимый расчёт для стенда: 2.958698 Н, допуск 0,14 Н." } }
+tolerance = { value = 0.14, source = { datasheet = "Независимый расчёт для стенда: 2.958698 Н, допуск 0,14 Н." } }
+remainder = [{ value = 0.035, source = { datasheet = "Независимый расчёт для стенда: 2.958698 Н, допуск 0,14 Н." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

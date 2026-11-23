@@ -1,0 +1,25 @@
+[models."поддержка"]
+kind = "grip"
+item = { body = "блок/блок", local_m = [0,0,0] }
+carrier = { body = "рычаг/рычаг", local_m = [0,0,0] }
+pairs = [["рычаг/рычаг/collision/0", "блок/блок/collision/0"], ["environment/collision/0", "блок/блок/collision/0"]]
+mu = { value = 0.6, source = { estimate = "Намеренно завышенная гипотеза наблюдателя. Пары движка имеют только нормальные реакции." } }
+mass_kg = { value = 0.1, source = { estimate = "Масса в описании блока." } }
+gravity_m_s2 = { value = 10, source = { estimate = "Проверка запаса для проектной нагрузки 1 Н." } }
+upward_axis = 1
+
+[[checks]]
+name = "координата с удержанием"
+signal = "отсчёт/y"
+unit = "m"
+evidence = { signal = "поддержка/friction_support", unit = "N" }
+window_ns = [400000000, 500000000]
+min = { value = 0.055, source = { estimate = "То же целевое окно лотка 55–57 мм." } }
+max = { value = 0.057, source = { estimate = "То же целевое окно лотка 55–57 мм." } }
+
+[[checks]]
+name = "запас удержания"
+signal = "поддержка/static_margin"
+unit = "N"
+window_ns = [400000000, 500000000]
+min = { value = 0, source = { estimate = "Кулонов запас при положительной проектной нагрузке." } }

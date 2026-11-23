@@ -1,0 +1,18 @@
+# Электромеханический стенд MG90S. Паспорт исходной сервы и неизвестные
+# параметры остаются в mg90s.toml. Здесь команда — скважность идеального моста.
+id = "mg90s-open-loop"
+name = "MG90S, доступ к обмотке"
+kind = "hobby_servo"
+mode = "pwm"
+inertia = "internal"
+backdrive = "unknown"
+brake = "unknown"
+stop = "compliant" # Координаты и жёсткость внешних упоров задаёт стенд.
+power_input = true
+sources = ["https://towerpro.com.tw/product/mg90s-3/", "mg90s.toml, точка 4.8 В"]
+caveats = ["Фирменная плата и её ШИМ-интерфейс исключены. Настройки механики и обмотки задаёт экземпляр."]
+
+[parameters]
+supply_v = { value = 4.8, source = "datasheet", reference = "TowerPro MG90S, номинальное напряжение 4.8 В" }
+voltage_min_v = { value = 4.8, source = "derived", reference = "Стенд рассматривает одну рабочую точку TowerPro, 4.8 В" }
+voltage_max_v = { value = 4.8, source = "derived", reference = "Стенд рассматривает одну рабочую точку TowerPro, 4.8 В" }

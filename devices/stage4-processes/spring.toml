@@ -1,0 +1,22 @@
+world = "world-energy.toml"
+window_ns = [0, 4000000]
+source = "Заданные границы состояния накопителя удерживаются в течение всего опыта."
+
+[models."накопитель"]
+kind = "stored_energy"
+limit_j = { value = 0.1, source = { datasheet = "Условный предел 0,1 Дж спецификации теста. Порога для человека здесь нет." } }
+
+[models."накопитель".store]
+type = "spring"
+stiffness_n_m = { value = 200, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+deflection_m = { value = 0.02, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[[criteria]]
+name = "запас энергии"
+series = { measurement = "накопитель/energy" }
+unit = "J"
+statistic = "end"
+lower = { value = 0.0399999999, source = { datasheet = "Независимый расчёт для стенда: 0.04 J, допуск 1e-10 J." } }
+upper = { value = 0.0400000001, source = { datasheet = "Независимый расчёт для стенда: 0.04 J, допуск 1e-10 J." } }
+tolerance = { value = 1e-10, source = { datasheet = "Независимый расчёт для стенда: 0.04 J, допуск 1e-10 J." } }
+remainder = [{ value = 2.5e-11, source = { datasheet = "Независимый расчёт для стенда: 0.04 J, допуск 1e-10 J." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

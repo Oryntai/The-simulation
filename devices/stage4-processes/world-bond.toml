@@ -1,0 +1,22 @@
+format = 3
+name = "Блок со стыком"
+# Нулевые поля для изоляции опыта, базовый шаг 1 мс, фиксированное зерно.
+seed = 1
+physics_hz = 1000
+gravity_m_s2 = [0, 0, 0]
+
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0, 0, 0]
+
+
+[[devices]]
+name = "стенд"
+file = "block.toml"
+
+[[attachments]]
+name = "контакт"
+first = "стенд/опора/стык"
+second = "стенд/блок/стык"
+mode = "runtime"

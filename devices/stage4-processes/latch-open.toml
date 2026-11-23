@@ -1,0 +1,4 @@
+[models."стык"]
+requests = [{ at_ns = 1000000, action = "attach" }]
+[models."стык".law.parameters]
+forward_contact_n = { value = 50, source = { datasheet = "Порог выше суммы веса и силы свободной ветви." } }

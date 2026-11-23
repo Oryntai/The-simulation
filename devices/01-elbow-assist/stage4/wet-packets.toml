@@ -1,0 +1,31 @@
+
+# Проба бюджета по normal-incidence из sim-radio. Профиль BLE с тем же интервалом
+# 15 мс, что и прежняя постановка. Три попытки — условие испытания повтора.
+# −60 дБм — исходный RSSI; нулевая фоновая потеря изолирует вклад среды.
+[[packet]]
+name = "радио"
+kind = "ble"
+to_board = "плата"
+to_port = 0
+capacity = 16
+max_bytes = 32
+max_age_ns = 45025000
+interval_ns = 15000000
+rssi_dbm = -60
+loss = 0
+attempts = 3
+source = "Та же очередь и транспорт, возраст 3×15 мс + такт, без календаря доставки."
+
+[[packet]]
+name = "ответ"
+kind = "ble"
+from_board = "плата"
+from_port = 0
+capacity = 16
+max_bytes = 32
+max_age_ns = 45025000
+interval_ns = 15000000
+rssi_dbm = -60
+loss = 0
+attempts = 3
+source = "Трасса телеметрии на тех же физических слотах, без календаря доставки."

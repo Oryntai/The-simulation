@@ -1,0 +1,2 @@
+[models."стык".limits.capacity]
+force_n = { value = 0.2, source = { datasheet = "Модель малой прочности 0,2 Н под заданной нагрузкой 1 Н." } }

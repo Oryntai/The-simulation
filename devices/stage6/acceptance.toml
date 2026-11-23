@@ -1,0 +1,527 @@
+version = 1
+source = "Таблица переноса этапов 3–5 в docs/STAGE6_PLAN.md. Численные пределы берутся из исходных постановок."
+
+[assemblies."01"]
+verdict = "Rejected"
+executed = 172
+experiments = { control = 216, process = 7, interaction = 7 }
+
+[assemblies."02"]
+verdict = "Rejected"
+executed = 6
+experiments = { interaction = 5, independent = 1 }
+
+[assemblies."03"]
+verdict = "Rejected"
+executed = 5
+experiments = { interaction = 5 }
+
+[assemblies."04"]
+verdict = "Rejected"
+executed = 34
+experiments = { control = 18, ignored-input = 9, process = 9 }
+
+[assemblies."05"]
+verdict = "NotProven"
+executed = 20
+experiments = { control = 24 }
+
+[assemblies."06"]
+verdict = "Rejected"
+executed = 2
+experiments = { process = 2 }
+
+[assemblies."07"]
+verdict = "NotProven"
+executed = 36
+experiments = { control = 48 }
+
+# Свидетельства корпуса проверяются в своей ограниченной области. Параметры
+# независимого расчёта ниже читаются тестом и не входят в аргументы sim-run.
+[[witnesses]]
+assembly = "over-strength"
+class = "static_strength"
+object = "каретка/стержень"
+mode = "loaded"
+expected = 7500000.0 # M/W = 40/(0,02·0,04²/6) Па.
+tolerance = 1e-8
+pair_assembly = "under-travel"
+
+[[witnesses]]
+assembly = "over-travel"
+class = "travel_jam"
+object = "каретка/стержень"
+mode = "loaded"
+expected = 0.000014 # Начальный 1 мкм + перемещения 1, 2, 4 и 6 мкм на четырёх шагах Euler.
+tolerance = 1e-14
+pair_assembly = "under-travel"
+
+[[witnesses]]
+assembly = "falling"
+class = "fall"
+object = "стойка/блок"
+mode = "observation"
+expected = 0.0199 # 20 мм − 10 м/с² · (4²+4)·(1 мс)²/2.
+tolerance = 1e-14
+pair_assembly = "supported"
+
+[[witnesses]]
+assembly = "processes"
+class = "stored_energy"
+object = "накопитель"
+mode = "spring-energy"
+expected = 1.0 # 200 Н/м · (0,1 м)²/2.
+tolerance = 1e-10
+pair_assembly = "processes"
+pair_mode = "spring"
+pair_metric = "запас энергии"
+pair_expected = 0.04 # 200 Н/м · (0,02 м)²/2.
+
+[[witnesses]]
+assembly = "processes"
+class = "sharp_edge"
+object = "кромка"
+mode = "edge-sharp"
+expected = -0.0008 # Радиус 0,2 мм минус порог 1 мм.
+tolerance = 1e-10
+pair_assembly = "processes"
+pair_mode = "edge"
+pair_metric = "запас радиуса"
+pair_expected = 0.001 # Радиус 2 мм минус 1 мм.
+
+[[witnesses]]
+assembly = "processes"
+class = "overcurrent"
+object = "цепь"
+mode = "circuit-fault"
+expected = 0.5 # 6 В / (1 + 1 + 10) Ом.
+tolerance = 1e-10
+pair_assembly = "processes"
+pair_mode = "circuit-normal"
+pair_metric = "пиковый ток"
+pair_expected = 0.1 # 6 В / (1 + 1 + 58) Ом.
+
+[[witnesses]]
+assembly = "processes"
+class = "thread_failure"
+object = "стык"
+mode = "thread-strip"
+expected = 0.000025 # x ≈ (F/M)·t²/2 = (1/2)·(10 мс)²/2, до поправки упругого участка.
+tolerance = 0.000004 # Допуск осевой реакции исходной сверки 0,004 Н делён на 1000 Н/м.
+pair_assembly = "processes"
+pair_mode = "thread-normal"
+pair_metric = "невязка резьбы"
+pair_expected = 0.000024896006581881 # Точное решение e''+k(1/M+a²/J)e=F/M на 10 мс.
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "fatigue"
+object = "стержень"
+mode = "fatigue"
+expected = 122230996.29457562 # 12 Н·м / (π · 0,01³ / 32).
+tolerance = 10.0 # Допуск сверки реакции выдержанного стыка с приложенным моментом: 1 мкН·м / W ≈ 10 Па.
+pair_assembly = "mechanical-safe"
+pair_expected = 61115498.14728781 # 6 Н·м / W.
+mechanical = { criterion = "амплитуда изгиба", upper = 96500000, reason_contains = "симметричного изгиба" }
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "retention"
+object = "стык"
+mode = "retention"
+tolerance = 1e-10 # Округление рекурсии на трёх временных сетках.
+pair_assembly = "mechanical-safe"
+# Ручная рекурсия для массы 1 кг: v′=v+h(F−P), x′=x+h·v′,
+# P=20−500x со второго шага, x₀=0,02 м. На первом шаге P=0.
+# Свидетель берёт максимум F−(20−500x′) после захвата до отрыва.
+mechanical = { criterion = "дефицит удержания", upper = 0, reason_contains = "произошёл отрыв", grid_reference = [[4.022070059519686, 4.006148222403295, 3.999506397765149], [-0.9778422425746296, -0.9943569410043551, -0.9985926218809684]] }
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "connection_failure"
+object = "стык"
+mode = "connection_failure"
+# d(0)=0,9 и a=(1−d)·aсвоб+d·aопор:
+# https://mujoco.readthedocs.io/en/stable/modeling.html#solver-parameters
+expected = 4.5 # Из покоя при нулевом зазоре Fweld=d(0)·F=0,9 Н. Делим на 0,2 Н.
+tolerance = 0.01 # В контрольной паре допускается переходный перебег не выше 2% от установившейся загрузки.
+pair_assembly = "mechanical-safe"
+pair_expected = 0.5 # Баланс постоянной нагрузки: 1 Н / 2 Н.
+mechanical = { criterion = "загрузка стыка", upper = 1, reason_contains = "связь разорвана" }
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "impact"
+object = "опора"
+mode = "impact"
+tolerance = 1e-10 # Допуск баланса импульса по скорости после отскока: округление сумм до 800 шагов.
+pair_assembly = "mechanical-safe"
+# Независимый баланс J = F·10 мс + m·v после отскока, на каждой сетке.
+mechanical = { criterion = "импульс", upper = 0.6, reason_contains = "Один прямой удар", momentum = { final_speed = "конечная скорость", incoming_impulses = [1.0, 0.25], mass_kg = 1.0 } }
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "pinch"
+object = "зазор"
+mode = "pinch"
+expected = 4.0 # Два независимых равновесия на общей оси: Nправ = F, Nлев = Nправ.
+tolerance = 0.001 # Разрешение сверки 0,1% от силы меньшего опыта.
+pair_assembly = "mechanical-safe"
+pair_expected = 1.0 # У контрольной пары та же геометрия, усилие подачи 1 Н.
+mechanical = { criterion = "сжатие", upper = 2, reason_contains = "встречное сжатие" }
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "contact_structure"
+object = "опора"
+mode = "contact_structure"
+expected = 4.0 # Внешний баланс всей группы под нагрузкой: Nопоры = F.
+tolerance = 0.001 # Разрешение сверки 0,1% от силы меньшего опыта.
+pair_assembly = "mechanical-safe"
+pair_expected = 1.0
+mechanical = { criterion = "реакция опоры", upper = 3, reason_contains = "несущей нагрузки опоры" }
+
+[[witnesses]]
+assembly = "mechanical-unsafe"
+class = "dangerous_motion"
+object = "каретка"
+mode = "dangerous_motion"
+expected = 1.0 # |Δv| = 100 Н · 10 мс / 1 кг.
+tolerance = 1e-10 # Округление до 40 приращений и проекции на ось сближения.
+pair_assembly = "mechanical-safe"
+pair_expected = 0.25 # Та же выдержка, усилие 25 Н.
+mechanical = { criterion = "скорость сближения", upper = 0.5, reason_contains = "доступной контрольной точке" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "sensor_fault"
+object = "sensor:поворот"
+mode = "контур"
+expected = 1.0 # Таблица истинности: после истечения данных аварийный выход равен резерву 1.
+tolerance = 0.0 # Дискретное состояние, точное сравнение.
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Та же инъекция с резервом 0.
+paired_finding = { bound = 1, reason_contains = "после подтверждённой инъекции" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "wire_fault"
+object = "wire:разрешение"
+mode = "контур"
+expected = 1.0 # Таблица истинности: после истечения данных аварийный выход равен резерву 1.
+tolerance = 0.0 # Дискретное состояние, точное сравнение.
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Та же инъекция с резервом 0.
+paired_finding = { bound = 1, reason_contains = "после подтверждённой инъекции" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "link_fault"
+object = "transport:верхний/request"
+mode = "контур"
+expected = 1.0 # Таблица истинности: после истечения данных аварийный выход равен резерву 1.
+tolerance = 0.0 # Дискретное состояние, точное сравнение.
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Та же инъекция с резервом 0.
+paired_finding = { bound = 1, reason_contains = "после подтверждённой инъекции" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "controller_halt"
+object = "controller:регулятор"
+mode = "контур"
+expected = 1.0 # Таблица истинности: после истечения данных аварийный выход равен резерву 1.
+tolerance = 0.0 # Дискретное состояние, точное сравнение.
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Та же инъекция с резервом 0.
+paired_finding = { bound = 1, reason_contains = "после подтверждённой инъекции" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "output_fault"
+object = "wire:напряжение"
+mode = "контур"
+expected = 1.0 # Таблица истинности: после истечения данных аварийный выход равен резерву 1.
+tolerance = 0.0 # Дискретное состояние, точное сравнение.
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Та же инъекция с резервом 0.
+paired_finding = { bound = 1, reason_contains = "после подтверждённой инъекции" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "program_identity"
+object = "регулятор"
+mode = "контур"
+expected = 1.0 # Разные байты графа дают разные FNV-1a, проверка на принятой команде.
+tolerance = 0.0
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Отпечаток исходного файла совпадает с допуском.
+paired_finding = { bound = 1, reason_contains = "отпечаток действующего образа" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "drive_overload"
+object = "стенд/источник"
+mode = "контур"
+expected = 1.2223750265783675 # U/R · (1−exp(−4·1 мс / 10 мс)), U = OCV Chen 2020 при SOC 50%.
+tolerance = 0.02 # Оценка сверху поправки на просадку шины, противо-ЭДС и нагрев в 4-мс окне.
+pair_assembly = "control-safe"
+pair_expected = 0.4804922631375132 # Половина U, три такта после появления валидной цели.
+paired_finding = { bound = 1, reason_contains = "в рабочем режиме" }
+
+[[witnesses]]
+assembly = "control-unsafe"
+class = "emergency_stop"
+object = "power:стенд/допуск"
+mode = "контур"
+expected = 0.522335524313519 # 5 тактов +U и затем 2 такта −U: U/R · (2 exp(−0,2) − exp(−0,7) − 1).
+tolerance = 0.012 # Граница поправки на просадку около 0,04 В за первые 5 мс и противо-ЭДС за 7 мс.
+pair_assembly = "control-safe"
+pair_expected = 0.0 # Начальный ток ниже, выбег успевает обнулиться с точностью до противо-ЭДС.
+paired_finding = { bound = 1, reason_contains = "после подтверждённой инъекции" }
+
+[[witnesses]]
+assembly = "battery-depleted"
+class = "battery"
+object = "стенд/источник"
+mode = "контур"
+expected = 2.458363861639222 # Chen 2020 при SOC=0: 2,497664205 − 1·(0,0393 + 0,02551·(1−exp(−0,001/(0,02551·2913,1)))).
+tolerance = 0.00001 # Округление и сдвиг SOC на 1 мА·с при ёмкости 4,85 А·ч за начальный такт.
+pair_assembly = "battery-charged"
+pair_expected = 3.6829623274007206 # Chen 2020 при SOC=50%: 3,707762671 − 1·(0,0248 + поляризация); полином HPPC при SOC=0,5.
+paired_finding = { bound = 1, reason_contains = "в рабочем режиме" }
+
+[[witnesses]]
+assembly = "processes"
+class = "wiring_heat"
+object = "проводник"
+mode = "conductor-hot"
+expected = 301.0 # 300 К + (6/12 А)²·1 Ом·4 мс/(1 мДж/К).
+tolerance = 1e-10 # Округление сумм диссипации на трёх сетках.
+pair_assembly = "processes"
+pair_mode = "conductor-cool"
+pair_metric = "пик температуры проводника"
+pair_expected = 300.04 # 300 К + (6/60 А)²·1 Ом·4 мс/(1 мДж/К).
+
+[[witnesses]]
+assembly = "heat"
+class = "burns"
+object = "поверхность"
+mode = "heat"
+expected = 349.9969593762594 # Ts0 − (Ts0−Tt0)·Ct/(Cs+Ct)·(1−exp[−G·(1/Cs+1/Ct)·61 с]).
+tolerance = 0.00001 # Три первых физические границы до устойчивого контакта меняют температуру не более 10 мкК.
+pair_assembly = "heat-pair"
+pair_mode = "heat-pair"
+pair_expected = 309.9993918752519 # Та же формула с Ts0 = 310 К.
+paired_finding = { bound = 0, reason_contains = "ряд" }
+reject_only = true
+
+[[witnesses]]
+assembly = "dc"
+class = "electric_shock"
+object = "контакт"
+mode = "dc"
+expected = 0.499001996007984 # 500 В / (1 + 1 + 1000) Ом.
+tolerance = 1e-10 # Точность сверки деления.
+pair_assembly = "dc-pair"
+pair_mode = "dc-pair"
+pair_expected = 0.011976047904191617 # 12 В / 1002 Ом.
+paired_finding = { bound = 1, reason_contains = "ряд" }
+reject_only = true
+
+[[witnesses]]
+assembly = "curve-offset"
+class = "measurement"
+object = "отметка блока"
+mode = "curve-offset"
+expected = 0.001025 # 1 мм + |g|·3 мс·1 мс/2 + 10 мкм.
+tolerance = 1e-12 # Округление CSV и суммы четырёх шагов.
+pair_assembly = "curve-pair"
+pair_mode = "curve-pair"
+pair_expected = 0.000025 # Невязка Euler 15 мкм + погрешность 10 мкм.
+paired_finding = { bound = 1, reason_contains = "ряд" }
+reject_only = true
+
+[[reference]]
+run = "01/process"
+mode = "jam"
+samples = 800
+
+[[reference]]
+run = "01/process"
+mode = "water"
+samples = 600
+
+[[reference]]
+run = "01/process"
+mode = "obstacle"
+samples = 800
+
+[[named_failure]]
+run = "01/interaction"
+mode = "compression"
+code = "чрезмерное давление"
+
+[[named_failure]]
+run = "01/interaction"
+mode = "pinch"
+code = "защемление"
+
+[[named_failure]]
+run = "01/interaction"
+mode = "jerk"
+code = "рывок"
+
+[[named_failure]]
+run = "02/interaction"
+mode = "released"
+code = "удержание крепления"
+
+[[named_failure]]
+run = "02/interaction"
+mode = "break"
+code = "целостность трассы"
+
+[[named_failure]]
+run = "03/interaction"
+mode = "heat"
+code = "нагрев опоры"
+
+[[named_failure]]
+run = "04/process"
+mode = "залипание"
+code = "размыкание после возврата"
+
+[[named_failure]]
+run = "06/process"
+mode = "слабый захват"
+code = "Кулонов запас удержания"
+
+# Действия с тем же началом и длительностью уже заданы в проводке режима.
+[[restored_fault]]
+run = "01/control"
+mode = "sensor"
+fault = { node = "sensor:угол", kind = "sensor_unavailable" }
+at_ns = 1000000000
+
+[[restored_fault]]
+run = "01/control"
+mode = "radio"
+fault = { node = "channel:радио", kind = "packet_loss" }
+at_ns = 1000000000
+
+[[restored_fault]]
+run = "01/control"
+mode = "radio"
+fault = { node = "channel:ответ", kind = "packet_loss" }
+at_ns = 1000000000
+
+
+# Применение в коротком опыте и на новых модельных ключах питания.
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "actuator:нажиматель/скважность", kind = "drive_disabled" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "board:плата", kind = "controller_halted" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "controller:питание", kind = "controller_halted" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "power:нажиматель/скважность-power", kind = "power_cut" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "sensor:рычаг/измерение", kind = "sensor_unavailable" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "wire:датчик", kind = "wire_open" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "wire:ключ питания", kind = "wire_open" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "04/ignored-input"
+mode = "контроль"
+fault = { node = "wire:мост", kind = "driver_disabled" }
+at_ns = 30000000
+
+[[restored_fault]]
+run = "05/control"
+mode = "разомкнутый"
+fault = { node = "power:подвес/скважность-power", kind = "power_cut" }
+at_ns = 150000000
+
+[[restored_fault]]
+run = "05/control"
+mode = "слежение"
+fault = { node = "power:подвес/скважность-power", kind = "power_cut" }
+at_ns = 150000000
+
+[[restored_fault]]
+run = "07/control"
+mode = "разомкнутый"
+fault = { node = "power:тележка/момент_левое-power", kind = "power_cut" }
+at_ns = 300000000
+
+[[restored_fault]]
+run = "07/control"
+mode = "удержание"
+fault = { node = "power:тележка/момент_левое-power", kind = "power_cut" }
+at_ns = 300000000
+
+[[restored_fault]]
+run = "07/control"
+mode = "разомкнутый"
+fault = { node = "power:тележка/момент_правое-power", kind = "power_cut" }
+at_ns = 300000000
+
+[[restored_fault]]
+run = "07/control"
+mode = "удержание"
+fault = { node = "power:тележка/момент_правое-power", kind = "power_cut" }
+at_ns = 300000000
+
+[independent]
+run = "02/interaction"
+mode = "nominal"
+repeat = "02/independent"
+repeat_mode = "independent"
+measurements = ["провис", "разгрузка", "длина в нейтрали", "кинематика"]
+tolerance = 1e-9 # Допуск стадии 5 для той же геометрии и временной сетки.
+
+[corpus]
+# Реестр учитывает дополнительные классы условий доказательства. Инвентарь,
+# полнота исполнения и общий критерий постановки не являются опасностью корпуса.
+open = ["tissue_load", "ingress"]
+
+[corpus.gaps.tissue_load]
+orientation_limit = 140 # Н, ISO/TS 15066, таблица A.2, область 8, квазистатический режим.
+source = "https://files.infocentre.io/files/docs_clients/126_2007938440_3134709_ISO_TS%2015066_2016.pdf"
+applicability = "Сила 140 Н для квазистатического контакта с грудиной в коллаборативной робототехнике, порог боли в заданном опыте. Нужны соответствие геометрии и площади, длительности и популяции."
+measurement = "Калиброванные сила и карта давления во времени на привязанном к области имитаторе, площадь и геометрия пятна, длительность и повторы."
+
+[corpus.gaps.ingress]
+source = "https://law.resource.org/pub/in/bis/S05/is.iec.60529.2001.pdf"
+applicability = "IEC 60529 IPX7, §14.2.7 и §14.3: 30 мин полной иммерсии в рабочем положении. При высоте корпуса менее 850 мм нижняя точка на глубине 1 м; иначе верхняя точка на 0,15 м. Критерий вредного проникновения, единый предел объёма отсутствует."
+measurement = "Испытание оболочки IPX7: объём и место проникновения, состояние изоляции и соединений после заданного перепада давления и выдержки."

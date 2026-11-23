@@ -1,0 +1,74 @@
+# Паспортные значения перенесены из sim-actuators.
+# Режим выбран для модели; настройки регулятора и монтажа задаются отдельно.
+id = "cubemars-ak60-6"
+name = "CubeMars AK60-6 V1.1 KV140"
+what_is = "Компактный быстрый привод 6:1 на 24 В для лёгких звеньев; груз без питания не держит."
+kind = "bldc"
+legacy_class = "qdd"
+mode = "current"
+inertia = "internal"
+backdrive = "reversible"
+brake = "unknown"
+stop = "unknown"
+magnet = "unknown"
+builtin_driver = "builtin-cubemars-ak60"
+backdrive_torque_nm = { value = 0.2, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+sources = ["CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html"]
+caveats = ["Страница смешивает KV80 и KV140: 320 об/мин относится к KV80 (24·80/6).", "Тепловое сопротивление и предел обмотки не опубликованы."]
+
+[parameters]
+voltage_nominal_v = { value = 24.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+voltage_min_v = { unknown = true, bench = "понижать напряжение шины под нагрузкой до порога отключения" }
+voltage_max_v = { value = 24.0, source = "datasheet", reference = "CubeMars: номинальное напряжение 24 В" }
+rated_torque_nm = { value = 3.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+peak_torque_nm = { value = 9.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+no_load_speed_rpm = { value = 560.0, source = "datasheet", reference = "CubeMars, таблица сравнения, KV140" }
+rated_speed_rpm = { value = 420.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+no_load_current_a = { unknown = true, bench = "измерить ток при номинальном напряжении без нагрузки" }
+stall_current_a = { unknown = true, bench = "измерить кратковременный ток при блокировке выхода и данном напряжении" }
+rated_current_a = { value = 6.5, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+peak_current_a = { value = 22.7, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+standby_current_a = { unknown = true, bench = "измерить ток питания при покоящемся валу" }
+resistance_ohm = { value = 0.202, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+inductance_h = { value = 0.000138, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+kt_motor_nm_per_a = { value = 0.078, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+ke_motor_v_s = { value = 0.0716197243913529, source = "datasheet", reference = "CubeMars: K_e = 7.5 В/1000 об/мин" }
+kv_rpm_per_v = { value = 140.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+gear_ratio = { value = 6.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+gear_efficiency = { unknown = true, bench = "измерить механическую мощность на входе и выходе при прямом потоке" }
+rotor_inertia_kg_m2 = { value = 2.435e-5, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+gear_input_inertia_kg_m2 = { unknown = true, bench = "снять ускорение входа передачи от известного момента" }
+mass_kg = { value = 0.368, source = "datasheet", reference = "CubeMars: 368 г в таблице (в тексте ~358 г, берём большее)" }
+r_th_winding_housing_k_per_w = { unknown = true, bench = "оценить по перепаду обмотка–корпус при известной тепловой мощности" }
+r_th_housing_ambient_k_per_w = { unknown = true, bench = "оценить по перепаду корпус–среда при известной тепловой мощности" }
+tau_winding_s = { unknown = true, bench = "фитировать два узла по переходу температуры обмотки при ступени мощности" }
+tau_housing_s = { unknown = true, bench = "фитировать два узла по переходу температуры корпуса при ступени мощности" }
+r_th_total_k_per_w = { unknown = true, bench = "измерить установившийся перепад обмотка–среда при известной мощности" }
+max_winding_temp_c = { unknown = true, bench = "уточнить предел по классу изоляции и порогу тепловой защиты" }
+min_ambient_c = { value = -20.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+max_ambient_c = { value = 50.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+heated_phases = { value = 1.0, source = "derived", reference = "Число одновременно нагреваемых обмоток в исходной модели sim-actuators; не измерение" }
+stepper_pole_pairs = { unknown = true, bench = "посчитать периоды противо-ЭДС за оборот" }
+supply_v = { value = 24.0, source = "datasheet", reference = "CubeMars AK60-6 V1.1: https://www.cubemars.com/goods-1142-AK60-6+V11.html" }
+current_limit_a = { unknown = true, bench = "снять уставку ограничителя тока драйвера по осциллограмме" }
+motor_constant = { unknown = true, bench = "снять момент на ток и ЭДС на скорость в одной энергетической системе единиц" }
+resistance_ref_c = { value = 25.0, source = "derived", reference = "Температура приведения R по контракту Actuator::resistance_ohm" }
+resistance_alpha_per_k = { unknown = true, bench = "снять сопротивление обмотки при двух известных температурах" }
+ambient_c = { unknown = true, bench = "измерить температуру среды у корпуса" }
+winding_loss_fraction = { unknown = true, bench = "идентифицировать долю тепла двигателя в обмотке по нагреву холостого хода" }
+gear_loss_to_housing_fraction = { unknown = true, bench = "измерить тепловой поток от передачи к корпусу привода" }
+backward_efficiency = { unknown = true, bench = "нагрузить передачу с выхода и замерить мощности на обеих сторонах" }
+coulomb_nm = { unknown = true, bench = "снять постоянную составляющую момента трения после страгивания" }
+viscous_nm_per_rad_s = { unknown = true, bench = "снять наклон момента трения по скорости" }
+static_friction_nm = { unknown = true, bench = "медленно повышать момент на валу до страгивания" }
+stribeck_rad_s = { unknown = true, bench = "снять кривую трения на малых скоростях после страгивания" }
+friction_band_rad_s = { unknown = true, bench = "снять разрешение скоростного стенда и проверить сходимость полосы регуляризации" }
+backlash = { unknown = true, bench = "измерить полный свободный ход выхода между двумя нагруженными зубьями" }
+coupling_stiffness = { unknown = true, bench = "замерить наклон сила–перемещение или момент–угол при зацеплении" }
+coupling_damping = { unknown = true, bench = "снять затухание от ступенчатого смещения передачи" }
+stop_min = { unknown = true, bench = "медленно подвезти выход к нижнему механическому упору и измерить координату" }
+stop_max = { unknown = true, bench = "медленно подвезти выход к верхнему механическому упору и измерить координату" }
+stop_stiffness = { unknown = true, bench = "измерить жёсткость контакта упора" }
+stop_damping = { unknown = true, bench = "идентифицировать затухание при контролируемом ударе об упор" }
+control_hz = { unknown = true, bench = "измерить период внутренних обновлений по реакции на серию меток" }
+bus_delay_s = { unknown = true, bench = "синхронно записать момент передачи и момент принятия команды" }

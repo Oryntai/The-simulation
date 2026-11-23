@@ -1,0 +1,17 @@
+version = 1
+kind = "spi"
+unit = "rad"
+codes = 16384
+# Полный оборот 2π рад в f64.
+period = 6.283185307179586
+mode = 1
+address = 0x3fff
+clear_error = 0x0001
+nop = 0x0000
+mask = 0x3fff
+read_bit = 0x4000
+parity_bit = 0x8000
+error_bit = 0x4000
+# Начальный результат NOP в модели; первое слово в новом сеансе игнорируется.
+initial_word = 0x0000
+source = "ams AS5048A/AS5048B DS000298, SPI Interface; https://look.ams-osram.com/m/287d7ad97d1ca22e/original/AS5048-DS000298%20Datasheet"

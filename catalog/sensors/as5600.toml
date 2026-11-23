@@ -1,0 +1,76 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "as5600"
+kind = "encoder"
+name = "AS5600"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "°"
+caveats = ["Точность ±1° — без смещения магнита; при смещении хуже."]
+current_peak_a = "unknown"
+interface = "I²C, ШИМ, аналоговый"
+kind = "angle"
+range_unit = "°"
+resolution_unit = "°"
+sources = ["ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"]
+what_is = "Магнитный датчик угла: читает поворот магнитика на валу без контакта."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "ams: нелинейность ±1° без смещения магнита"
+value = 1.0
+
+[passport.current_a]
+provenance = "datasheet"
+source = "ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 0.0065
+
+[passport.range_max]
+provenance = "datasheet"
+source = "ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 360.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 0.0
+
+[passport.resolution]
+provenance = "derived"
+source = "12 бит на 360°"
+value = 0.087890625
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 3.6
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 3.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 5.5
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ams AS5600 v1-06: https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+value = 4.5

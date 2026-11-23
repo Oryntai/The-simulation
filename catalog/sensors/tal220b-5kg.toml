@@ -1,0 +1,71 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "tal220b-5kg"
+kind = "force"
+name = "Тензодатчик TAL220B 5 кг"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "% ПШ"
+caveats = [
+    "Выход 1.0 ± 0.1 мВ/В: в листинге опечатка «1.0V ± 0.1V».",
+    "Безопасная перегрузка в доступных данных не указана.",
+]
+interface = "аналоговый мост, через HX711"
+kind = "load_cell"
+range_unit = "кг"
+resolution = "unknown"
+resolution_unit = ""
+sources = [
+    "TAL220B, листинг Little Bird: https://littlebirdelectronics.com.au/products/load-cell-5kg-straight-bar-tal220b",
+    "SparkFun SEN-14729: https://www.sparkfun.com/load-cell-5kg-straight-bar-tal220b.html",
+    "DigiKey, SparkFun 14729: https://www.digikey.cn/en/products/detail/sparkfun-electronics/14729/9555603",
+]
+what_is = "Алюминиевая балка с тензомостом: точно меряет вес и усилие, читается через HX711."
+
+[passport.accuracy]
+provenance = "vendor"
+source = "DigiKey, SparkFun 14729: https://www.digikey.cn/en/products/detail/sparkfun-electronics/14729/9555603"
+value = 0.05
+
+[passport.current_a]
+provenance = "derived"
+source = "5 В / 1000 Ом входного сопротивления моста"
+value = 0.005
+
+[passport.current_peak_a]
+provenance = "derived"
+source = "10 В / 1000 Ом, наибольшее возбуждение"
+value = 0.01
+
+[passport.range_max]
+provenance = "datasheet"
+source = "SparkFun SEN-14729: https://www.sparkfun.com/load-cell-5kg-straight-bar-tal220b.html"
+value = 5.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "SparkFun SEN-14729: https://www.sparkfun.com/load-cell-5kg-straight-bar-tal220b.html"
+value = 0.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): TAL220B, листинг Little Bird: https://littlebirdelectronics.com.au/products/load-cell-5kg-straight-bar-tal220b; SparkFun SEN-14729: https://www.sparkfun.com/load-cell-5kg-straight-bar-tal220b.html; DigiKey, SparkFun 14729: https://www.digikey.cn/en/products/detail/sparkfun-electronics/14729/9555603"
+value = 10.0
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): TAL220B, листинг Little Bird: https://littlebirdelectronics.com.au/products/load-cell-5kg-straight-bar-tal220b; SparkFun SEN-14729: https://www.sparkfun.com/load-cell-5kg-straight-bar-tal220b.html; DigiKey, SparkFun 14729: https://www.digikey.cn/en/products/detail/sparkfun-electronics/14729/9555603"
+value = 3.0

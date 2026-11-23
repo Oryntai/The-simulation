@@ -1,0 +1,14 @@
+version = 1
+source = "Пары нейтральных опытов по спецификациям условных стендов этапа 4."
+
+[cases]
+edge = "../../stage4-processes/edge.toml"
+edge-sharp = { file = "../../stage4-processes/edge.toml", overlay = "edge-sharp.toml" }
+spring = "../../stage4-processes/spring.toml"
+spring-energy = { file = "../../stage4-processes/spring.toml", overlay = "spring-energy.toml" }
+circuit-fault = "circuit.toml"
+circuit-normal = { file = "circuit.toml", overlay = "circuit-normal.toml" }
+thread-normal = { file = "../../stage4-processes/thread.toml", overlay = "thread-normal.toml" }
+thread-strip = { file = "../../stage4-processes/thread.toml", overlay = "thread-strip.toml" }
+conductor-hot = "conductor-hot.toml"
+conductor-cool = { file = "conductor-hot.toml", overlay = "conductor-cool.toml" }

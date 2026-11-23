@@ -1,0 +1,9 @@
+version = 1
+kind = "i2c"
+unit = "rad"
+address = 0x36
+codes = 4096
+# Полный оборот 2π рад в f64.
+period = 6.283185307179586
+word_registers = [0x0c, 0x0e]
+source = "ams AS5600 DS000365, Register Description и I²C Interface; https://look.ams-osram.com/m/dea9085545cea895/original/AS5600_AB-POT_UG000378_1-00.pdf"

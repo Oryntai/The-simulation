@@ -1,0 +1,21 @@
+[routes."тяга".length.at_zero_m]
+value = 0.35125227570934164
+# Увеличение свободной длины на 80 мм делает трассу свободной в контрольном опыте.
+
+[[checks]]
+id = "кинематика"
+bounds = [0.015, 0.8]
+source = "То же стендовое задание 0,18 рад."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/намерение", "statistic" = "span", "quantity" = "position" }
+
+[[checks]]
+id = "свободная трасса"
+bounds = [0, 1e-10]
+source = "Проверка отсутствия тяги в удлинённой трассе."
+min_samples = 5
+
+
+metric = { "kind" = "tension", "route" = "тяга" }

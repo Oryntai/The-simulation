@@ -1,0 +1,13 @@
+[package]
+name = "sim-human"
+description = "Человек под нагрузкой: мышцы плеча, локтя и спины, динамика подъёма, усталость, разброс людей"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-core.workspace = true
+sim-mujoco.workspace = true
+sim-verify.workspace = true

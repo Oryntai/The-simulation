@@ -1,0 +1,15 @@
+format = 3
+name = "Блок со свободной осью"
+# Единичная инерция и положения выбраны для независимого расчёта.
+[[links]]
+name = "опора"
+joint = { kind = "fixed" }
+mounts = [{ name = "стык", kind = "mechanical", interface = "осевая посадка" }]
+mass = { kind = "massless" }
+
+[[links]]
+name = "блок"
+collision = [{ shape = { kind = "sphere", radius_m = 0.05 } }]
+joint = { kind = "slide", name = "ход", axis = [1, 0, 0], efforts = [{ name = "нажим", dof = 0 }], damping = 0, friction_loss = 0, armature = 0 }
+mounts = [{ name = "стык", kind = "mechanical", interface = "осевая посадка" }]
+mass = { kind = "explicit", mass_kg = 1, com_m = [0, 0, 0], inertia_kg_m2 = [1, 1, 1, 0, 0, 0], provenance = { estimate = "Единичные масса и инерция синтетической задачи. Измерения детали отсутствуют." } }

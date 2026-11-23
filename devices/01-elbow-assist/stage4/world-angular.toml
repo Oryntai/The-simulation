@@ -1,0 +1,17 @@
+# Вращательная ось с той же инерцией и начальной позой, без тел геометрического упора.
+# Шаг 25 мкс и гравитация совпадают с эталонным контуром golden/exo_loop.
+format = 3
+name = "Контрольное устройство 1"
+seed = 1
+physics_hz = 40000
+gravity_m_s2 = [0.0, 0.0, -9.80665]
+
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+
+[[devices]]
+name = "устройство"
+file = "impact-device.toml"
+

@@ -1,0 +1,18 @@
+world = "../stage6/corpus/thread-world.toml"
+hazard_witnesses = [{ class = "thread_failure", object = "стык", criterion = "невязка резьбы" }]
+
+[[criteria]]
+name = "невязка резьбы"
+series = { measurement = "стык/elastic_error" }
+unit = "m"
+statistic = "maximum"
+upper = { value = 5e-06, source = { datasheet = "Ограничение упругой невязки из паспорта синтетической резьбы." } }
+tolerance = { value = 0.000004, source = { datasheet = "Допуск осевой реакции 0,004 Н при k=1000 Н/м из исходной численной сверки." } }
+remainder = [
+  { value = 0.000001, source = { datasheet = "Остаток 0,001 Н при k=1000 Н/м из исходной сверки." } },
+  { value = 0, source = { datasheet = "Один решатель, контакт с поверхностями отсутствует." } },
+  { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } },
+]
+
+[models."стык".law.parameters]
+maximum_elastic_error_m = { value = 5e-06, source = { datasheet = "Ограничение упругой невязки из паспорта синтетической резьбы." } }

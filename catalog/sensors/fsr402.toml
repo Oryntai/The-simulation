@@ -1,0 +1,48 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "fsr402"
+kind = "touch"
+name = "FSR 402"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "%"
+caveats = [
+    "Не прибор для измерения силы: гистерезис +10 %, дрейф под нагрузкой.",
+    "Ток задаёт внешний делитель, питание паспорт не нормирует.",
+]
+current_a = "unknown"
+current_peak_a = "unknown"
+interface = "аналоговый делитель"
+kind = "force_resistor"
+range_unit = "Н"
+resolution = "unknown"
+resolution_unit = ""
+sources = ["Interlink FSR 400 Series: https://www.teachengineering.org/content/uconn_/activities/uconn-2662-contractions-calculations-force-resistance-activity/uconn-2662-contractions-calculations-FSR400series-datasheet.pdf"]
+supply_ranges = []
+what_is = "Плёночная кнопка-датчик: сопротивление падает при нажатии, годится для «есть касание»."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "Interlink: ±6 % от детали к детали в одной партии"
+value = 6.0
+
+[passport.range_max]
+provenance = "datasheet"
+source = "Interlink FSR 400 Series: https://www.teachengineering.org/content/uconn_/activities/uconn-2662-contractions-calculations-force-resistance-activity/uconn-2662-contractions-calculations-FSR400series-datasheet.pdf"
+value = 20.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "Interlink FSR 400 Series: https://www.teachengineering.org/content/uconn_/activities/uconn-2662-contractions-calculations-force-resistance-activity/uconn-2662-contractions-calculations-FSR400series-datasheet.pdf"
+value = 0.2

@@ -1,0 +1,8 @@
+version = 1
+[[entries]]
+materials = ["опора", "образец"]
+
+[entries.normal]
+kind = "spring_damper"
+stiffness_n_m = { value = 1000, source = { datasheet = "Заданный линейный нормальный закон численного опыта." } }
+damping_ns_m = { value = 60, source = { datasheet = "Численный закон, затухание близко к критическому для приведённой массы стенда." } }

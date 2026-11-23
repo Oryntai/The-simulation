@@ -1,0 +1,18 @@
+version = 1
+snapshot_ns = 2000000 # Середина наблюдения.
+
+[[paths]]
+station = "stand"
+mode = "observation"
+path = "support"
+source = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." }
+grids = [{ id = "base", hz = 1000, source = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." } }]
+
+[[checks]]
+class = "fall"
+object = "стойка/блок"
+window = { start_ns = 0, end_ns = 4000000, max_gap_ns = 1000000 }
+applicability = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." }
+scope = "Высота свободного блока: выход из разрешённого вертикального зазора 50 мкм."
+inputs = [{ kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." }]
+verification = { kind = "truth", limit = { kind = "range", signal = { name = "qpos[2]", unit = "m" }, min = 0.01995, source = { kind = "datasheet", reference = "Синтетический стенд: масса 2 кг, g=10 м/с², начальная высота 20 мм и зазор 50 мкм." } } }

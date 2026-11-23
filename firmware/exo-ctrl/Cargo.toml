@@ -1,0 +1,15 @@
+[package]
+name = "exo-ctrl"
+description = "Контроллер локтевого экзоскелета: токовый контур 10 кГц, позиция/гравитационная поддержка 1 кГц, защиты, радиопротокол"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "exo-ctrl"
+test = false
+bench = false
+
+[dependencies]
+vmcu-hal = { path = "../vmcu-hal" }

@@ -1,0 +1,24 @@
+# Прошивки для виртуального МК VMCU-C3 (sim-mcu). Отдельный workspace: собирается
+# под riscv32imc-unknown-none-elf (см. .cargo/config.toml), хостовый workspace его
+# исключает. Внешних зависимостей нет — только core.
+[workspace]
+resolver = "3"
+members = ["vmcu-hal", "selftest-core", "selftest", "exo-ctrl"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+incremental = false
+
+[profile.dev]
+opt-level = "s"
+panic = "abort"

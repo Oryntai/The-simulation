@@ -1,0 +1,26 @@
+version = 1
+
+[[entries]]
+materials = ["шток", "пластина"]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 250000.0, source = { estimate = "Численный стенд, ω=500 рад/с и ζ=0.5; нужна идентификация контакта." } }
+damping_per_s = { value = 500.0, source = { estimate = "Численный стенд, ω=500 рад/с и ζ=0.5; нужна идентификация контакта." } }
+
+[[entries]]
+materials = ["инструмент", "стенд"]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Численный стенд, ω=400 рад/с и ζ=0.5; нужна идентификация контакта." } }
+damping_per_s = { value = 400.0, source = { estimate = "Численный стенд, ω=400 рад/с и ζ=0.5; нужна идентификация контакта." } }
+
+[[entries]]
+materials = ["накладка", "образец"]
+sliding = [{ value = 0.6, source = { estimate = "Численный стенд, ω=400 рад/с и ζ=0.5; коэффициент трения стендовая гипотеза." } }, { value = 0.6, source = { estimate = "Численный стенд, ω=400 рад/с и ζ=0.5; коэффициент трения стендовая гипотеза." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Численный стенд, ω=400 рад/с и ζ=0.5; коэффициент трения стендовая гипотеза." } }
+damping_per_s = { value = 400.0, source = { estimate = "Численный стенд, ω=400 рад/с и ζ=0.5; коэффициент трения стендовая гипотеза." } }

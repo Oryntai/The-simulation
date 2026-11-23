@@ -1,0 +1,17 @@
+[package]
+name = "sim-mujoco"
+description = "Привязка к MuJoCo (C API): загрузка MJCF-моделей тела, кинематика, мышцы, сухожилия"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+# Через `links` зависимые crate получают путь к mujoco.framework (DEP_MUJOCO_FRAMEWORK_DIR),
+# чтобы прописать rpath своим программам и тестам.
+links = "mujoco"
+
+[dependencies]
+nalgebra.workspace = true
+sim-core.workspace = true
+
+[build-dependencies]
+bindgen = "0.73"

@@ -1,0 +1,96 @@
+version = 1
+[[controller]]
+name = "регулятор"
+kind = "builtin"
+rate_hz = 250
+program = "controller.toml"
+source = "T = 4 мс, такт BMI270 в closed-device.toml."
+
+[[input]]
+controller = "регулятор"
+signal = "тележка/иму/x"
+unit = "m/s^2"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "тележка/иму/z"
+unit = "m/s^2"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "тележка/иму/gy"
+unit = "rad/s"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "колесо/скорость левого"
+unit = "rad/s"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "колесо/скорость правого"
+unit = "rad/s"
+kind = "scalar"
+max_age_ns = 8000000
+source = "Срок два такта измерения по 4 мс."
+
+[[output]]
+name = "мост левое"
+controller = "регулятор"
+target = "тележка/момент_левое"
+target_kind = "drive"
+unit = "1"
+ack = "тележка/мотор_левое/accepted_command"
+max_age_ns = 8000000
+fallback = 0
+source = "Нормированная команда моста, ноль при потере измерения."
+
+[[output]]
+name = "мост правое"
+controller = "регулятор"
+target = "тележка/момент_правое"
+target_kind = "drive"
+unit = "1"
+ack = "тележка/мотор_правое/accepted_command"
+max_age_ns = 8000000
+fallback = 0
+source = "Нормированная команда моста, ноль при потере измерения."
+
+[[controller]]
+name = "питание"
+kind = "builtin"
+rate_hz = 1000
+program = "stage6-power.toml"
+source = "Идеальный ключ стабилизированной шины. Шаг управления 1 мс соответствует допускаемой дискретности журнала модели."
+
+[[output]]
+name = "разрешение момент_левое"
+controller = "питание"
+target = "тележка/момент_левое-power"
+target_kind = "power"
+unit = "bool"
+max_age_ns = 2000000
+fallback = 0
+source = "Ключ данного привода, срок два такта ключа, при просрочке модель снимает питание."
+
+[[output]]
+name = "разрешение момент_правое"
+controller = "питание"
+target = "тележка/момент_правое-power"
+target_kind = "power"
+unit = "bool"
+max_age_ns = 2000000
+fallback = 0
+source = "Ключ данного привода, срок два такта ключа, при просрочке модель снимает питание."

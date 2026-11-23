@@ -1,0 +1,22 @@
+format = 3
+name = "Рычаг и блок в лотке"
+seed = 42
+# Шаг 1 мс. Горизонтальный опыт, трение направляющей задали вязким.
+physics_hz = 1000
+gravity_m_s2 = [0,0,0]
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0,0,0]
+[[environment.collision]]
+# Передняя плоскость Y=65 мм, центр блока у лотка Y=56 мм.
+shape = { kind = "box", size_m = [0.2,0.02,0.04] }
+pose = { position_m = [0.1,0.075,0] }
+contact_mask = [4, 2]
+[[devices]]
+name = "рычаг"
+file = "lever.toml"
+[[devices]]
+name = "блок"
+file = "carriage.toml"
+pose = { position_m = [0.1,0.025,0] }

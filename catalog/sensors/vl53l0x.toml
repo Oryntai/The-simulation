@@ -1,0 +1,63 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "vl53l0x"
+kind = "rangefinder"
+name = "VL53L0X"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "%"
+caveats = [
+    "Минимальная дальность в паспорте не указана.",
+    "Точность сильно зависит от цвета цели и освещения.",
+]
+interface = "I²C"
+kind = "distance"
+range_min = "unknown"
+range_unit = "м"
+resolution = "unknown"
+resolution_unit = ""
+sources = ["ST VL53L0X DS11555 Rev 6: https://www.st.com/resource/en/datasheet/vl53l0x.pdf"]
+what_is = "Лазерный дальномер по времени пролёта, до 2 м в темноте."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "ST, табл. 12: до 12 % для серой цели на улице при 33 мс"
+value = 12.0
+
+[passport.current_a]
+provenance = "datasheet"
+source = "ST: среднее при измерении, бюджет 33 мс"
+value = 0.019
+
+[passport.current_peak_a]
+provenance = "datasheet"
+source = "ST: пик вместе с лазером"
+value = 0.04
+
+[passport.range_max]
+provenance = "datasheet"
+source = "ST: до 2 м, режим long range, только в темноте"
+value = 2.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ST VL53L0X DS11555 Rev 6: https://www.st.com/resource/en/datasheet/vl53l0x.pdf"
+value = 3.5
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): ST VL53L0X DS11555 Rev 6: https://www.st.com/resource/en/datasheet/vl53l0x.pdf"
+value = 2.6

@@ -1,0 +1,16 @@
+[package]
+name = "sim-battery"
+description = "Безопасность батареи: короткое замыкание, провода, предохранители, BMS, перегрев"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-verify.workspace = true
+# Единый порог ожога ISO 13732-1 и корреляции теплоотдачи: дублировать таблицы нельзя.
+sim-env.workspace = true
+
+[dev-dependencies]
+# Только для теста согласованности каталога с моделью ячейки LG M50.
+sim-circuit.workspace = true

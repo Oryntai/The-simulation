@@ -1,0 +1,185 @@
+# Корпус на свободном основании, начало кадра на оси колёс. Размеры — оценка компоновки.
+format = 3
+name = "Балансирующая тележка"
+
+[[links]]
+name = "корпус"
+
+[links.joint]
+kind = "free"
+name = "основание"
+# Внешний возмущающий момент вокруг поперечной оси, свободен от регулятора.
+efforts = [{ name = "возмущение", dof = 4 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.8
+com_m = [0.0, 0.0, 0.09]
+# Брусок 0.10 × 0.06 × 0.18 м: I = m(a² + b²)/12.
+inertia_kg_m2 = [0.00240, 0.00283, 0.00091, 0.0, 0.0, 0.0]
+provenance = { estimate = "масса и размеры компоновки, не взвешено" }
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.10, 0.06, 0.18] }
+pose = { position_m = [0.0, 0.0, 0.09] }
+
+[[links.visual]]
+shape = { kind = "box", size_m = [0.10, 0.06, 0.18] }
+pose = { position_m = [0.0, 0.0, 0.09] }
+
+[[links]]
+name = "левое"
+parent = "корпус"
+pose = { position_m = [0.0, 0.05, 0.0] }
+
+[links.joint]
+kind = "hinge"
+axis = [0.0, 1.0, 0.0]
+damping = 0.001
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "момент_левое", dof = 0 }, { name = "момент_левое-power", dof = 0 }]
+
+[links.mass]
+kind = "geometry"
+material = { name = "PETG", density_kg_m3 = 1270.0, provenance = { estimate = "типовая плотность PETG, заменить паспортом филамента" } }
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+friction = [0.8, 0.005, 0.0001]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+
+[[links]]
+name = "правое"
+parent = "корпус"
+pose = { position_m = [0.0, -0.05, 0.0] }
+
+[links.joint]
+kind = "hinge"
+axis = [0.0, 1.0, 0.0]
+damping = 0.001
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "момент_правое", dof = 0 }, { name = "момент_правое-power", dof = 0 }]
+
+[links.mass]
+kind = "geometry"
+material = { name = "PETG", density_kg_m3 = 1270.0, provenance = { estimate = "типовая плотность PETG, заменить паспортом филамента" } }
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+friction = [0.8, 0.005, 0.0001]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.02 }
+pose = { rpy_deg = [90.0, 0.0, 0.0] }
+
+[[drives]]
+name = "мотор_левое"
+part = "n20-100-6v-hp-switched"
+effort = "момент_левое"
+
+[drives.params]
+# Паспорт Pololu #2214 (catalog/drives/n20-100-6v-hp.toml): U=6 В, R=3.75 Ом,
+# ω0=310 об/мин, I0=0.10 A, Istall=1.60 A, Tstall=0.16671305 Н·м, N=100.37.
+# Предел стенда равен экстраполированному Istall, аппаратная защита неизвестна.
+current_limit_a = 1.6
+# Аналог maxon DCX 6 M, обмотка 4.5 В: L=R·0.0711 мГн/20.8 Ом, Jрот=0.0179 г·см².
+# https://www.maxongroup.com/medias/sys_master/root/8881015652382/EN-21-085.pdf
+inductance_h = 1.2818509615384614e-5
+rotor_inertia_kg_m2 = 1.79e-9
+gear_input_inertia_kg_m2 = 0.0 # Неизвестная инерция ступеней опущена.
+# k=(U−R·I0)/(N·ω0). η=Tstall/(Istall·k·N), обратный КПД принят равным прямому.
+motor_constant = 0.0017263477807439786
+gear_efficiency = 0.6013362698986661
+backward_efficiency = 0.6013362698986661
+# B=k·I0/(N·ω0). Сухое трение в этом опыте отключено. Остальные масштабы Nω0
+# при этом не влияют на результат.
+viscous_nm_per_rad_s = 5.2982696179193964e-8
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 3258.323764621678
+friction_band_rad_s = 3258.323764621678
+# Механика стенда: нулевой люфт для опыта, прогиб 2° при Tstall,
+# K = Tstall/radians(2). c=2ζ√(K·Jприв), ζ=1/√2, Jприв ≈ 6e−6 кг·м².
+# Условия требуют измерения люфта и жёсткости физической пары.
+backlash = 0.0
+coupling_stiffness = 4.775977077376735
+coupling_damping = 0.0076
+# Идеальный мост принимает CSV на сетке физики без задержки шины.
+control_hz = 250000.0
+bus_delay_s = 0.0
+
+
+[[drives]]
+name = "мотор_правое"
+part = "n20-100-6v-hp-switched"
+effort = "момент_правое"
+
+[drives.params]
+# Паспорт Pololu #2214 (catalog/drives/n20-100-6v-hp.toml): U=6 В, R=3.75 Ом,
+# ω0=310 об/мин, I0=0.10 A, Istall=1.60 A, Tstall=0.16671305 Н·м, N=100.37.
+# Предел стенда равен экстраполированному Istall, аппаратная защита неизвестна.
+current_limit_a = 1.6
+# Аналог maxon DCX 6 M, обмотка 4.5 В: L=R·0.0711 мГн/20.8 Ом, Jрот=0.0179 г·см².
+# https://www.maxongroup.com/medias/sys_master/root/8881015652382/EN-21-085.pdf
+inductance_h = 1.2818509615384614e-5
+rotor_inertia_kg_m2 = 1.79e-9
+gear_input_inertia_kg_m2 = 0.0 # Неизвестная инерция ступеней опущена.
+# k=(U−R·I0)/(N·ω0). η=Tstall/(Istall·k·N), обратный КПД принят равным прямому.
+motor_constant = 0.0017263477807439786
+gear_efficiency = 0.6013362698986661
+backward_efficiency = 0.6013362698986661
+# B=k·I0/(N·ω0). Сухое трение в этом опыте отключено. Остальные масштабы Nω0
+# при этом не влияют на результат.
+viscous_nm_per_rad_s = 5.2982696179193964e-8
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 3258.323764621678
+friction_band_rad_s = 3258.323764621678
+# Механика стенда: нулевой люфт для опыта, прогиб 2° при Tstall,
+# K = Tstall/radians(2). c=2ζ√(K·Jприв), ζ=1/√2, Jприв ≈ 6e−6 кг·м².
+# Условия требуют измерения люфта и жёсткости физической пары.
+backlash = 0.0
+coupling_stiffness = 4.775977077376735
+coupling_damping = 0.0076
+# Идеальный мост принимает CSV на сетке физики без задержки шины.
+control_hz = 250000.0
+bus_delay_s = 0.0
+
+
+[[sensors]]
+name = "иму"
+part = "bmi270"
+link = "корпус"
+
+[sensors.params]
+# Идеализированный режим считывания BMI270. Такт 4 мс совпадает с
+# целым числом шагов физики. Модель акселерометра вычисляет a−g.
+rate_hz = 250.0
+latency_s = 0.0
+bias = 0.0
+noise_std = 0.0
+drift_per_s = 0.0
+drift_rw_std = 0.0
+drop_probability = 0.0
+quantum = 0.0
+fault = 0.0
+saturation = 0.0
+gyro_bias = 0.0
+gyro_noise_std = 0.0
+gyro_drift_per_s = 0.0
+gyro_drift_rw_std = 0.0
+gyro_quantum = 0.0
+gyro_saturation = 0.0
+mount_dx_m = 0.0
+mount_dy_m = 0.0
+mount_dz_m = 0.0
+mount_roll_rad = 0.0
+mount_pitch_rad = 0.0
+mount_yaw_rad = 0.0

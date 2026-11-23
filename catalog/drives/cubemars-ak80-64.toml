@@ -1,0 +1,74 @@
+# Паспортные значения перенесены из sim-actuators.
+# Режим выбран для модели; настройки регулятора и монтажа задаются отдельно.
+id = "cubemars-ak80-64"
+name = "CubeMars AK80-64 KV80"
+what_is = "Готовый сустав: мотор, планетарный редуктор 64:1 и драйвер в одном корпусе, 48 Н·м длительно."
+kind = "bldc"
+legacy_class = "qdd"
+mode = "current"
+inertia = "internal"
+backdrive = "reversible"
+brake = "unknown"
+stop = "unknown"
+magnet = "unknown"
+builtin_driver = "builtin-cubemars-ak80"
+backdrive_torque_nm = { value = 4.7, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+sources = ["CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html"]
+caveats = ["Тепловые сопротивления и постоянные времени производитель не публикует. В sim-em для них есть оценки.", "Скорость 75 об/мин при 48 В не следует из K_t и K_v; расчёт идёт по меньшей скорости."]
+
+[parameters]
+voltage_nominal_v = { value = 48.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+voltage_min_v = { value = 24.0, source = "datasheet", reference = "CubeMars: рабочие напряжения 24/48 В" }
+voltage_max_v = { value = 48.0, source = "datasheet", reference = "CubeMars: рабочие напряжения 24/48 В" }
+rated_torque_nm = { value = 48.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+peak_torque_nm = { value = 120.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+no_load_speed_rpm = { value = 75.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+rated_speed_rpm = { value = 48.0, source = "datasheet", reference = "CubeMars: 23/48 об/мин при 24/48 В" }
+no_load_current_a = { unknown = true, bench = "измерить ток при номинальном напряжении без нагрузки" }
+stall_current_a = { unknown = true, bench = "измерить кратковременный ток при блокировке выхода и данном напряжении" }
+rated_current_a = { value = 7.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+peak_current_a = { value = 19.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+standby_current_a = { unknown = true, bench = "измерить ток питания при покоящемся валу" }
+resistance_ohm = { value = 0.22, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+inductance_h = { value = 0.0001335, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+kt_motor_nm_per_a = { value = 0.136, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+ke_motor_v_s = { value = 0.13082536322153798, source = "datasheet", reference = "CubeMars: K_e = 13.7 В/1000 об/мин" }
+kv_rpm_per_v = { value = 80.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+gear_ratio = { value = 64.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+gear_efficiency = { value = 0.85, source = "estimate", reference = "две планетарные ступени по ~0.92, как в sim-em" }
+rotor_inertia_kg_m2 = { value = 5.645e-5, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+gear_input_inertia_kg_m2 = { unknown = true, bench = "снять ускорение входа передачи от известного момента" }
+mass_kg = { value = 0.85, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+r_th_winding_housing_k_per_w = { unknown = true, bench = "оценить по перепаду обмотка–корпус при известной тепловой мощности" }
+r_th_housing_ambient_k_per_w = { unknown = true, bench = "оценить по перепаду корпус–среда при известной тепловой мощности" }
+tau_winding_s = { unknown = true, bench = "фитировать два узла по переходу температуры обмотки при ступени мощности" }
+tau_housing_s = { unknown = true, bench = "фитировать два узла по переходу температуры корпуса при ступени мощности" }
+r_th_total_k_per_w = { unknown = true, bench = "измерить установившийся перепад обмотка–среда при известной мощности" }
+max_winding_temp_c = { unknown = true, bench = "уточнить предел по классу изоляции и порогу тепловой защиты" }
+min_ambient_c = { value = -20.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+max_ambient_c = { value = 50.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+heated_phases = { value = 1.0, source = "derived", reference = "Число одновременно нагреваемых обмоток в исходной модели sim-actuators; не измерение" }
+stepper_pole_pairs = { unknown = true, bench = "посчитать периоды противо-ЭДС за оборот" }
+supply_v = { value = 48.0, source = "datasheet", reference = "CubeMars AK80-64 KV80: https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html" }
+current_limit_a = { unknown = true, bench = "снять уставку ограничителя тока драйвера по осциллограмме" }
+motor_constant = { unknown = true, bench = "снять момент на ток и ЭДС на скорость в одной энергетической системе единиц" }
+resistance_ref_c = { value = 25.0, source = "derived", reference = "Температура приведения R по контракту Actuator::resistance_ohm" }
+resistance_alpha_per_k = { unknown = true, bench = "снять сопротивление обмотки при двух известных температурах" }
+ambient_c = { unknown = true, bench = "измерить температуру среды у корпуса" }
+winding_loss_fraction = { unknown = true, bench = "идентифицировать долю тепла двигателя в обмотке по нагреву холостого хода" }
+gear_loss_to_housing_fraction = { unknown = true, bench = "измерить тепловой поток от передачи к корпусу привода" }
+backward_efficiency = { unknown = true, bench = "нагрузить передачу с выхода и замерить мощности на обеих сторонах" }
+coulomb_nm = { unknown = true, bench = "снять постоянную составляющую момента трения после страгивания" }
+viscous_nm_per_rad_s = { unknown = true, bench = "снять наклон момента трения по скорости" }
+static_friction_nm = { unknown = true, bench = "медленно повышать момент на валу до страгивания" }
+stribeck_rad_s = { unknown = true, bench = "снять кривую трения на малых скоростях после страгивания" }
+friction_band_rad_s = { unknown = true, bench = "снять разрешение скоростного стенда и проверить сходимость полосы регуляризации" }
+backlash = { unknown = true, bench = "измерить полный свободный ход выхода между двумя нагруженными зубьями" }
+coupling_stiffness = { unknown = true, bench = "замерить наклон сила–перемещение или момент–угол при зацеплении" }
+coupling_damping = { unknown = true, bench = "снять затухание от ступенчатого смещения передачи" }
+stop_min = { unknown = true, bench = "медленно подвезти выход к нижнему механическому упору и измерить координату" }
+stop_max = { unknown = true, bench = "медленно подвезти выход к верхнему механическому упору и измерить координату" }
+stop_stiffness = { unknown = true, bench = "измерить жёсткость контакта упора" }
+stop_damping = { unknown = true, bench = "идентифицировать затухание при контролируемом ударе об упор" }
+control_hz = { unknown = true, bench = "измерить период внутренних обновлений по реакции на серию меток" }
+bus_delay_s = { unknown = true, bench = "синхронно записать момент передачи и момент принятия команды" }

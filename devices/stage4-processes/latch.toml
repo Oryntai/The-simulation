@@ -1,0 +1,82 @@
+world = "world-contact.toml"
+window_ns = [0, 80000000]
+source = "Короткий ход защёлки и установившаяся опорная реакция 80 мс."
+
+[contacts]
+table = "contact-materials.toml"
+
+[contacts.solver]
+# Параметры численной сетки по образцу существующего процессного стенда.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-10
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"environment/collision/0" = "опора"
+"стенд/блок/collision/0" = "образец"
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "стенд/блок/collision/0"]
+solimp = [0.95, 0.95, 0.001, 0.5, 2.0]
+source = { datasheet = "Условия синтетической пары, постоянный импеданс 0,95." }
+mass_kg = { value = 1, source = { datasheet = "Нормальная мода одной каретки в этом опыте имеет массу 1 кг." } }
+
+[models."стык"]
+kind = "attachment"
+mounts = ["стенд/опора/стык", "стенд/блок/стык"]
+available_travel_m = { value = 0.04, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+requests = []
+loading = { source = "Начало и величина задающей внешней осевой силы численного стенда.", steps = [{ at_ns = 0, force_n = [0, 0, 0], torque_nm = [0, 0, 0] }] }
+
+[models."стык".limits]
+gap_m = { value = 0.03, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+lateral_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+axis_error_rad = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+speed_m_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+angular_speed_rad_s = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+required_travel_m = { value = 0.001, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_force_n = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_torque_nm = { value = 0.01, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+capacity = { force_n = { value = 100, source = { datasheet = "Расчётное условие только синтетического опыта." } }, torque_nm = { value = 1, source = { datasheet = "Расчётное условие только синтетического опыта." } } }
+
+[models."стык".law]
+type = "latch"
+drive_pair = ["environment/collision/0", "стенд/блок/collision/0"]
+
+[models."стык".law.parameters]
+free_seat_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+engaged_seat_m = { value = 0.02, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+engagement_m = { value = 0.012, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+release_m = { value = 0.008, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+minimum_stroke_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+maximum_stroke_m = { value = 0.022, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+stiffness_n_m = { value = 1000, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+damping_ns_m = { value = 0, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+forward_contact_n = { value = 5, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+reverse_contact_n = { value = 5, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[states]
+"стык" = ["Free", "Attached"]
+
+[[events]]
+name = "стык"
+state = "Attached"
+applied_ns = [250000, 1000000]
+phase_tolerance_ns = { value = 1000000, source = { datasheet = "Один базовый такт опыта." } }
+[[criteria]]
+name = "реакция опоры"
+series = { normal_force = ["environment/collision/0", "стенд/блок/collision/0"] }
+unit = "N"
+statistic = "end"
+lower = { value = 4.8, source = { datasheet = "Независимый расчёт для стенда: 5 N, допуск 0.2 N." } }
+upper = { value = 5.2, source = { datasheet = "Независимый расчёт для стенда: 5 N, допуск 0.2 N." } }
+tolerance = { value = 0.2, source = { datasheet = "Независимый расчёт для стенда: 5 N, допуск 0.2 N." } }
+remainder = [{ value = 0.05, source = { datasheet = "Независимый расчёт для стенда: 5 N, допуск 0.2 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]

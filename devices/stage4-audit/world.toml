@@ -1,0 +1,20 @@
+format = 3
+name = "Стержень на опоре"
+seed = 42
+# 1 мс на базовой сетке. Сфера радиусом 20 мм перекрывает первую опору на 1 мм.
+physics_hz = 1000
+# Круглое ускорение 10 м/с² даёт независимый вес 30 Н для трёх звеньев.
+gravity_m_s2 = [0, 0, -10]
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0, 0, 0]
+[[environment.collision]]
+shape = { kind = "box", size_m = [1, 1, 0.02] }
+pose = { position_m = [0, 0, -0.029] }
+[[environment.collision]]
+shape = { kind = "box", size_m = [1, 1, 0.02] }
+pose = { position_m = [0, 0, -0.06] }
+[[devices]]
+name = "привод"
+file = "axes.toml"

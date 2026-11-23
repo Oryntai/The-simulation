@@ -1,0 +1,12 @@
+[package]
+name = "vmcu-hal"
+description = "Регистры, стартовый код, ловушки и обёртки периферии виртуального МК VMCU-C3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+test = false
+bench = false

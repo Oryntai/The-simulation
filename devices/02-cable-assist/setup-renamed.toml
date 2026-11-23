@@ -1,0 +1,219 @@
+source = "Трёхсегментная трасса, намоточный барабан и два участка нагрузки из MS-Human-700."
+horizon_ns = 120000000
+audit_from_ns = 0
+construction_complete = true
+
+[participant]
+name = "модель"
+population = "male"
+stature_m = { value = 1.754, source = { paper = "NHANES 2015–2018, табл. 11, медиана мужчин 20+." } }
+mass_kg = { value = 87.4, source = { paper = "NHANES 2015–2018, табл. 5, медиана мужчин 20+." } }
+pose = {}
+
+[motion.axes.j0064]
+channel = "программа"
+# Углы измеряются от нейтрального кадра MS-Human-700, задание полином minimum jerk.
+initial_position = 0.0
+initial_velocity = 0.0
+stiffness = { value = 1.2, source = { estimate = "Эскиз замкнутого стендового регулятора, частота и отклик нуждаются в калибровке." } }
+damping = { value = 0.08, source = { estimate = "Настройка синтетической обратной связи, требуется проверка на измеренном движении." } }
+effort_limit = { value = 0.18, source = { estimate = "Проектный диапазон возбуждения численного опыта. Это не индивидуальная сила." } }
+reference = { knots = [[0, 0.0], [95000000, 0.18]], source = { estimate = "Синтетическое опорное движение с нулевыми концевыми скоростями." } }
+
+[motion.axes.j0065]
+channel = "сгибание"
+# Углы измеряются от нейтрального кадра MS-Human-700, задание полином minimum jerk.
+initial_position = 0.0
+initial_velocity = 0.0
+stiffness = { value = 0.4, source = { estimate = "Эскиз замкнутого стендового регулятора, частота и отклик нуждаются в калибровке." } }
+damping = { value = 0.04, source = { estimate = "Настройка синтетической обратной связи, требуется проверка на измеренном движении." } }
+effort_limit = { value = 0.08, source = { estimate = "Проектный диапазон возбуждения численного опыта. Это не индивидуальная сила." } }
+reference = { knots = [[0, 0.0], [95000000, 0.12]], source = { estimate = "Синтетическое опорное движение с нулевыми концевыми скоростями." } }
+
+[pads."зажим"]
+mounts = ["стенд/станина/прижим", "модель/s1696"]
+geometries = ["стенд/станина/collision/0", "модель/r0022"]
+normal = [[1, 0, 0], [0, 0, -1]]
+tangent = [[0, 0, 1], [0, 1, 0]]
+area_m2 = { value = 0.0008, source = { estimate = "Эскизное пятно 40×50 мм, эффективная площадь требует отпечатка." } }
+[pads."зажим".calibration]
+compression_m = { value = 0.03, range = [0.0, 0.06], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+offset_m = { value = 0.08, range = [0.0, 0.16], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+axis_error_rad = { value = 0.7, range = [0.0, 1.4], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+relative_speed_m_s = { value = 2.5, range = [0.0, 5.0], source = { estimate = "Окно численного опыта, внешние кривые силы и давления требуют калибровки." } }
+
+[pads."зажим".law]
+free_gap_m = { value = 0.005, source = { estimate = "Геометрический зазор плюс целевой преднатяг численной постановки." } }
+# Линейная характеристика от нуля до максимума хода в численном опыте.
+compression = { points = [[0.0, 0.0], [0.06, 108.0]], source = { estimate = "Эскиз линейной характеристики; нужен замер конкретной оснастки." } }
+damping_ns_m = { value = 0.0, source = { estimate = "Упругая сверка без гашения, силу можно вычислить как kx." } }
+shear_stiffness_n_m = { value = 500.0, source = { estimate = "Синтетическая жёсткость сдвига для наблюдения связи." } }
+friction = { value = 0.55, source = { estimate = "Эскизный коэффициент пары, требует замера." } }
+capacity_n = { value = 500.0, source = { estimate = "Испытательная граница закона площадки, не паспорт удержания." } }
+
+[routes."передача"]
+mounts = ["стенд/барабан/выход", "модель/s1691", "модель/s1679", "стенд/станина/возврат"]
+length = { kind = "affine", channel = "стенд/выход", at_zero_m = { value = 0.27325227570934163, source = { derived = "Сумма длин трёх отрезков в нейтрали плюс 2 мм провиса." } }, slope = { value = -0.012, source = { derived = "Радиус барабана по эскизу 12 мм, знак выбирания провиса." } }, coordinate = { value = 0.0, range = [-15.0, 15.0], source = { derived = "Рамка хода численного стенда." } } }
+extension = { points = [[0.0, 0.0], [0.08, 36.0]], source = { estimate = "Эскизная линейная характеристика 450 Н/м, нужна стендовая кривая." } }
+damping_ns_m = { value = 0.05, source = { estimate = "Малый эскизный коэффициент для сравнения шага, требует замера." } }
+capacity_n = { value = 38.0, source = { estimate = "Граница стендовой характеристики, не предельная прочность реального троса." } }
+[routes."передача".calibration]
+extension_m = { value = 0.04, range = [0.0, 0.08], source = { estimate = "Проектное окно испытательной оснастки, совместная применимость не подтверждена." } }
+extension_speed_m_s = { value = 4.0, range = [0.0, 8.0], source = { estimate = "Проектное окно испытательной оснастки, совместная применимость не подтверждена." } }
+payout_m = { value = 0.025, range = [0.0, 0.05], source = { estimate = "Проектное окно испытательной оснастки, совместная применимость не подтверждена." } }
+[routes."передача".surfaces."дальний"]
+geometry = "модель/r0025"
+point = 2
+reference = 1
+normal = [0.0, 0.0, -1.0]
+tangent = [1.0, 0.0, 0.0]
+[routes."передача".surfaces."ближний"]
+geometry = "модель/r0023"
+point = 1
+reference = 0
+normal = [0.0, 0.0, -1.0]
+tangent = [1.0, 0.0, 0.0]
+
+[probes."длина"]
+kind = "route_length"
+route = "передача"
+[control]
+wiring = "control-renamed.toml"
+
+[contacts]
+table = "../../catalog/contact/stage5.toml"
+assignments = {}
+pairs = []
+
+# Параметры численного опыта Euler/Newton: эталонный профиль MuJoCo 4.0.1.
+[contacts.solver]
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-8
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 35
+
+[power]
+topology = { estimate = "Декларация численной сборки. Полнота конструкции и безопасная отдача при отказе требуют проверки." }
+required = ["стенд/двигатель", "источник 6 В"]
+
+[power.sources."стенд/двигатель"]
+reach = "reachable"
+
+[power.sources."источник 6 В"]
+reach = "reachable"
+
+[power.sources."источник 6 В".electrical]
+stored_j = { value = 6660, source = { derived = "Бюджет стенда 0,5 А·ч × 3,7 В × 3600, преобразование для шины 6 В." } }
+
+[tolerances]
+onset_s = { value = 0.003, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+force_n = { value = 1, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+impulse_ns = { value = 0.005, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+duration_s = { value = 0.003, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+drift_m = { value = 0.001, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+stress_pa = { value = 1000, source = { derived = "Допуск сравнения сеток для разрешения численного стенда, не физический допуск." } }
+[[checks]]
+id = "реакция зажима"
+bounds = [0.5, 50]
+source = "Преднатяг 2 мм × 1800 Н/м даёт 3,6 Н."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "зажим" }
+
+[[checks]]
+id = "сдвиг зажима"
+bounds = [0.01, 25]
+source = "Синтетический диапазон: μ=0,55 и реакция до 50 Н."
+min_samples = 5
+
+
+metric = { "kind" = "shear", "patch" = "зажим" }
+
+[[checks]]
+id = "провис"
+bounds = [0, 1e-08]
+source = "Нулевая передача при длине L0 = Lгеом + 2 мм."
+min_samples = 5
+window_ns = [0, 1000000]
+
+metric = { "kind" = "tension", "route" = "передача" }
+
+[[checks]]
+id = "передача"
+bounds = [0.045, 36]
+source = "Разрешение растяжения 0,1 мм × 450 Н/м = 0,045 Н; верх характеристики 36 Н."
+min_samples = 5
+
+
+metric = { "kind" = "tension", "route" = "передача" }
+
+[[checks]]
+id = "ближнее пятно"
+bounds = [0.01, 72]
+source = "Результирующая двух ветвей до 2·36 Н."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "ближний" }
+
+[[checks]]
+id = "дальнее пятно"
+bounds = [0.01, 72]
+source = "Результирующая двух ветвей до 2·36 Н."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "дальний" }
+
+[[checks]]
+id = "виртуальная работа"
+bounds = [0, 1e-10]
+source = "Q = −T de/dq = T·(-0,012 м/рад)."
+min_samples = 5
+
+
+metric = { "kind" = "virtual_work_residual", "route" = "передача" }
+
+[[checks]]
+id = "знак длины"
+bounds = [0, 1e-10]
+source = "Проверка e = L − Lсвободная."
+min_samples = 5
+
+
+metric = { "kind" = "length_residual", "route" = "передача" }
+
+[[checks]]
+id = "длина в нейтрали"
+bounds = [0.2692522757093416, 0.27325227570934163]
+source = "Ручная сумма расстояний между точками нейтрального кадра, запас 2 мм."
+min_samples = 5
+window_ns = [0, 1000000]
+
+metric = { "kind" = "probe", "name" = "длина", "unit" = "m", "statistic" = "peak" }
+
+[[checks]]
+id = "кинематика"
+bounds = [0.015, 0.8]
+source = "Стендовое задание 0,18 рад."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "модель/программа", "statistic" = "span", "quantity" = "position" }
+
+[[checks]]
+id = "разгрузка"
+bounds = [0, 1.0]
+source = "Обратная подача возвращает длину трассы выше требуемой."
+min_samples = 5
+window_ns = [112000000, 120000000]
+
+metric = { "kind" = "tension", "route" = "передача" }

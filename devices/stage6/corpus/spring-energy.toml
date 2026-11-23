@@ -1,0 +1,28 @@
+hazard_witnesses = [{ class = "stored_energy", object = "накопитель", criterion = "ограничение энергии" }]
+
+# Отрицательный случай должен провалиться именно по энергии, без критерия номинала положительного случая.
+[models."накопитель".store]
+deflection_m = { value = 0.1, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[[criteria]]
+name = "запас энергии"
+series = { measurement = "накопитель/energy" }
+unit = "J"
+statistic = "end"
+lower = { value = 0.9999999999, source = { datasheet = "Энергия отрицательного опыта по формуле k·x²/2." } }
+upper = { value = 1.0000000001, source = { datasheet = "Энергия отрицательного опыта по формуле k·x²/2." } }
+tolerance = { value = 1e-10, source = { datasheet = "Независимый расчёт для стенда: 1.0 J, допуск 1e-10 J." } }
+remainder = [{ value = 2.5e-11, source = { datasheet = "Независимый расчёт для стенда: 1.0 J, допуск 1e-10 J." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]
+
+[[criteria]]
+name = "ограничение энергии"
+series = { measurement = "накопитель/energy" }
+unit = "J"
+statistic = "end"
+upper = { value = 0.1, source = { datasheet = "Паспорт условного стенда: 0,1 Дж. Независимый расчёт kx²/2 даёт 1 Дж." } }
+tolerance = { value = 1e-10, source = { datasheet = "Допуск предыдущего численного опыта 1e-10 по тому же каналу." } }
+remainder = [
+  { value = 2.5e-11, source = { datasheet = "Остаток предыдущего численного опыта 2,5e-11." } },
+  { value = 0, source = { datasheet = "Расчёт по одному решателю, дополнительная поправка отсутствует." } },
+  { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } },
+]

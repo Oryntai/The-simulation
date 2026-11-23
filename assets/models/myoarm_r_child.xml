@@ -1,0 +1,15 @@
+<!-- Мастерская: правая рука MyoArm (63 мышцы) для присоединения к туловищу в точке arm_attach_r.
+     Сборка — sim_mujoco::models::compose_myoarm(). Данные руки — из MoBL (Stanford):
+     только некоммерческое использование. -->
+<mujoco model="myoarm_r_attach">
+  <include file="../third_party/myo_sim/myo_sim/models/arm/assets/myoarm_r_assets.xml"/>
+  <compiler angle="radian" meshdir="../third_party/myo_sim/myo_sim/models" texturedir="../third_party/myo_sim/myo_sim/models"/>
+  <include file="../third_party/myo_sim/myo_sim/models/arm/assets/myoarm_r_tendon.xml"/>
+  <include file="../third_party/myo_sim/myo_sim/models/arm/assets/myoarm_r_muscle.xml"/>
+  <worldbody>
+    <body name="myoarm_r_root">
+      <site name="arm_root_attach_r" size="0.01"/>
+      <include file="../third_party/myo_sim/myo_sim/models/arm/assets/myoarm_r_chain.xml"/>
+    </body>
+  </worldbody>
+</mujoco>

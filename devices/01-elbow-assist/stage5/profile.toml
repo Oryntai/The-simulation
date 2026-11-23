@@ -1,0 +1,23 @@
+version = 1
+source = "Сценарная рама и MS-Human-700, 6S2P из прежней схемы. Независимая ось и две площадки."
+base = "setup.toml"
+[[cases]]
+id = "nominal"
+[[cases]]
+id = "fit"
+overlay = "fit.toml"
+[[cases]]
+id = "cut"
+overlay = "cut.toml"
+[[cases]]
+id = "uncoupled"
+overlay = "uncoupled.toml"
+[[cases]]
+id = "compression"
+overlay = "compression.toml"
+[[cases]]
+id = "pinch"
+overlay = "pinch.toml"
+[[cases]]
+id = "jerk"
+overlay = "jerk.toml"

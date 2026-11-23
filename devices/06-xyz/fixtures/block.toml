@@ -1,0 +1,7 @@
+format = 3
+name = "Блок на каретке"
+[[links]]
+name = "блок"
+joint = { kind = "slide", name = "направляющая", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0, efforts = [{name = "сила", dof = 0}] }
+# Синтетический блок единичной массы. Измерение железа для этого численного опыта не подразумевается.
+mass = { kind = "explicit", mass_kg = 1, com_m = [0,0,0], inertia_kg_m2 = [1,1,1,0,0,0], provenance = { estimate = "Нормировка единичной массы и совместимых моментов инерции." } }

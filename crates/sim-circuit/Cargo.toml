@@ -1,0 +1,11 @@
+[package]
+name = "sim-circuit"
+description = "Электрические схемы: модифицированный узловой анализ (MNA), разбор SPICE-подмножества, аккумулятор, расчёты печатных плат"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nalgebra.workspace = true
+sim-verify.workspace = true

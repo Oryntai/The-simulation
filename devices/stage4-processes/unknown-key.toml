@@ -1,0 +1,2 @@
+[models."накопитель".store]
+unused = { value = 1, source = { datasheet = "Лишнее поле теста." } }

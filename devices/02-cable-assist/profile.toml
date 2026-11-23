@@ -1,0 +1,17 @@
+version = 1
+source = "Выбор провиса и ослабление, срыв и потеря крепления при живом взаимодействии."
+base = "setup.toml"
+[[cases]]
+id = "nominal"
+[[cases]]
+id = "released"
+overlay = "released.toml"
+[[cases]]
+id = "break"
+overlay = "break.toml"
+[[cases]]
+id = "unloaded"
+overlay = "unloaded.toml"
+[[cases]]
+id = "slip"
+overlay = "slip.toml"

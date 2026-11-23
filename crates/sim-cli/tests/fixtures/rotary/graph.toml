@@ -1,0 +1,21 @@
+version = 1
+[[block]]
+kind = "scalar"
+signal = "поворот"
+source = "Прямой опыт: скважность численно равна углу в радианах."
+[[block]]
+kind = "affine"
+nodes = [0]
+weights = [0]
+offset = 1
+source = "Разрешение моста для каждого валидного измерения."
+[[bind]]
+output = "напряжение"
+node = 0
+missing = "omit"
+source = "При потере измерения выход инвалидируется."
+[[bind]]
+output = "разрешение"
+node = 1
+missing = "omit"
+source = "При потере измерения выход инвалидируется."

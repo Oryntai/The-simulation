@@ -1,0 +1,28 @@
+hazard_witnesses = [{ class = "sharp_edge", object = "кромка", criterion = "ограничение радиуса" }]
+
+# Отрицательный случай должен провалиться по опасности кромки.
+[models."кромка"]
+measured_radius_m = { value = 0.0002, source = { datasheet = "Расчётное условие только синтетического опыта." } }
+
+[[criteria]]
+name = "опорная сила"
+series = { measurement = "кромка/contact_force" }
+unit = "N"
+statistic = "end"
+lower = { value = 9.8, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+upper = { value = 10.2, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+tolerance = { value = 0.2, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }
+remainder = [{ value = 0.05, source = { datasheet = "Независимый расчёт для стенда: 10 N, допуск 0.2 N." } }, { value = 0, source = { datasheet = "Один решатель, численная сверка по аналитике." } }, { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } }]
+
+[[criteria]]
+name = "ограничение радиуса"
+series = { measurement = "кромка/radius_margin" }
+unit = "m"
+statistic = "end"
+lower = { value = 0.0, source = { datasheet = "Паспорт условного стенда: радиус не меньше 1 мм под нагрузкой 9–11 Н. Из 0,2 мм следует запас −0,8 мм." } }
+tolerance = { value = 1e-10, source = { datasheet = "Допуск предыдущего численного опыта 1e-10 по тому же каналу." } }
+remainder = [
+  { value = 2.5e-11, source = { datasheet = "Остаток предыдущего численного опыта 2,5e-11." } },
+  { value = 0, source = { datasheet = "Расчёт по одному решателю, дополнительная поправка отсутствует." } },
+  { value = 0, source = { datasheet = "Фиксированные параметры численного опыта." } },
+]

@@ -1,0 +1,18 @@
+format = 3
+name = "Блок у опоры"
+[[links]]
+name = "опора"
+joint = { kind = "fixed" }
+mass = { kind = "massless" }
+[[links.collision]]
+# Плоская сторона блока на x = 0,01 м, центр блока в начале координат.
+shape = { kind = "box", size_m = [0.02, 0.1, 0.1] }
+contact_mask = [1, 0] # Опора и каретка совместимы только со сферическим блоком.
+[[links]]
+name = "блок"
+pose = { position_m = [0.035, 0, 0] } # Зазор до опоры: 0,035 − 0,01 − 0,01 = 0,015 м.
+joint = { kind = "slide", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0, efforts = [{ name = "сила", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 1, com_m = [0, 0, 0], inertia_kg_m2 = [1, 1, 1, 0, 0, 0], provenance = { datasheet = "Единичная масса и инерция оснастки численного опыта." } }
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.01 }
+contact_mask = [0, 1]

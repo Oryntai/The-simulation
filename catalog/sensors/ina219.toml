@@ -1,0 +1,68 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "ina219"
+kind = "current"
+name = "INA219"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "%"
+caveats = ["Ток в амперах зависит от выбранного шунта."]
+interface = "I²C"
+kind = "power_monitor"
+range_unit = "В на шине (шунт до ±320 мВ)"
+resolution_unit = "бит"
+sources = ["TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"]
+what_is = "Измеритель тока и напряжения на шунте: показывает, сколько реально ест устройство."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "TI, INA219A: до ±1 % по току во всём диапазоне температур"
+value = 1.0
+
+[passport.current_a]
+provenance = "datasheet"
+source = "TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 0.0007
+
+[passport.current_peak_a]
+provenance = "datasheet"
+source = "TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 0.001
+
+[passport.range_max]
+provenance = "datasheet"
+source = "TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 26.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 0.0
+
+[passport.resolution]
+provenance = "datasheet"
+source = "TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 12.0
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 5.5
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): TI INA219, SBOS448G: https://www.ti.com/lit/ds/symlink/ina219.pdf"
+value = 3.0

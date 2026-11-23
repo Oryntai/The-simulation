@@ -1,0 +1,67 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "mpu6050"
+kind = "imu"
+name = "MPU-6050"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "°/с/√Гц"
+caveats = [
+    "Снят с производства (EOL), на рынке много копий.",
+    "Сам чип питается до 3.46 В: на 5 В только через стабилизатор модуля.",
+]
+current_peak_a = "unknown"
+interface = "I²C"
+kind = "imu"
+range_unit = "°/с (акселерометр до ±16 g)"
+resolution_unit = "°/с"
+sources = ["TDK InvenSense PS-MPU-6000A-00: https://invensense.tdk.com/wp-www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf"]
+what_is = "Шестиосевой датчик движения: гироскоп и акселерометр."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "InvenSense: шум 0.005 °/с/√Гц, акселерометр 400 мкg/√Гц"
+value = 0.005
+
+[passport.current_a]
+provenance = "datasheet"
+source = "InvenSense: гироскоп + акселерометр, без DMP"
+value = 0.0038
+
+[passport.range_max]
+provenance = "datasheet"
+source = "TDK InvenSense PS-MPU-6000A-00: https://invensense.tdk.com/wp-www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf"
+value = 2000.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "TDK InvenSense PS-MPU-6000A-00: https://invensense.tdk.com/wp-www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf"
+value = -2000.0
+
+[passport.resolution]
+provenance = "derived"
+source = "16 бит, 16.4 LSB/(°/с) при ±2000 °/с"
+value = 0.06097560975609757
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): TDK InvenSense PS-MPU-6000A-00: https://invensense.tdk.com/wp-www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf"
+value = 3.46
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): TDK InvenSense PS-MPU-6000A-00: https://invensense.tdk.com/wp-www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf"
+value = 2.375

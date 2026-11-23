@@ -1,0 +1,2 @@
+[models."накопитель".store]
+deflection_m = { value = nan, source = { datasheet = "Невалидный вход теста." } }

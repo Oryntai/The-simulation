@@ -1,0 +1,138 @@
+version = 1
+
+[assemblies.over-travel]
+scope = "Каретка под ступенью усилия"
+[assemblies.over-travel.experiments.loaded]
+kind = "scenario"
+campaign = "corpus/over-travel.toml"
+installation = "corpus/over-travel-install.toml"
+
+[assemblies.under-travel]
+scope = "Парная каретка под допустимой нагрузкой"
+[assemblies.under-travel.experiments.loaded]
+kind = "scenario"
+campaign = "corpus/under-travel.toml"
+installation = "corpus/under-travel-install.toml"
+
+[assemblies.over-strength]
+scope = "Стержень с превышенной статической нагрузкой"
+[assemblies.over-strength.experiments.loaded]
+kind = "scenario"
+campaign = "corpus/over-strength.toml"
+installation = "corpus/over-strength-install.toml"
+
+[assemblies.estimate]
+scope = "Стержень с оценочным пределом"
+[assemblies.estimate.experiments.loaded]
+kind = "scenario"
+campaign = "corpus/estimate.toml"
+installation = "corpus/estimate-install.toml"
+
+[assemblies.processes]
+scope = "Пары расчётных стендов, накопитель и опора"
+[assemblies.processes.experiments.states]
+kind = "task"
+world = "../stage4-processes/world-block.toml"
+task = "corpus/process-task.toml"
+
+[assemblies.falling]
+scope = "Свободное падение блока из вертикального зазора"
+[assemblies.falling.experiments.gravity]
+kind = "scenario"
+campaign = "corpus/falling.toml"
+installation = "corpus/fall-install.toml"
+
+[assemblies.supported]
+scope = "Парный опыт с поддержкой, равной весу"
+[assemblies.supported.experiments.gravity]
+kind = "scenario"
+campaign = "corpus/supported.toml"
+installation = "corpus/fall-install.toml"
+
+[assemblies.mechanical-unsafe]
+scope = "Нейтральные стенды механики, контакта и доступного движения с нарушением расчётных пределов"
+[assemblies.mechanical-unsafe.experiments.loads]
+kind = "task"
+world = "corpus/mechanical/world-block.toml"
+task = "corpus/mechanical/unsafe-task.toml"
+
+[assemblies.mechanical-safe]
+scope = "Парные постановки механики с соблюдением тех же пределов"
+[assemblies.mechanical-safe.experiments.loads]
+kind = "task"
+world = "corpus/mechanical/world-block.toml"
+task = "corpus/mechanical/safe-task.toml"
+
+[assemblies.control-unsafe]
+scope = "Нейтральный двухуровневый контур с сохранением энергии после потери пути"
+[assemblies.control-unsafe.experiments.faults]
+kind = "task"
+world = "corpus/control/world.toml"
+task = "corpus/control/unsafe-task.toml"
+jobs = 1
+
+[assemblies.control-safe]
+scope = "Парный контур с обнулением исполнительных выходов и утверждённым графом"
+[assemblies.control-safe.experiments.faults]
+kind = "task"
+world = "corpus/control/world.toml"
+task = "corpus/control/safe-task.toml"
+jobs = 1
+
+[assemblies.battery-depleted]
+scope = "Ячейка у нижней границы разряда под ступенью нагрузки"
+[assemblies.battery-depleted.experiments.load]
+kind = "task"
+world = "corpus/control/world.toml"
+task = "corpus/control/battery-depleted-task.toml"
+jobs = 1
+
+[assemblies.battery-charged]
+scope = "Та же ячейка и нагрузка при половинном заряде"
+[assemblies.battery-charged.experiments.load]
+kind = "task"
+world = "corpus/control/world.toml"
+task = "corpus/control/battery-charged-task.toml"
+jobs = 1
+
+[assemblies.heat]
+scope = "Непрерывное малое касание нагретого металла"
+[assemblies.heat.experiments.test]
+kind = "task"
+world = "corpus/screen/heat-world.toml"
+task = "corpus/screen/heat-task.toml"
+
+[assemblies.heat-pair]
+scope = "Парный опыт малой площади касания"
+[assemblies.heat-pair.experiments.test]
+kind = "task"
+world = "corpus/screen/heat-world.toml"
+task = "corpus/screen/heat-pair-task.toml"
+
+[assemblies.dc]
+scope = "Доступный постоянный ток на резистивном эквиваленте"
+[assemblies.dc.experiments.test]
+kind = "task"
+world = "../stage4-processes/world-energy.toml"
+task = "corpus/screen/dc-task.toml"
+
+[assemblies.dc-pair]
+scope = "Парный опыт при пониженном напряжении"
+[assemblies.dc-pair.experiments.test]
+kind = "task"
+world = "../stage4-processes/world-energy.toml"
+task = "corpus/screen/dc-pair-task.toml"
+
+[assemblies.curve-offset]
+scope = "Свободное падение и синтетический ряд со смещением"
+[assemblies.curve-offset.experiments.test]
+kind = "task"
+world = "corpus/free-world.toml"
+task = "corpus/screen/curve-offset-task.toml"
+
+[assemblies.curve-pair]
+scope = "Свободное падение и согласованный синтетический ряд"
+[assemblies.curve-pair.experiments.test]
+kind = "task"
+world = "corpus/free-world.toml"
+task = "corpus/screen/curve-pair-task.toml"

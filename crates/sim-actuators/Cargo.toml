@@ -1,0 +1,10 @@
+[package]
+name = "sim-actuators"
+description = "Каталог приводов, драйверов, датчиков и стабилизаторов для конструктора с проверкой пределов"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-verify.workspace = true

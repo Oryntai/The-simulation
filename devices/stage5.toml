@@ -1,0 +1,211 @@
+version = 1
+source = "ТЗ §4.7 и матрица §E. Ожидаемые численные окна получены до прогона из геометрии, бюджета оснастки и спецификаций линий. Модельные границы не сертифицируют контакт с тканями."
+
+[[experiments]]
+id = "powered"
+world = "01-elbow-assist/stage5/world.toml"
+task = "01-elbow-assist/stage5/acceptance.toml"
+exit = 1
+base_hz = 40000
+minimum_steps = 3200
+
+[[experiments.cases]]
+id = "nominal"
+outcome = "not_analyzed"
+minimum_checks = 7
+
+[[experiments.cases]]
+id = "fit"
+outcome = "not_analyzed"
+minimum_checks = 8
+
+[[experiments.cases]]
+id = "cut"
+outcome = "not_analyzed"
+minimum_checks = 9
+power_cut_ns = 20000000
+
+[[experiments.cases]]
+id = "uncoupled"
+outcome = "not_analyzed"
+minimum_checks = 3
+
+[[experiments.cases]]
+id = "compression"
+outcome = "fail"
+minimum_checks = 8
+failure = "чрезмерное давление"
+
+[[experiments.cases]]
+id = "pinch"
+outcome = "fail"
+minimum_checks = 8
+failure = "защемление"
+
+[[experiments.cases]]
+id = "jerk"
+outcome = "fail"
+minimum_checks = 8
+failure = "рывок"
+
+[[experiments]]
+id = "tension"
+world = "02-cable-assist/world.toml"
+task = "02-cable-assist/acceptance.toml"
+exit = 1
+base_hz = 10000
+minimum_steps = 1200
+
+[[experiments.cases]]
+id = "nominal"
+outcome = "not_analyzed"
+minimum_checks = 11
+
+[[experiments.cases]]
+id = "released"
+outcome = "fail"
+minimum_checks = 12
+failure = "удержание крепления"
+
+[[experiments.cases]]
+id = "break"
+outcome = "fail"
+minimum_checks = 13
+failure = "целостность трассы"
+
+[[experiments.cases]]
+id = "unloaded"
+outcome = "not_analyzed"
+minimum_checks = 2
+
+[[experiments.cases]]
+id = "slip"
+outcome = "fail"
+minimum_checks = 2
+failure = "сползание крепления"
+
+[[experiments]]
+id = "passive"
+world = "03-wearable-sensors/world.toml"
+task = "03-wearable-sensors/acceptance.toml"
+exit = 1
+base_hz = 2000
+minimum_steps = 480
+
+[[experiments.cases]]
+id = "nominal"
+outcome = "not_analyzed"
+minimum_checks = 16
+minimum_frames = 6
+
+[[experiments.cases]]
+id = "radio-delay"
+outcome = "not_analyzed"
+minimum_checks = 16
+minimum_frames = 6
+
+[[experiments.cases]]
+id = "radio-loss"
+outcome = "not_analyzed"
+minimum_checks = 14
+minimum_frames = 6
+
+[[experiments.cases]]
+id = "heat"
+outcome = "fail"
+minimum_checks = 16
+minimum_frames = 6
+failure = "нагрев опоры"
+
+[[experiments.cases]]
+id = "displaced"
+outcome = "fail"
+minimum_checks = 17
+failure = "сохранение посадки"
+
+[[experiments]]
+id = "independent"
+world = "02-cable-assist/world-renamed.toml"
+task = "02-cable-assist/acceptance-renamed.toml"
+exit = 1
+base_hz = 10000
+minimum_steps = 1200
+
+[[experiments.cases]]
+id = "independent"
+outcome = "not_analyzed"
+minimum_checks = 11
+
+# Сравнения по наименьшему шагу. Минимумы выражают разрешение испытаний.
+[[comparisons]]
+experiment = "powered"
+first = "nominal"
+second = "uncoupled"
+check = "движение"
+min_delta = 0.0001
+source = "Разрешение сравнения углов 0,1 мрад при том же опорном движении."
+
+[[comparisons]]
+experiment = "powered"
+first = "nominal"
+second = "fit"
+check = "опора"
+min_delta = 0.5
+source = "Смещение на 2 мм × 2500 Н/м даёт масштаб разницы 5 Н."
+
+[[comparisons]]
+experiment = "tension"
+first = "nominal"
+second = "unloaded"
+check = "кинематика"
+min_delta = 0.0001
+source = "Разрешение сравнения углов 0,1 мрад при снятии тяги."
+
+[[comparisons]]
+experiment = "passive"
+first = "nominal"
+second = "radio-delay"
+check = "задержка доставки"
+min_delta = 10000000
+source = "Разность периодов слотов 20 мс − 10 мс в двух постановках."
+
+[[checkpoints]]
+experiment = "tension"
+case = "nominal"
+check = "длина в нейтрали"
+bounds = [0.269, 0.274]
+source = "Сумма евклидовых расстояний нейтральной трассы 0,2712523 м с запасом 2 мм."
+
+[[checkpoints]]
+experiment = "powered"
+case = "nominal"
+check = "опора"
+bounds = [4.8, 6.2]
+source = "Проверка преднатяга 5 Н с поправкой на движение и наклон нормали."
+
+[[checkpoints]]
+experiment = "passive"
+case = "nominal"
+check = "проекция"
+bounds = [0.0, 0.1]
+source = "Критерий 0,1 px из §4.4."
+
+[[checkpoints]]
+experiment = "passive"
+case = "nominal"
+check = "последний номер"
+bounds = [4.0, 4.0]
+source = "Пять отправлений последовательно от номера 0."
+
+[equivalence]
+first_experiment = "tension"
+first_case = "nominal"
+repeated_experiment = "independent"
+repeated_case = "independent"
+metrics = ["провис", "разгрузка", "длина в нейтрали", "кинематика"]
+absolute_tolerance = 1e-9
+source = "Те же координаты, нагрузка и время при независимых именах. Допуск 1 нм / 1 нрад в соответствующих рядах."
+
+[invalid_inputs]
+experiment = "tension"
+disabled_check = "реакция зажима"

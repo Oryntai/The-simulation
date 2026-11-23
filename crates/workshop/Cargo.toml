@@ -1,0 +1,30 @@
+[package]
+name = "workshop"
+description = "Мастерская устройств: 3D-симулятор, в котором устройство проверяют до сборки"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "workshop"
+path = "src/main.rs"
+test = true
+doctest = false
+
+[dependencies]
+bevy.workspace = true
+bevy_egui.workspace = true
+egui_plot.workspace = true
+nalgebra.workspace = true
+sim-core.workspace = true
+sim-verify.workspace = true
+sim-mujoco.workspace = true
+sim-scenarios.workspace = true
+sim-cli = { path = "../sim-cli" }
+sim-human.workspace = true
+sim-runtime.workspace = true
+sim-signal.workspace = true
+sim-world.workspace = true
+sim-sense.workspace = true
+sim-drive.workspace = true

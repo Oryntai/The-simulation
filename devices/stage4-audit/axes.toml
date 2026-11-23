@@ -1,0 +1,27 @@
+format = 3
+name = "Стержень с двумя осями"
+# Стенд с заданным ходом 2 мм/оборот, вертикаль свободна до контакта.
+[[links]]
+name = "подвес"
+joint = { kind = "slide", name = "вертикаль", axis = [0, 0, 1], damping = 0, friction_loss = 0, armature = 0 }
+mass = { kind = "explicit", mass_kg = 1, com_m = [0,0,0], inertia_kg_m2 = [0.01,0.01,0.01,0,0,0], provenance = { estimate = "Синтетический стенд." } }
+[[links]]
+name = "вал"
+parent = "подвес"
+joint = { kind = "hinge", name = "вращение", axis = [0, 0, 1], damping = 0, friction_loss = 0, armature = 0, efforts = [{name = "момент", dof = 0}] }
+mass = { kind = "explicit", mass_kg = 1, com_m = [0,0,0], inertia_kg_m2 = [0.01,0.01,0.01,0,0,0], provenance = { estimate = "Синтетический стенд." } }
+
+[[links]]
+name = "стержень"
+parent = "вал"
+joint = { kind = "slide", name = "подача", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0 }
+mass = { kind = "explicit", mass_kg = 1, com_m = [0,0,0], inertia_kg_m2 = [0.01,0.01,0.01,0,0,0], provenance = { estimate = "Синтетический стенд." } }
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.02 }
+
+[[transmissions]]
+name = "связь"
+kind = "screw"
+input = "вращение"
+output = "подача"
+lead_m_per_turn = 0.002

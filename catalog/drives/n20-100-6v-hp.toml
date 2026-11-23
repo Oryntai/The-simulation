@@ -1,0 +1,78 @@
+# Паспортные значения перенесены из sim-actuators.
+# Режим выбран для модели; настройки регулятора и монтажа задаются отдельно.
+id = "n20-100-6v-hp"
+name = "N20 100:1 HP 6 В (Pololu)"
+what_is = "Маленький коллекторный мотор-редуктор размером с ноготь: колёса и лёгкие механизмы."
+kind = "dc"
+legacy_class = "brushed_gearmotor"
+mode = "pwm"
+inertia = "internal"
+backdrive = "unknown"
+brake = "unknown"
+stop = "unknown"
+magnet = "unknown"
+sources = ["Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214", "Pololu, таблица Micro Metal Gearmotors: https://www.pololu.com/category/60/micro-metal-gearmotors"]
+caveats = ["Стоповые значения Pololu — экстраполяция: длительный упор может повредить мотор.", "Безымянные N20 с маркетплейсов этим данным не соответствуют."]
+
+[[voltage_points]]
+voltage_v = { value = 6.0, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214 | Pololu, таблица Micro Metal Gearmotors: https://www.pololu.com/category/60/micro-metal-gearmotors" }
+stall_torque_nm = { value = 0.16671305, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214 | Pololu, таблица Micro Metal Gearmotors: https://www.pololu.com/category/60/micro-metal-gearmotors" }
+no_load_rpm = { value = 310.0, source = "datasheet", reference = "Точки напряжения из sim-actuators, исходные данные: Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214 | Pololu, таблица Micro Metal Gearmotors: https://www.pololu.com/category/60/micro-metal-gearmotors" }
+stall_current_a = { value = 1.6, source = "derived", reference = "Точки напряжения из sim-actuators, исходные данные: Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214 | Pololu, таблица Micro Metal Gearmotors: https://www.pololu.com/category/60/micro-metal-gearmotors" }
+
+[parameters]
+voltage_nominal_v = { value = 6.0, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+voltage_min_v = { unknown = true, bench = "понижать напряжение шины под нагрузкой до порога отключения" }
+voltage_max_v = { value = 6.0, source = "datasheet", reference = "Pololu: номинал 6 В" }
+rated_torque_nm = { unknown = true, bench = "выдержать длительную нагрузку на динамометре до теплового равновесия" }
+peak_torque_nm = { value = 0.16671305, source = "datasheet", reference = "Pololu: экстраполированный стоповый момент" }
+no_load_speed_rpm = { value = 310.0, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+rated_speed_rpm = { unknown = true, bench = "измерить скорость выхода под номинальной нагрузкой" }
+no_load_current_a = { value = 0.1, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+stall_current_a = { value = 1.6, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+rated_current_a = { value = 0.4, source = "derived", reference = "Pololu: держать ток не выше 25 % стопового" }
+peak_current_a = { unknown = true, bench = "снять пиковый ток вместе с длительностью импульса" }
+standby_current_a = { unknown = true, bench = "измерить ток питания при покоящемся валу" }
+resistance_ohm = { value = 3.75, source = "derived", reference = "Pololu #2214: 6 В / 1.6 А, эквивалент по экстраполированному стоповому току" }
+inductance_h = { unknown = true, bench = "снять переход тока коротким импульсом на неподвижном валу или измерить LCR-метром" }
+kt_motor_nm_per_a = { unknown = true, bench = "снять наклон момента по току на валу двигателя" }
+ke_motor_v_s = { unknown = true, bench = "раскрутить разомкнутый двигатель и измерить ЭДС и скорость" }
+kv_rpm_per_v = { unknown = true, bench = "снять отношение скорости вала к противо-ЭДС" }
+gear_ratio = { value = 100.37, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+gear_efficiency = { unknown = true, bench = "измерить механическую мощность на входе и выходе при прямом потоке" }
+rotor_inertia_kg_m2 = { unknown = true, bench = "снять ускорение ненагруженного ротора от известного момента" }
+gear_input_inertia_kg_m2 = { unknown = true, bench = "снять ускорение входа передачи от известного момента" }
+mass_kg = { value = 0.0095, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+r_th_winding_housing_k_per_w = { unknown = true, bench = "оценить по перепаду обмотка–корпус при известной тепловой мощности" }
+r_th_housing_ambient_k_per_w = { unknown = true, bench = "оценить по перепаду корпус–среда при известной тепловой мощности" }
+tau_winding_s = { unknown = true, bench = "фитировать два узла по переходу температуры обмотки при ступени мощности" }
+tau_housing_s = { unknown = true, bench = "фитировать два узла по переходу температуры корпуса при ступени мощности" }
+r_th_total_k_per_w = { unknown = true, bench = "измерить установившийся перепад обмотка–среда при известной мощности" }
+max_winding_temp_c = { unknown = true, bench = "уточнить предел по классу изоляции и порогу тепловой защиты" }
+min_ambient_c = { unknown = true, bench = "измерить нижнюю границу рабочего диапазона в термокамере" }
+max_ambient_c = { unknown = true, bench = "измерить верхнюю границу рабочего диапазона в термокамере" }
+heated_phases = { value = 1.0, source = "derived", reference = "Число одновременно нагреваемых обмоток в исходной модели sim-actuators; не измерение" }
+stepper_pole_pairs = { unknown = true, bench = "посчитать периоды противо-ЭДС за оборот" }
+supply_v = { value = 6.0, source = "datasheet", reference = "Pololu #2214, 100:1 HP 6V: https://www.pololu.com/product/2214" }
+current_limit_a = { unknown = true, bench = "снять уставку ограничителя тока драйвера по осциллограмме" }
+motor_constant = { unknown = true, bench = "снять момент на ток и ЭДС на скорость в одной энергетической системе единиц" }
+resistance_ref_c = { value = 25.0, source = "derived", reference = "Температура приведения R по контракту Actuator::resistance_ohm" }
+resistance_alpha_per_k = { unknown = true, bench = "снять сопротивление обмотки при двух известных температурах" }
+ambient_c = { unknown = true, bench = "измерить температуру среды у корпуса" }
+winding_loss_fraction = { unknown = true, bench = "идентифицировать долю тепла двигателя в обмотке по нагреву холостого хода" }
+gear_loss_to_housing_fraction = { unknown = true, bench = "измерить тепловой поток от передачи к корпусу привода" }
+backward_efficiency = { unknown = true, bench = "нагрузить передачу с выхода и замерить мощности на обеих сторонах" }
+coulomb_nm = { unknown = true, bench = "снять постоянную составляющую момента трения после страгивания" }
+viscous_nm_per_rad_s = { unknown = true, bench = "снять наклон момента трения по скорости" }
+static_friction_nm = { unknown = true, bench = "медленно повышать момент на валу до страгивания" }
+stribeck_rad_s = { unknown = true, bench = "снять кривую трения на малых скоростях после страгивания" }
+friction_band_rad_s = { unknown = true, bench = "снять разрешение скоростного стенда и проверить сходимость полосы регуляризации" }
+backlash = { unknown = true, bench = "измерить полный свободный ход выхода между двумя нагруженными зубьями" }
+coupling_stiffness = { unknown = true, bench = "замерить наклон сила–перемещение или момент–угол при зацеплении" }
+coupling_damping = { unknown = true, bench = "снять затухание от ступенчатого смещения передачи" }
+stop_min = { unknown = true, bench = "медленно подвезти выход к нижнему механическому упору и измерить координату" }
+stop_max = { unknown = true, bench = "медленно подвезти выход к верхнему механическому упору и измерить координату" }
+stop_stiffness = { unknown = true, bench = "измерить жёсткость контакта упора" }
+stop_damping = { unknown = true, bench = "идентифицировать затухание при контролируемом ударе об упор" }
+control_hz = { unknown = true, bench = "измерить период внутренних обновлений по реакции на серию меток" }
+bus_delay_s = { unknown = true, bench = "синхронно записать момент передачи и момент принятия команды" }

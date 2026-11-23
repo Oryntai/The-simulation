@@ -1,0 +1,146 @@
+[control]
+wiring = "control-delay.toml"
+
+[[checks]]
+id = "передняя опора"
+bounds = [0.02, 2.0]
+source = "Вес 0,048 кг × 9,80665 м/с² = 0,4707192 Н, распределяется по опорам."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "передняя" }
+
+[[checks]]
+id = "левая опора"
+bounds = [0.015, 2.0]
+source = "Симметричная боковая опора с долей веса из баланса проекций."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "левая" }
+
+[[checks]]
+id = "правая опора"
+bounds = [0.015, 2.0]
+source = "Симметричная боковая опора с долей веса из баланса проекций."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "правая" }
+
+[[checks]]
+id = "площадь и давление"
+bounds = [50, 16667]
+source = "p=F/120 мм², верх 2 Н и округление 1 Па."
+min_samples = 5
+
+
+metric = { "kind" = "nominal_pressure", "patch" = "передняя" }
+
+[[checks]]
+id = "движение"
+bounds = [0.012, 0.18]
+source = "Опорный поворот 0,045 рад."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/поворот", "quantity" = "position", "statistic" = "span" }
+
+[[checks]]
+id = "гироскоп"
+bounds = [0.08, 12]
+source = "Связанное движение рамы, выход 0,045 рад на интервале 0,10 с даёт масштаб 0,45 рад/с."
+min_samples = 5
+
+
+metric = { "kind" = "signal", "name" = "устройство/импульсы/gz", "unit" = "rad/s", "statistic" = "peak", "observation" = true }
+
+[[checks]]
+id = "сверка гироскопа"
+bounds = [0, 0.12]
+source = "Сравнение с ω из якобиана тела на границе, шаг захвата 0,5 мс."
+min_samples = 5
+
+
+metric = { "kind" = "probe", "name" = "гироскопическая невязка", "unit" = "rad/s", "statistic" = "peak" }
+
+[[checks]]
+id = "проекция"
+bounds = [0, 0.1]
+source = "ТЗ §4.4, независимая проекция центра и центроид от доставленных RGB-пикселей."
+min_samples = 6
+
+
+metric = { "kind" = "camera_projection" }
+
+[[checks]]
+id = "изменение кадров"
+bounds = [0.25, 12]
+source = "Поворот порядка 0,045 рад × 90 px = 4 px, видна смена кадров."
+min_samples = 6
+
+
+metric = { "kind" = "camera_shift" }
+
+[[checks]]
+id = "нагрев опоры"
+bounds = [305.9, 313.15]
+source = "Проектное требование опыта 40 °C; медицинский предел неизвестен."
+min_samples = 5
+
+required_design = true
+metric = { "kind" = "probe", "name" = "тепло/target", "unit" = "K", "statistic" = "peak" }
+
+[[checks]]
+id = "тепловой баланс"
+bounds = [0, 1e-10]
+source = "Сумма CsΔTs + CtΔTt против интеграла подвода питания."
+min_samples = 5
+
+
+metric = { "kind" = "probe", "name" = "тепло/energy_residual", "unit" = "J", "statistic" = "peak" }
+
+[[checks]]
+id = "вес в покое"
+bounds = [0, 0.08]
+source = "Сумма вертикальных сил минус 0,4707192 Н. Допуск веса при ускорении до 0,08/0,048 ≈ 1,67 м/с²."
+min_samples = 5
+window_ns = [24000000, 32000000]
+
+metric = { "kind" = "probe", "name" = "баланс веса", "unit" = "N", "statistic" = "peak" }
+
+[[checks]]
+id = "момент в покое"
+bounds = [0, 0.004]
+source = "Сумма r×F относительно ЦМ. Допуск оснастки в эквиваленте 8,5 мм × 0,471 Н."
+min_samples = 5
+window_ns = [24000000, 32000000]
+
+metric = { "kind" = "probe", "name" = "баланс момента", "unit" = "N*m", "statistic" = "peak" }
+
+[[checks]]
+id = "пакеты"
+bounds = [5, 5]
+source = "Все пять отправленных пакетов доставлены."
+min_samples = 5
+
+
+metric = { "kind" = "packet", "route" = "пакеты", "quantity" = "delivered", "statistic" = "sum" }
+
+[[checks]]
+id = "задержка доставки"
+bounds = [19000000, 19000000]
+source = "Отправка на 1 мс после начала слота, доставка на следующей границе."
+min_samples = 5
+
+
+metric = { "kind" = "packet", "route" = "пакеты", "quantity" = "latency_ns", "statistic" = "peak" }
+
+[[checks]]
+id = "последний номер"
+bounds = [4, 4]
+source = "Пять пакетов имеют машинные номера от 0 до 4."
+min_samples = 5
+
+
+metric = { "kind" = "packet", "route" = "пакеты", "quantity" = "sequence", "statistic" = "last" }

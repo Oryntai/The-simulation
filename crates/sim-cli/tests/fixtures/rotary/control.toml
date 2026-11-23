@@ -1,0 +1,37 @@
+version = 1
+
+[[controller]]
+name = "регулятор"
+kind = "builtin"
+rate_hz = 1000
+program = "graph.toml"
+source = "Такт опыта 1 мс."
+
+[[input]]
+controller = "регулятор"
+signal = "поворот"
+unit = "rad"
+kind = "scalar"
+max_age_ns = 1000000
+source = "Отсчёт действителен один такт."
+
+[[output]]
+name = "напряжение"
+controller = "регулятор"
+target = "стенд/команда"
+target_kind = "drive"
+unit = "1"
+ack = "стенд/источник/accepted_command"
+max_age_ns = 1000000
+fallback = 0
+source = "Выход пропорционален положению."
+
+[[output]]
+name = "разрешение"
+controller = "регулятор"
+target = "стенд/допуск"
+target_kind = "power"
+unit = "bool"
+max_age_ns = 1000000
+fallback = 0
+source = "Логическое разрешение при валидном угле."

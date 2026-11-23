@@ -1,0 +1,34 @@
+# Контроль с вынесенной рамой. Нейтральная оснастка и тот же ELF.
+[pads."опора".law.free_gap_m]
+value = 0.0
+[pads."рычаг".law.free_gap_m]
+value = 0.0
+[placement_overrides."устройство"]
+position_m = [-0.11695201898014647, -0.159647110611929, 1.1144383568668659]
+
+[[checks]]
+id = "опора"
+bounds = [0.0, 0.0]
+source = "Вынос рамы и отсутствие преднатяга."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "опора" }
+
+[[checks]]
+id = "рычаг"
+bounds = [0.0, 0.0]
+source = "Вынос рамы и отсутствие преднатяга."
+min_samples = 5
+
+
+metric = { "kind" = "normal", "patch" = "рычаг" }
+
+[[checks]]
+id = "движение"
+bounds = [0.002, 0.15]
+source = "Та же опорная траектория и регулятор."
+min_samples = 5
+
+
+metric = { "kind" = "axis", "channel" = "участник/намерение", "statistic" = "span", "quantity" = "position" }

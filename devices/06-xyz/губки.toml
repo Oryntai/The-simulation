@@ -1,0 +1,36 @@
+format = 3
+name = "губки"
+
+[[links]]
+name = "основание"
+joint = { kind = "free", name = "основание", damping = 0.0, friction_loss = 0.0, armature = 0.0 }
+mass = { kind = "explicit", mass_kg = 0.02, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [3e-06, 3e-06, 3e-06, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links.mounts]]
+name = "фланец"
+kind = "mechanical"
+interface = "эскизный фланец стенда"
+
+[[links]]
+name = "левая"
+parent = "основание"
+pose = { position_m = [-0.009, 0, -0.023] }
+joint = { kind = "slide", name = "левая", axis = [1, 0, 0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "левая", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.006, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [1e-07, 1e-07, 1e-07, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.004, 0.008, 0.01] }
+pose = { position_m = [0, 0, 0] }
+contact_mask = [8, 4]
+
+[[links]]
+name = "правая"
+parent = "основание"
+pose = { position_m = [0.009, 0, -0.023] }
+joint = { kind = "slide", name = "правая", axis = [-1, 0, 0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "правая", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.006, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [1e-07, 1e-07, 1e-07, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.004, 0.008, 0.01] }
+pose = { position_m = [0, 0, 0] }
+contact_mask = [8, 4]
