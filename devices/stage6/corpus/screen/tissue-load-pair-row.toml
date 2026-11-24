@@ -1,0 +1,40 @@
+version = 1
+mode = "tissue-load-pair"
+object = "пятно блока"
+scope = "Две равные ячейки на жёстком имитаторе, 4 мс. Проверка расчёта, биологическая применимость открыта."
+origin = { kind = "synthetic", reference = "Треугольный импульс; независимая сила равна сумме площадей ячеек, умноженных на их давление." }
+
+[check]
+kind = "tissue_load"
+region = "пятно блока"
+limit_source = "Протокол корпуса: предел силы имитатора 10 Н, локальный предел равен 8 Н на 1 см². ISO/TS 15066:2016, табл. A.2, https://www.iso.org/standard/62996.html описывает пороги опытов в коллаборативной робототехнике. Числа таблицы требуют сверки с лицензированным текстом, критерий длительного контакта с человеком открыт."
+max_force_n = 10
+max_pressure_pa = 80000
+max_gap_ns = 2000000 # Шаг синтетического измерителя 2 мс.
+
+[[check.samples]]
+at_ns = 0
+force_n = { value = 0, uncertainty = 0 }
+area_m2 = { value = 0.0001, uncertainty = 0 } # 1 см² по шаблону имитатора, разбита на две ячейки.
+pressure_map = [
+  { location = "0,0", area_m2 = 0.00005, pressure_pa = { value = 0, uncertainty = 0 } },
+  { location = "0,1", area_m2 = 0.00005, pressure_pa = { value = 0, uncertainty = 0 } },
+]
+
+[[check.samples]]
+at_ns = 2000000
+force_n = { value = 4, uncertainty = 0 }
+area_m2 = { value = 0.0001, uncertainty = 0 } # 1 см² по шаблону имитатора, разбита на две ячейки.
+pressure_map = [
+  { location = "0,0", area_m2 = 0.00005, pressure_pa = { value = 30000, uncertainty = 0 } },
+  { location = "0,1", area_m2 = 0.00005, pressure_pa = { value = 50000, uncertainty = 0 } },
+]
+
+[[check.samples]]
+at_ns = 4000000
+force_n = { value = 0, uncertainty = 0 }
+area_m2 = { value = 0.0001, uncertainty = 0 } # 1 см² по шаблону имитатора, разбита на две ячейки.
+pressure_map = [
+  { location = "0,0", area_m2 = 0.00005, pressure_pa = { value = 0, uncertainty = 0 } },
+  { location = "0,1", area_m2 = 0.00005, pressure_pa = { value = 0, uncertainty = 0 } },
+]

@@ -2,9 +2,7 @@
 //! папки, и относительный — если `sim/` перенесут вместе с `target/`.
 fn main() {
     if let Ok(dir) = std::env::var("DEP_MUJOCO_FRAMEWORK_DIR") {
-        println!("cargo:rustc-link-arg-bins=-Wl,-rpath,{dir}");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{dir}");
     }
-    println!(
-        "cargo:rustc-link-arg-bins=-Wl,-rpath,@executable_path/../../assets/third_party/mujoco"
-    );
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../../assets/third_party/mujoco");
 }

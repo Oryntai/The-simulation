@@ -12,6 +12,7 @@ sim-world.workspace = true
 sim-runtime.workspace = true
 sim-drive.workspace = true
 sim-sense.workspace = true
+sim-reality = { path = "../sim-reality" }
 sim-human.workspace = true
 sim-task = { path = "../sim-task" }
 sim-process = { path = "../sim-process" }

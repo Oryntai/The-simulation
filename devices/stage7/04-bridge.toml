@@ -1,0 +1,74 @@
+# Сравнение с разомкнутой моделью этапа 2 для стенда с измерением на мосту и обмотке.
+models = ["нажиматель/мотор", "нажиматель/ток", "клавиша"]
+
+[build]
+design = "стенд-04"
+revision = ""
+
+[[channels]]
+name = "скважность-моста"
+unit = "1"
+role = "command"
+sampling = { kind = "event" }
+
+[[channels]]
+name = "питание-моста"
+unit = "bool"
+role = "command"
+sampling = { kind = "event" }
+
+[[channels]]
+name = "угол-рычага"
+unit = "rad"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true
+
+[[channels]]
+name = "угол-клавиши"
+unit = "rad"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true
+
+[[channels]]
+name = "ток-обмотки"
+unit = "A"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true
+
+[simulation]
+world = "../04-wall-switch/world.toml"
+catalog = "../../catalog"
+
+[[simulation.inputs]]
+recorded = "скважность-моста"
+simulated = "нажиматель/скважность"
+
+[[simulation.inputs]]
+recorded = "питание-моста"
+simulated = "нажиматель/скважность-power"
+
+[[simulation.curves]]
+model = "нажиматель/мотор"
+recorded = "угол-рычага"
+simulated = "qpos[0]"
+source = "truth"
+# 1 мкс — шаг физики мира этапа 2.
+alignment = { kind = "linear", max_gap_ns = 1000 }
+
+[[simulation.curves]]
+model = "клавиша"
+recorded = "угол-клавиши"
+simulated = "qpos[1]"
+source = "truth"
+alignment = { kind = "linear", max_gap_ns = 1000 }
+
+[[simulation.curves]]
+model = "нажиматель/ток"
+recorded = "ток-обмотки"
+simulated = "нажиматель/ток/value"
+source = "observation"
+# 1 мс — период модели датчика. Интерполяция между отсчётами не применяется.
+alignment = { kind = "hold", max_age_ns = 1000000 }

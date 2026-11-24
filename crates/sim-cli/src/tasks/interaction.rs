@@ -1144,7 +1144,7 @@ struct Grid {
 }
 
 impl Experiment<'_> {
-    fn run_grid(&self, hz: u64) -> Result<Grid, String> {
+    fn run_grid(&self, hz: u64, record_view: bool) -> Result<Grid, String> {
         let c = self.case;
         let mut world = self.world.clone();
         world.physics_hz = hz;
@@ -1266,6 +1266,7 @@ impl Experiment<'_> {
         bindings.verify_resources()?;
         let power = c.power.plan(&compiled)?;
         let mut rt = Runtime::load(compiled.clone())?;
+        if record_view { rt.record_view()?; }
         if !pairs.is_empty() {
             rt.record_process_contacts(pairs)?;
         }
@@ -1527,9 +1528,9 @@ impl Experiment<'_> {
         }
         let faster = |factor| hz.checked_mul(factor).ok_or("переполнение частоты");
         let [base, middle, fine] = [
-            self.run_grid(hz)?,
-            self.run_grid(faster(2)?)?,
-            self.run_grid(faster(4)?)?,
+            self.run_grid(hz, false)?,
+            self.run_grid(faster(2)?, false)?,
+            self.run_grid(faster(4)?, options.view.is_some())?,
         ];
         if base.assets != middle.assets || base.assets != fine.assets {
             return Err("ресурсы контура изменились между сетками".into());
@@ -1671,6 +1672,7 @@ impl Experiment<'_> {
             && runs
                 .iter()
                 .all(|rt| !control::run(rt).is_some_and(|run| run.has_external_processes()));
+        crate::view::save(options, &fine.runtime, Some(self.mode), None)?;
         if let Some(path) = &options.log {
             export(path, |out| fine.runtime.log().write_binary(out))?;
         }
@@ -1754,7 +1756,7 @@ pub(super) fn run_observed(
         }
         return Err(reason);
     }
-    if (options.log.is_some() || options.csv.is_some()) && options.case.is_none() && names.len() > 1
+    if options.exports_run() && options.case.is_none() && names.len() > 1
     {
         return Err("выгрузка журнала требует одного варианта через --case".into());
     }

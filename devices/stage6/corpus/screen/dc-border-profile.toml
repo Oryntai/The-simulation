@@ -1,0 +1,4 @@
+version = 1
+source = "Пограничная численная проверка тока, ниже предела напряжения"
+[cases]
+dc-border = { file = "dc.toml", overlay = "dc-border.toml" }

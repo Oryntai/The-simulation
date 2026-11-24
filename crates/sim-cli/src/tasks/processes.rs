@@ -312,6 +312,7 @@ struct Case {
     #[serde(default)]
     hazard_witnesses: Vec<HazardWitness>,
     screen: Option<screen::Screen>,
+    measured_result: Option<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -1099,6 +1100,19 @@ fn run_case(
         .map(|control| Wiring::load(control, base, inputs, options))
         .transpose()?;
     let window = interval(case.window_ns);
+    let child = super::campaign::profile_key("", mode, mode, Vec::new());
+    let measured = case
+        .measured_result
+        .as_ref()
+        .map(|file| {
+            let path = base.join(file);
+            let journal = Fingerprint::of(inputs.capture(&path)?);
+            let result: sim_task::measured::MeasuredResult = inputs.toml(&path)?;
+            result
+                .assess(&child, case.window_ns, journal)
+                .map_err(|err| format!("{}: {err}", path.display()))
+        })
+        .transpose()?;
     if let Some(screen) = &case.screen {
         screen.validate(&case)?;
     }
@@ -1238,6 +1252,7 @@ fn run_case(
     let mut assets = BTreeMap::new();
     let mut comparison = None;
     let mut diagnostics = Vec::new();
+    let mut view_export = None;
     let mut checks = Vec::new();
     let mut packets = BTreeMap::<String, PacketCounts>::new();
     let mut installations = BTreeMap::new();
@@ -1265,6 +1280,9 @@ fn run_case(
                 );
             }
             let mut runtime = Runtime::load(compiled.clone())?;
+            if rate.as_hz() == plan.base_hz as f64 && variant.kind == VariantKind::Baseline {
+                options.record_view(&mut runtime)?;
+            }
             if let Some(other) = &case.compare_with {
                 runtime.add_simplification(sim_world::Simplification {
                     subject: "сравнение моделей процесса".into(),
@@ -1397,6 +1415,9 @@ fn run_case(
                     Err(error) => diagnostics.push(error),
                 }
             }
+            if options.view.is_some() {
+                view_export = Some(crate::view::save(options, runtime, Some(mode), None));
+            }
             let exported = (|| {
                 if let Some(path) = &options.log {
                     export(path, |file| runtime.log().write_binary(file))?;
@@ -1412,14 +1433,22 @@ fn run_case(
         },
     )
     .map_err(|e| e.to_string())?;
+    if options.view.is_some() {
+        view_export.ok_or("нет исходного прогона для выгрузки просмотра")??;
+    }
     checkpointable &= convergence
         .trials
         .iter()
         .all(|trial| trial.snapshot.as_ref().is_none_or(|audit| audit.matched));
-    let child = super::campaign::profile_key("", mode, mode, Vec::new());
     let mut hazard_witnesses = Vec::new();
     if let Some(screen) = &case.screen {
-        hazard_witnesses.push(screen.finding(&case, &child, &convergence, screened));
+        hazard_witnesses.extend(screen.findings(&case, &child, &convergence, screened));
+    }
+    if let Some(measured) = measured
+        && !convergence.trials.is_empty()
+        && convergence.trials.iter().all(|trial| trial.completed && trial.steps > 0)
+    {
+        hazard_witnesses.extend(measured);
     }
     for witness in &case.hazard_witnesses {
         let class = sim_task::verdict::REGISTRY
@@ -1584,7 +1613,7 @@ pub(super) fn run_observed(
         }
         return Err(reason);
     }
-    if (options.log.is_some() || options.csv.is_some())
+    if options.exports_run()
         && options.case.is_none()
         && profile.cases.len() > 1
     {

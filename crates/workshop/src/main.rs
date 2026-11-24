@@ -108,7 +108,7 @@ fn parse_args() -> Args {
             "--after" => a.after = it.next().and_then(|v| v.parse().ok()).unwrap_or(6.0),
             "-h" | "--help" => {
                 println!(
-                    "workshop [--scenario id] [--choice id=N] [--preset N] [--action id[@сек]] [--screenshot файл.png] [--after сек]"
+                    "workshop --platform мир.toml [--task задача.toml] [--case вариант] [--journal файл] [--report файл]\nworkshop --suite список.json [--entry id]\nworkshop [--scenario id] [--choice id=N] [--preset N] [--action id[@сек]] [--screenshot файл.png] [--after сек]"
                 );
                 std::process::exit(0);
             }
@@ -119,6 +119,10 @@ fn parse_args() -> Args {
 }
 
 fn main() -> AppExit {
+    let platform_args: Vec<_> = std::env::args_os().skip(1).collect();
+    if platform_args.iter().any(|flag| matches!(flag.to_str(), Some("--platform" | "--suite"))) {
+        return workshop::platform::start(platform_args);
+    }
     let args = parse_args();
 
     let mut scenarios = sim_scenarios::catalog();

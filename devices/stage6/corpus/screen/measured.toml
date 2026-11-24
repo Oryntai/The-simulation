@@ -1,0 +1,16 @@
+world = "../free-world.toml"
+window_ns = [0, 4000000] # Четыре интервала по 1 мс базовой сетки.
+source = "Численный стенд свободного блока с отдельным синтетическим рядом."
+measured_result = "tissue-load-row.toml"
+
+[[criteria]]
+name = "высота блока"
+series = { position = 2 }
+unit = "m"
+statistic = "end"
+tolerance = { value = 0.00002, source = { datasheet = "Оценка ошибки Euler |g| t h / 2 на 4 мс при шаге 1 мс." } }
+remainder = [
+  { value = 0.00002, source = { datasheet = "Оценка ошибки Euler |g| t h / 2." } },
+  { value = 0, source = { datasheet = "Свободное падение без ограничений." } },
+  { value = 0, source = { datasheet = "Постоянное ускорение и заданная начальная координата." } },
+]

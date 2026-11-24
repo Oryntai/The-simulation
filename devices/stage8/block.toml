@@ -1,0 +1,13 @@
+# Синтетический блок для независимой сверки рабочего пути и текстуры.
+format = 3
+name = "Блок"
+[[links]]
+name = "блок"
+joint = { kind = "free", name = "положение" }
+mass = { kind = "geometry", material = { name = "материал стенда", density_kg_m3 = 8.0, provenance = { derived = "Масса 1 кг при стороне 0,5 м в синтетической сверке." } } }
+[[links.collision]]
+shape = { kind = "box", size_m = [0.5, 0.5, 0.5] }
+contact_mask = [0, 0]
+[[links.visual]]
+shape = { kind = "box", size_m = [0.5, 0.5, 0.5] }
+rgba = [0.15, 0.59, 0.92, 1.0]

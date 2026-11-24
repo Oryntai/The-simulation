@@ -1,0 +1,24 @@
+# Синтетический однородный стержень на идеальной направляющей.
+format = 3
+name = "Стержень"
+
+[[links]]
+name = "стержень"
+# Для ручной сверки x = a Δt² n(n+1)/2 потери и упоры отключены.
+joint = { kind = "slide", name = "ход", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0 }
+mass = { kind = "geometry", material = { name = "материал стенда", density_kg_m3 = 256, provenance = { derived = "Масса 1 кг при размере 1×1/16×1/16 м в синтетическом опыте." } } }
+
+[[links.collision]]
+shape = { kind = "box", size_m = [1, 0.0625, 0.0625] }
+contact_mask = [0, 0]
+
+[[links.visual]]
+shape = { kind = "box", size_m = [1, 0.0625, 0.0625] }
+rgba = [0.37, 0.78, 0.33, 1]
+
+[[sensors]]
+name = "кадр"
+part = "reference-rgb"
+link = "стержень"
+# Полметра до центра стержня по оптической оси +Z и смещение на 1/8 м по X.
+pose = { position_m = [0.125, 0, -0.5] }

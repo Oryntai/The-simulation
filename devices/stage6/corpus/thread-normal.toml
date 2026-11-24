@@ -1,11 +1,14 @@
 world = "../stage6/corpus/thread-world.toml"
 
+[models."стык"]
+loading = { source = "Десятая доля силы опасного опыта: 0,1 Н с 2 до 12 мс. В линейной упругой области невязка также уменьшается в десять раз.", steps = [{ at_ns = 0, force_n = [0, 0, 0], torque_nm = [0, 0, 0] }, { at_ns = 2000000, force_n = [0.1, 0, 0], torque_nm = [0, 0, 0] }] }
+
 [[criteria]]
 name = "невязка резьбы"
 series = { measurement = "стык/elastic_error" }
 unit = "m"
 statistic = "maximum"
-upper = { value = 0.0002, source = { datasheet = "Ограничение упругой невязки из паспорта синтетической резьбы." } }
+upper = { value = 5e-06, source = { datasheet = "Ограничение упругой невязки из паспорта синтетической резьбы." } }
 tolerance = { value = 0.000004, source = { datasheet = "Допуск осевой реакции 0,004 Н при k=1000 Н/м из исходной численной сверки." } }
 remainder = [
   { value = 0.000001, source = { datasheet = "Остаток 0,001 Н при k=1000 Н/м из исходной сверки." } },
@@ -14,4 +17,4 @@ remainder = [
 ]
 
 [models."стык".law.parameters]
-maximum_elastic_error_m = { value = 0.0002, source = { datasheet = "Ограничение упругой невязки из паспорта синтетической резьбы." } }
+maximum_elastic_error_m = { value = 5e-06, source = { datasheet = "Ограничение упругой невязки из паспорта синтетической резьбы." } }

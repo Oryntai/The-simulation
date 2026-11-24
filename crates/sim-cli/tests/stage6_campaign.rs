@@ -6,6 +6,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use sim_task::verdict::{HazardClass, REGISTRY};
 
+#[path = "stage6/thresholds.rs"]
+mod thresholds;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Acceptance {
@@ -77,6 +80,8 @@ struct Witness {
     pair_mode: Option<String>,
     pair_metric: Option<String>,
     pair_expected: Option<f64>,
+    pair_tolerance: Option<f64>,
+    reason_contains: Option<String>,
     mechanical: Option<MechanicalWitness>,
     paired_finding: Option<PairedFinding>,
     #[serde(default)]
@@ -312,10 +317,22 @@ fn verify_witness(report: &Value, proof: &Witness) -> Result<(), String> {
         }
         let lo = bounds[0].as_f64().unwrap();
         let hi = bounds[1].as_f64().unwrap();
-        if !lo.is_finite() || !hi.is_finite() || lo > hi {
+        if !lo.is_finite()
+            || !hi.is_finite()
+            || lo > hi
+            || proof.reason_contains.as_ref().is_some_and(|part| {
+                !f["reason"]
+                    .as_str()
+                    .is_some_and(|reason| reason.contains(part))
+            })
+        {
             return false;
         }
-        if proof.reject_only && !f["limit"]["upper"][1].as_f64().is_some_and(|limit| lo > limit) {
+        if proof.reject_only
+            && !f["limit"]["upper"][1]
+                .as_f64()
+                .is_some_and(|limit| lo > limit)
+        {
             return false;
         }
         if let Some(paired) = &proof.paired_finding {
@@ -348,13 +365,33 @@ fn verify_witness(report: &Value, proof: &Witness) -> Result<(), String> {
                     .any(|m| (m - expected).abs() <= proof.tolerance)
             })
     };
-    if !all_findings(subject)
+    let Some(adverse) = all_findings(subject)
         .filter(find)
-        .any(|f| f["outcome"] == "fail" && f["confirmed_hazard"] == true && numerical(f))
-    {
+        .find(|f| f["outcome"] == "fail" && f["confirmed_hazard"] == true && numerical(f))
+    else {
         return Err(format!("нет численного свидетеля {}", proof.class));
-    }
+    };
+    let within_limit = |measurement: &Value| {
+        let Some([lo, hi]) = measurement.as_array().map(Vec::as_slice) else {
+            return false;
+        };
+        lo.as_f64().zip(hi.as_f64()).is_some_and(|(lo, hi)| {
+            lo.is_finite()
+                && hi.is_finite()
+                && lo <= hi
+                && adverse["limit"]["lower"][1]
+                    .as_f64()
+                    .is_none_or(|min| lo >= min)
+                && adverse["limit"]["upper"][0]
+                    .as_f64()
+                    .is_none_or(|max| hi <= max)
+        })
+    };
     let pair = &report["assemblies"][&proof.pair_assembly];
+    if proof.reject_only && pair["verdict"] != "NotProven" {
+        return Err(format!("парный опыт закрыл готовность для {}", proof.class));
+    }
+    let pair_tolerance = proof.pair_tolerance.unwrap_or(proof.tolerance);
     if let Some(witness) = &proof.mechanical {
         return verify_mechanical(subject, pair, proof, witness);
     }
@@ -373,8 +410,14 @@ fn verify_witness(report: &Value, proof: &Witness) -> Result<(), String> {
                     "pass"
                 }
                 && f["confirmed_hazard"] == false
-                && (!proof.reject_only || f["measurement"][1].as_f64()
-                    .zip(f["limit"]["upper"][0].as_f64()).is_some_and(|(hi, limit)| hi < limit))
+                && within_limit(&f["measurement"])
+                && (!proof.reject_only
+                    || f["measurement"][1]
+                        .as_f64()
+                        .zip(f["limit"]["upper"][0].as_f64())
+                        // Нулевой предел запрещает событие. Точный нуль
+                        // в паре проверяет его отсутствие.
+                        .is_some_and(|(hi, limit)| hi < limit || (hi == 0.0 && limit == 0.0)))
                 && f["reason"]
                     .as_str()
                     .is_some_and(|reason| reason.contains(&paired.reason_contains))
@@ -382,7 +425,7 @@ fn verify_witness(report: &Value, proof: &Witness) -> Result<(), String> {
                 && proof.pair_expected.is_some_and(|expected| {
                     f["measurement"][paired.bound]
                         .as_f64()
-                        .is_some_and(|m| (m - expected).abs() <= proof.tolerance)
+                        .is_some_and(|m| (m - expected).abs() <= pair_tolerance)
                 })
         });
         if found
@@ -410,18 +453,32 @@ fn verify_witness(report: &Value, proof: &Witness) -> Result<(), String> {
             .ok_or("нет парного опыта")?;
         let case = &run["detail"]["profile"]["cases"][mode];
         let metric = metric(case, name);
+        let values = rows(&metric["values"]);
+        let trials = rows(&case["convergence"]["trials"]);
         if metric["outcome"] != "pass"
-            || !rows(&metric["values"]).iter().all(|range| {
-                rows(range)
-                    .iter()
-                    .all(|v| (v.as_f64().unwrap() - expected).abs() <= proof.tolerance)
+            || metric["unit"] != adverse["unit"]
+            || !within_limit(&metric["interval"])
+            || values.len() != trials.len()
+            || trials.len() < 3
+            || !trials.iter().all(|trial| {
+                trial["completed"] == true
+                    && trial["journal"]
+                        .as_u64()
+                        .is_some_and(|journal| journal != 0)
+            })
+            || !values.iter().all(|range| {
+                within_limit(range)
+                    && rows(range).iter().all(|v| {
+                        v.as_f64()
+                            .is_some_and(|v| (v - expected).abs() <= pair_tolerance)
+                    })
             })
         {
             return Err(format!("не сходится парный опыт для {}", proof.class));
         }
     } else if !all_findings(pair)
-        .filter(|f| f["key"]["class"] == proof.class && f["key"]["object"] == proof.object)
-        .any(|f| f["outcome"] == "pass")
+        .filter(find)
+        .any(|f| f["outcome"] == "pass" && within_limit(&f["measurement"]))
     {
         return Err(format!(
             "нет соблюдения предела в парном опыте {}",
@@ -576,11 +633,22 @@ fn корпус_и_воспроизведение() {
     );
 
     let supported = check_corpus(&first, &expected.witnesses, &expected.corpus.open).unwrap();
+    assert_eq!(supported, required().len());
+    let imported: BTreeSet<_> = expected.witnesses.iter().filter_map(|w| {
+        all_findings(&first["assemblies"][&w.assembly]).any(|f| {
+            f["key"]["class"] == w.class && f["confirmed_hazard"] == true
+                && rows(&f["measurement_sources"]).iter().any(|source| {
+                    source.as_str().is_some_and(|s| s.starts_with("Синтетический ряд:"))
+                })
+        }).then_some(w.class.as_str())
+    }).collect();
+    assert_eq!(imported, BTreeSet::from(["tissue_load", "ingress"]));
     println!(
-        "Корпус: требуется {}, подтверждено {}. Открыты {:?}",
+        "Корпус: требуется {}, численных пар {}, из них {} по синтетическому входному ряду: {:?}",
         required().len(),
         supported,
-        expected.corpus.open
+        imported.len(),
+        imported
     );
     let mut absent = expected.witnesses.clone();
     absent.remove(0);
@@ -626,11 +694,19 @@ fn корпус_и_воспроизведение() {
     verify_disabled_controls(&first, &expected.witnesses, &binary, &temp.0);
     verify_disabled_conductor(&first, &expected.witnesses, &binary, &temp.0);
     verify_disabled_screens(&expected.witnesses, &binary, &temp.0);
+    verify_dc_limits(&first, &expected.witnesses, &binary, &temp.0);
+    verify_measured_results(&first, &expected.witnesses, &binary, &temp.0);
 }
 
 fn verify_disabled_screens(witnesses: &[Witness], binary: &Path, temp: &Path) {
     let fixtures = data().join("stage6/corpus/screen");
-    for proof in witnesses.iter().filter(|proof| proof.reject_only) {
+    for proof in witnesses.iter().filter(|proof| {
+        proof.reject_only
+            && matches!(
+                proof.class.as_str(),
+                "burns" | "electric_shock" | "measurement"
+            )
+    }) {
         let source_file = if proof.class == "measurement" {
             "curve"
         } else {
@@ -706,6 +782,299 @@ fn verify_disabled_screens(witnesses: &[Witness], binary: &Path, temp: &Path) {
             assert_eq!(invalid["status"], "error");
             assert!(invalid.to_string().contains("конечными отсчётами"));
         }
+    }
+}
+
+fn add_process_specimen(
+    temp: &Path,
+    manifest: &mut String,
+    assembly: &str,
+    mode: &str,
+    case: &toml::Value,
+) {
+    let write = |suffix: &str, text: &str| {
+        std::fs::write(temp.join(format!("{assembly}-{suffix}.toml")), text).unwrap();
+    };
+    write("case", &toml::to_string(case).unwrap());
+    write(
+        "task",
+        &format!("version = 1\nprocess_profile = '{assembly}-profile.toml'\n"),
+    );
+    write(
+        "profile",
+        &format!(
+            "version = 1\nsource = 'Проверка применимости'\n[cases]\n{mode} = '{assembly}-case.toml'\n"
+        ),
+    );
+    manifest.push_str(&format!(
+        "\n[assemblies.{assembly}]\nscope = 'Проверка применимости'\n[assemblies.{assembly}.experiments.test]\nkind = 'task'\nworld = {}\ntask = '{assembly}-task.toml'\n",
+        case["world"]
+    ));
+}
+
+fn verify_dc_limits(first: &Value, witnesses: &[Witness], binary: &Path, temp: &Path) {
+    let mut proof = witnesses
+        .iter()
+        .find(|w| w.class == "electric_shock")
+        .unwrap()
+        .clone();
+    proof.assembly = "dc-border".into();
+    proof.mode = "dc-border".into();
+    proof.expected = Some(2.005002 / 1002.0);
+    verify_witness(first, &proof).unwrap();
+
+    let fixtures = data().join("stage6/corpus/screen");
+    let mut base: toml::Value =
+        toml::from_str(&std::fs::read_to_string(fixtures.join("dc.toml")).unwrap()).unwrap();
+    base["world"] = fixtures
+        .join(base["world"].as_str().unwrap())
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .into();
+    let mut manifest = "version = 1\n".to_string();
+    // 35 В через 100 кОм отделяет превышение напряжения от превышения тока.
+    // −12 В меняет направление при прежнем пути, 4 мс меняют только выдержку.
+    let specimens = [
+        (
+            "dc-dry",
+            35.0,
+            100000.0,
+            "dry_small_area",
+            false,
+            true,
+            false,
+            false,
+            60.0,
+        ),
+        (
+            "dc-wet", 35.0, 100000.0, "wet", false, true, false, true, 30.0,
+        ),
+        (
+            "dc-body",
+            35.0,
+            100000.0,
+            "body_worn",
+            false,
+            true,
+            false,
+            true,
+            30.0,
+        ),
+        (
+            "dc-elv",
+            120.0,
+            100000.0,
+            "dry_small_area",
+            false,
+            true,
+            false,
+            true,
+            60.0,
+        ),
+        (
+            "dc-12v",
+            12.0,
+            1000.0,
+            "dry_small_area",
+            false,
+            false,
+            true,
+            false,
+            60.0,
+        ),
+        (
+            "dc-inverse",
+            -12.0,
+            1000.0,
+            "dry_small_area",
+            false,
+            false,
+            false,
+            false,
+            60.0,
+        ),
+        (
+            "dc-rebound",
+            -12.0,
+            1000.0,
+            "dry_small_area",
+            true,
+            false,
+            true,
+            false,
+            60.0,
+        ),
+        (
+            "dc-short",
+            12.0,
+            1000.0,
+            "dry_small_area",
+            false,
+            true,
+            false,
+            false,
+            60.0,
+        ),
+    ];
+    for (id, supply, load, exposure, reverse, short, _, _, _) in specimens {
+        let mut case = base.clone();
+        let model = &mut case["models"]["контакт"];
+        model["supply_v"]["value"] = supply.into();
+        model["load_ohm"]["value"] = load.into();
+        case["screen"]["condition"]["exposure"] = exposure.into();
+        if reverse {
+            case["screen"]["condition"]["path_when_positive"]
+                .as_array_mut()
+                .unwrap()
+                .reverse();
+        }
+        if short {
+            // При физике 1 кГц окно занимает четыре целых шага после первого такта.
+            case["window_ns"][1] = 5_000_000_i64.into();
+        }
+        add_process_specimen(temp, &mut manifest, id, id, &case);
+    }
+    let file = temp.join("dc-conditions.toml");
+    std::fs::write(&file, manifest).unwrap();
+    let report = cli_at(binary, &file, &[], 0);
+    for (id, supply, load, _, _, _, current_fail, voltage_fail, voltage_limit) in specimens {
+        let assembly = &report["assemblies"][id];
+        let findings: Vec<_> = all_findings(assembly)
+            .filter(|f| f["key"]["class"] == "electric_shock")
+            .collect();
+        assert_eq!(
+            assembly["verdict"],
+            if current_fail || voltage_fail {
+                "Rejected"
+            } else {
+                "NotProven"
+            }
+        );
+        for (unit, expected, limit, fail) in [
+            ("A", f64::abs(supply) / (load + 2.0), 0.002, current_fail),
+            ("V", f64::abs(supply), voltage_limit, voltage_fail),
+        ] {
+            let f = findings.iter().find(|f| f["unit"] == unit).unwrap();
+            assert!(
+                (f["measurement"][0].as_f64().unwrap() - expected).abs() < 1e-10,
+                "{id}"
+            );
+            assert_eq!(f["limit"]["upper"][0].as_f64().unwrap(), limit, "{id}");
+            assert_eq!(f["confirmed_hazard"], fail, "{id}");
+            assert_eq!(
+                f["outcome"],
+                if fail { "fail" } else { "not_analyzed" },
+                "{id}"
+            );
+        }
+    }
+}
+
+fn verify_measured_results(first: &Value, witnesses: &[Witness], binary: &Path, temp: &Path) {
+    let fixtures = data().join("stage6/corpus/screen");
+    let mut case: toml::Value =
+        toml::from_str(&std::fs::read_to_string(fixtures.join("measured.toml")).unwrap()).unwrap();
+    case["world"] = fixtures
+        .join(case["world"].as_str().unwrap())
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .into();
+    case.as_table_mut()
+        .unwrap()
+        .remove("measured_result")
+        .unwrap();
+    let mut manifest = "version = 1\n".to_string();
+    let mut measured = Vec::new();
+    let mut borders = Vec::new();
+    for (class, secondary, value, event) in [
+        ("tissue_load", "пик контактной силы", 6.0, 2_000_000),
+        ("ingress", "отказ изоляции", 1.0, 4_000_000),
+    ] {
+        let proof = witnesses.iter().find(|w| w.class == class).unwrap();
+        let assembly = &first["assemblies"][&proof.assembly];
+        let secondary = all_findings(assembly)
+            .find(|f| f["code"] == secondary)
+            .unwrap();
+        assert_eq!(secondary["measurement"], serde_json::json!([value, value]));
+        assert_eq!(secondary["confirmed_hazard"], class == "ingress");
+        assert!(all_findings(assembly).any(|f| {
+            f["key"]["class"] == class
+                && f["outcome"] == "fail"
+                && f["event_ns"] == event
+                && rows(&f["measurement_sources"])
+                    .iter()
+                    .any(|s| s.as_str().unwrap().starts_with("Синтетический ряд:"))
+        }));
+        let id = format!("{}-disabled", proof.assembly);
+        add_process_specimen(temp, &mut manifest, &id, &proof.mode, &case);
+        measured.push((id, proof));
+
+        let mut border = proof.clone();
+        for outside in [true, false] {
+            let label = if outside { "outside" } else { "inside" };
+            let id = format!("{}-{label}", proof.assembly);
+            let mut row: toml::Value = toml::from_str(&std::fs::read_to_string(
+                fixtures.join(format!("{}-row.toml", proof.assembly)),
+            ).unwrap()).unwrap();
+            row["mode"] = id.clone().into();
+            let sample = &mut row["check"]["samples"][1];
+            let value = if class == "tissue_load" {
+                // Разрешение синтетической карты 1 Па. Интеграл давления даёт показание весов.
+                let pressure = if outside { 80_001.0 } else { 79_999.0 };
+                let cells = &mut sample["pressure_map"];
+                cells[0]["pressure_pa"]["value"] = 0.0.into();
+                cells[1]["pressure_pa"]["value"] = pressure.into();
+                sample["force_n"]["value"] = (pressure * 0.00005).into();
+                pressure
+            } else {
+                // При нулевом пределе минимальная проба стенда 1 мкл = 10⁻⁹ м³.
+                // При той же воде и исправной изоляции меняется только зона.
+                let protected = if outside { 1e-9 } else { 0.0 };
+                sample["locations"][0]["volume_m3"]["value"] = protected.into();
+                sample["locations"][1]["volume_m3"]["value"] = (1e-9 - protected).into();
+                sample["insulation"] = "intact".into();
+                protected
+            };
+            row["origin"]["reference"] = "Пограничная пара с известной нагрузкой и объёмом".into();
+            let name = format!("{id}-row.toml");
+            std::fs::write(temp.join(&name), toml::to_string(&row).unwrap()).unwrap();
+            let mut specimen = case.clone();
+            specimen.as_table_mut().unwrap().insert("measured_result".into(), name.into());
+            add_process_specimen(temp, &mut manifest, &id, &id, &specimen);
+            if outside {
+                border.assembly = id.clone();
+                border.mode = id;
+                border.expected = Some(value);
+            } else {
+                border.pair_assembly = id.clone();
+                border.pair_mode = Some(id);
+                border.pair_expected = Some(value);
+            }
+        }
+        borders.push(border);
+    }
+    let file = temp.join("measured-disabled.toml");
+    std::fs::write(&file, manifest).unwrap();
+    let report = cli_at(binary, &file, &[], 0);
+    for proof in &borders {
+        verify_witness(&report, proof).unwrap_or_else(|e| panic!("{e}"));
+        println!("{}: {:?} / {:?}", proof.class, proof.expected, proof.pair_expected);
+    }
+    for (id, proof) in measured {
+        let disabled = &report["assemblies"][&id];
+        assert_eq!(disabled["coverage"]["executed"], 1);
+        assert_eq!(disabled["verdict"], "NotProven");
+        assert!(
+            !all_findings(disabled)
+                .any(|f| f["key"]["class"] == proof.class && f["confirmed_hazard"] == true)
+        );
+        let mut masked = first.clone();
+        masked["assemblies"][&proof.assembly] = disabled.clone();
+        assert!(verify_witness(&masked, proof).is_err());
     }
 }
 
@@ -1110,6 +1479,47 @@ run = [{ batch = "only", specimen = "only", law = { source = { kind = "datasheet
     };
     let before = selected(&same);
     assert_eq!(before.len(), 2);
+    assert_eq!(same["assemblies"]["block"]["verdict"], "PassedSimulation");
+
+    // У редкой партии положительный вес 1/1000 по протоколу этого опыта.
+    // При зерне 7 обе партии попадают в проверенную ветвь, однако допуск
+    // относится ко всему заявленному закону, включая оценочную ветвь.
+    let mut unsupported: toml::Value = toml::from_str(&sampled).unwrap();
+    let probability = &mut unsupported["sampling"]["probability"];
+    let alternatives = probability["batch"]["alternatives"].as_array_mut().unwrap();
+    alternatives.push(toml::from_str("id = 'rare'\nweight = 0.001\nvalues = {}").unwrap());
+    for level in ["specimen", "run"] {
+        let laws = probability[level].as_array_mut().unwrap();
+        let mut rare = laws[0].clone();
+        rare["batch"] = "rare".into();
+        rare["law"]["source"]["kind"] = "estimate".into();
+        laws.push(rare);
+    }
+    write("input.toml", &toml::to_string(&unsupported).unwrap());
+    let unsupported = cli(&manifest, &[], 0);
+    assert_eq!(
+        selected(&unsupported).values().collect::<BTreeSet<_>>(),
+        before.values().collect::<BTreeSet<_>>()
+    );
+    let sample_rows = rows(&unsupported["assemblies"]["block"]["statistics"]["axis"]["rows"]);
+    let random: Vec<_> = sample_rows
+        .iter()
+        .filter(|r| r["sample"]["key"]["kind"] == "random")
+        .collect();
+    assert_eq!(random.len(), 2);
+    assert!(
+        random
+            .iter()
+            .all(|r| r["sample"]["alternatives"]["batch"] == "only")
+    );
+    assert_eq!(unsupported["assemblies"]["block"]["verdict"], "NotProven");
+    assert!(
+        all_findings(&unsupported["assemblies"]["block"]).any(|finding| {
+            finding["key"]["object"] == "разброс"
+                && finding["reason"].as_str().unwrap().contains("источник")
+        })
+    );
+
     write("input.toml", &sampled.replace("seed = 7", "seed = 8"));
     let after = selected(&cli(&manifest, &[], 0));
     assert_eq!(after.len(), 2);
@@ -1632,7 +2042,18 @@ grids = [{ id = "base", hz = 1000, source = { kind = "datasheet", reference = "�
 #[test]
 fn семь_сборок_через_cli() {
     let expected = acceptance();
-    let report = cli(&data().join("stage6.toml"), &[], 0);
+    let manifest = data().join("stage6.toml");
+    let binary = Path::new(env!("CARGO_BIN_EXE_sim-run"));
+    let first = cli_output(binary, &manifest, &[], 0);
+    let second = cli_output(binary, &manifest, &[], 0);
+    assert!(first == second, "полные живые отчёты отличаются побайтно");
+    println!(
+        "Два полных живых отчёта: {} байт, FNV-1a {:016x}",
+        first.len(),
+        sim_signal::fnv1a(first.iter().copied())
+    );
+    let report: Value = serde_json::from_slice(&first).unwrap();
+    assert_eq!(report["resumed"], 0);
     assert_eq!(report["version"], expected.version);
     assert_eq!(report["status"], "completed");
     let assemblies = map(&report["assemblies"]);

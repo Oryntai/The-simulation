@@ -534,6 +534,7 @@ fn live_section_and_motion_match_independent_calculations_and_readiness() {
                 Fingerprint::of(b"other"),
                 position(),
                 measured(),
+                Some(0.0), // Точный ряд из рекурсии Euler.
                 &samples
             )
             .is_err()
@@ -548,7 +549,7 @@ fn live_section_and_motion_match_independent_calculations_and_readiness() {
             })
             .collect();
         evidence
-            .record_measurement(&req, &row.key, build(), position(), measured(), &shifted)
+            .record_measurement(&req, &row.key, build(), position(), measured(), Some(0.0), &shifted)
             .unwrap();
     }
 

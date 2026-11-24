@@ -1,0 +1,12 @@
+# Две копии блока на независимых направляющих. Масса задана для ручной сверки F/m.
+format = 3
+name = "Блок"
+
+[[links]]
+name = "блок"
+joint = { kind = "slide", name = "ход", axis = [1, 0, 0], damping = 0, friction_loss = 0, armature = 0, efforts = [{ name = "тяга", dof = 0 }] }
+# Однородная сфера 2 кг, радиус 0,01 м, I = 2mr²/5. Столкновения отключены.
+mass = { kind = "explicit", mass_kg = 2, com_m = [0, 0, 0], inertia_kg_m2 = [0.00008, 0.00008, 0.00008, 0, 0, 0], provenance = { derived = "Однородная сфера численного опыта." } }
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.01 }
+contact_mask = [0, 0]

@@ -1,0 +1,24 @@
+# Три коротких опыта кампании корпуса этапа 6. Границы, сетки и значения
+# остаются в исходных постановках, здесь только выбор опытов для проверки окна.
+version = 1
+
+[assemblies.exceeded]
+scope = "Стержень с нарушенным пределом хода"
+[assemblies.exceeded.experiments.loaded]
+kind = "scenario"
+campaign = "../stage6/corpus/over-travel.toml"
+installation = "../stage6/corpus/over-travel-install.toml"
+
+[assemblies.bounded]
+scope = "Стержень под допустимой нагрузкой"
+[assemblies.bounded.experiments.loaded]
+kind = "scenario"
+campaign = "../stage6/corpus/under-travel.toml"
+installation = "../stage6/corpus/under-travel-install.toml"
+
+[assemblies.estimated]
+scope = "Стержень с оценочным пределом"
+[assemblies.estimated.experiments.loaded]
+kind = "scenario"
+campaign = "../stage6/corpus/estimate.toml"
+installation = "../stage6/corpus/estimate-install.toml"

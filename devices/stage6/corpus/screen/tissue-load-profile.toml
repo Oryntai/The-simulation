@@ -1,0 +1,4 @@
+version = 1
+source = "Протокол синтетического ряда с односторонней оценкой"
+[cases]
+tissue-load = "measured.toml"

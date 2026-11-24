@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "source": "Контрольные входы §5 ТЗ, штатные задачи этапов 4–6. Антропометрия из разделов participant трёх setup.toml.",
+  "campaign": "../stage6.toml",
+  "participants": {
+    "reference": {
+      "name": "участник",
+      "population": "male",
+      "stature_m": 1.754,
+      "mass_kg": 87.4,
+      "source": "NHANES 2015–2018, таблицы 11 и 5, медианы мужчин 20+. Те же данные в setup.toml."
+    }
+  },
+  "entries": [
+    {"id":"01", "label":"Экзоскелет 24 В", "world":"../01-elbow-assist/stage5/world.toml", "task":"../01-elbow-assist/stage5/acceptance.toml", "case":"nominal", "participant":"reference", "inspect_body":"устройство/рычаг", "force":"interaction/рычаг/normal"},
+    {"id":"02", "label":"Тросовый ортез", "world":"../02-cable-assist/world.toml", "task":"../02-cable-assist/acceptance.toml", "case":"nominal", "participant":"reference", "inspect_body":"устройство/станина", "force":"interaction/зажим/normal"},
+    {"id":"03", "label":"Умные очки", "world":"../03-wearable-sensors/world.toml", "task":"../03-wearable-sensors/acceptance.toml", "case":"nominal", "participant":"reference", "inspect_body":"устройство/рама", "force":"interaction/передняя/normal"},
+    {"id":"04", "label":"Палец-кнопка", "world":"../04-wall-switch/stage4/world.toml", "task":"../04-wall-switch/stage4/acceptance.toml", "case":"переключение", "inspect_body":"стенд/клавиша"},
+    {"id":"05", "label":"Следящая камера", "world":"../05-camera-tracker/stage6-world.toml", "task":"../05-camera-tracker/tasks/stage6.toml", "case":"слежение", "peak":"ошибка линии визирования", "inspect_body":"каретка/мишень", "force":"каретка/сила"},
+    {"id":"06", "label":"Портал XYZ", "world":"../06-xyz/world.toml", "task":"../06-xyz/acceptance.toml", "case":"портал", "inspect_body":"деталь/образец"},
+    {"id":"07", "label":"Балансирующая тележка", "world":"../07-balance-cart/stage6-world.toml", "task":"../07-balance-cart/tasks/stage6.toml", "case":"удержание", "peak":"наклон основания", "inspect_body":"тележка/корпус"}
+  ]
+}

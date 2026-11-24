@@ -1,0 +1,19 @@
+id = "fixture-linear"
+kind = "encoder"
+name = "Идеальный линейный отсчёт синтетического стенда"
+
+[model]
+# Начальная конфигурация сверки: частота физики и нулевая задержка до установки замера.
+rate_hz = { value = 1000, provenance = "estimate", source = "Сетка численного стенда 1 мс." }
+latency_s = { value = 0, provenance = "estimate", source = "Исходная модель без задержки." }
+# Режим 0 означает прямую координату. Остальные нули отключают указанные эффекты.
+encoder_mode = { value = 0, provenance = "estimate", source = "Прямая координата вдоль направляющей." }
+encoder_zero = { value = 0, provenance = "estimate", source = "Ноль координаты мира." }
+noise_std = { value = 0, provenance = "estimate", source = "Идеальный отсчёт без шума." }
+bias = { value = 0, provenance = "estimate", source = "Идеальный отсчёт без смещения." }
+drift_per_s = { value = 0, provenance = "estimate", source = "Идеальный отсчёт без дрейфа." }
+drift_rw_std = { value = 0, provenance = "estimate", source = "Идеальный отсчёт без случайного дрейфа." }
+quantum = { value = 0, provenance = "estimate", source = "Квантование отключено." }
+drop_probability = { value = 0, provenance = "estimate", source = "Доставка без пропусков." }
+saturation = { value = 0, provenance = "estimate", source = "Насыщение отключено." }
+fault = { value = 0, provenance = "estimate", source = "Отказы отключены." }

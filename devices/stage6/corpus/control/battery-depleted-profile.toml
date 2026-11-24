@@ -14,7 +14,7 @@ class = "battery"
 object = "стенд/источник"
 window_ns = [0, 1000000]
 max_gap_ns = 1000000
-source = { kind = "datasheet", reference = "LG Chem Product Specification INR21700 M50 18.2Wh, LRB-PS-CY18.2Wh-M50, 2017-09-22: нижний предел на клеммах 2,50 В." }
+source = { kind = "datasheet", reference = "LG Chem Product Specification INR21700 M50 18.2Wh, LRB-PS-CY18.2Wh-M50, 2017-09-22: отсечка разряда 2,50 В на клеммах, численно сверена с опытами Chen et al. (2020), § Parameterization and model validation, https://doi.org/10.1149/1945-7111/AB9050. Действие защиты и тепловая безопасность ячейки требуют отдельной проверки." }
 scope = "Одна ячейка при 25 °C под постоянной нагрузкой 1 А до включения моста. OCV Chen 2020, R0/R1/C1 по модели ячейки."
 check = { kind = "truth", signal = { name = "стенд/источник/bus_next_v", unit = "V" }, min = 2.5 }
 

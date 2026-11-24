@@ -1,2 +1,2 @@
 [models."контакт"]
-supply_v = { value = 12, source = { datasheet = "Заданный источник 12 В для парного опыта." } }
+supply_v = { value = 2.002998, source = { datasheet = "1,999 мА × 1002 Ом по закону Ома, на 1 мкА ниже порога." } }

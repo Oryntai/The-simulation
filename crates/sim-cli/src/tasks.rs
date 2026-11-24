@@ -551,7 +551,8 @@ impl Execution<'_> {
     fn run_case(
         &self,
         case: &Case,
-        mut export_live: impl FnMut(&sim_runtime::Log) -> Result<(), String>,
+        record_view: bool,
+        mut export_live: impl FnMut(&Runtime) -> Result<(), String>,
     ) -> Result<(RunResult, Option<reference::Comparison>, Vec<control_witness::Observation>), String> {
         let mut comparison = None;
         let mut archive_error = None;
@@ -577,6 +578,7 @@ impl Execution<'_> {
                     if run.identity().assets != self.assets[&plan.mode.id] {
                         return Err("ресурсы установленного режима изменились".into());
                     }
+                    if record_view { rt.record_view()?; }
                     Ok(self.inputs.clone())
                 },
                 |kind, rt, _| {
@@ -599,7 +601,10 @@ impl Execution<'_> {
                     if kind != RunKind::Live || case.fault.is_some() {
                         return Ok(());
                     }
-                    export_live(rt.log())?;
+                    if let Err(error) = export_live(rt) {
+                        archive_error = Some(error.clone());
+                        return Err(error);
+                    }
                     if let Some(reference) = self.references.get(&case.mode) {
                         match reference.compare(&self.reference_texts[&case.mode], rt) {
                             Ok(result) => comparison = Some(result),
@@ -617,7 +622,7 @@ impl Execution<'_> {
             )
             .map_err(|error| error.to_string())?;
         if let Some(error) = archive_error {
-            return Err(format!("эталон режима «{}»: {error}", case.mode));
+            return Err(format!("выгрузка или эталон режима «{}»: {error}", case.mode));
         }
         observations.retain(|value| {
             control_witness::valid_report(&self.witnesses[value.spec], result.report())
@@ -923,7 +928,7 @@ fn run_control(
     {
         return Err("режим отсутствует в профиле".into());
     }
-    if (options.log.is_some() || options.csv.is_some()) && options.case.is_none() {
+    if options.exports_run() && options.case.is_none() {
         return Err("для выгрузки журнала задачи выберите режим через --case".into());
     }
     let execution = Execution {
@@ -973,8 +978,10 @@ fn run_control(
     for case in assessor.required_cases().iter().filter(|case| {
         options.case.as_ref().is_none_or(|mode| mode == &case.mode) && assessor.plan(case).is_some()
     }) {
-        let (result, comparison, _) = execution.run_case(case, |log| {
+        let (result, comparison, _) = execution.run_case(case, options.view.is_some() && !exported, |runtime| {
             if !exported {
+                crate::view::save(options, runtime, Some(&case.mode), Some(case))?;
+                let log = runtime.log();
                 if let Some(path) = &options.log {
                     export(path, |file| log.write_binary(file))?;
                 }
@@ -989,6 +996,9 @@ fn run_control(
             comparisons.insert(case.mode.clone(), comparison);
         }
         runs.push(result);
+    }
+    if options.view.is_some() && !exported {
+        return Err("для просмотра нет завершившего наблюдение штатного прогона".into());
     }
     let evidence = assessor.assess(&runs);
     if let Some(audit) = audit.as_mut() {

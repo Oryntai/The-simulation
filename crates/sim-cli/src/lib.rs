@@ -2,6 +2,7 @@
 
 mod commands;
 mod tasks;
+pub mod view;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -15,7 +16,7 @@ use sim_runtime::{Log, LogEnd, LogEntry, LogKind, Runtime, Status};
 use sim_signal::{Command, Time};
 use sim_world::CompiledWorld;
 
-const USAGE: &str = "sim-run <world.toml> --duration <с> [--catalog папка] [--commands файл.csv] [--seed N] [--log файл] [--csv файл] [--mode fast|realtime|step] [--snapshot-at <с>] [--replay файл] [--json]\nsim-run <world.toml> --task <task.toml> [--case режим | --matrix full [--jobs N] [--checkpoint папка]] [--seed N] [--catalog папка] [--json]\nsim-run --campaign <manifest.toml> [--checkpoint папка] [--repeat ключ] [--json]";
+const USAGE: &str = "sim-run <world.toml> --duration <с> [--catalog папка] [--commands файл.csv] [--seed N] [--log файл] [--csv файл] [--view файл [--peak канал]] [--mode fast|realtime|step] [--snapshot-at <с>] [--replay файл] [--json]\nsim-run <world.toml> --task <task.toml> [--case режим | --matrix full [--jobs N] [--checkpoint папка]] [--seed N] [--catalog папка] [--view файл [--peak канал]] [--json]\nsim-run --campaign <manifest.toml> [--checkpoint папка] [--repeat ключ [--view файл]] [--measurements файл] [--json]";
 
 #[derive(Clone, Copy, Default)]
 enum Mode {
@@ -34,6 +35,9 @@ struct Options {
     commands: Option<PathBuf>,
     log: Option<PathBuf>,
     csv: Option<PathBuf>,
+    view: Option<PathBuf>,
+    peak: Option<String>,
+    measurements: Option<PathBuf>,
     mode: Mode,
     snapshot_at: Option<Time>,
     replay: Option<PathBuf>,
@@ -50,6 +54,17 @@ struct Options {
 }
 
 impl Options {
+    fn exports_run(&self) -> bool {
+        self.log.is_some() || self.csv.is_some() || self.view.is_some()
+    }
+
+    fn record_view(&self, runtime: &mut Runtime) -> Result<(), String> {
+        if self.view.is_some() {
+            runtime.record_view()?;
+        }
+        Ok(())
+    }
+
     fn parse(args: Vec<OsString>) -> Result<Self, String> {
         let mut options = Self::default();
         let mut used = BTreeSet::new();
@@ -78,6 +93,9 @@ impl Options {
                     | "--commands"
                     | "--log"
                     | "--csv"
+                    | "--view"
+                    | "--peak"
+                    | "--measurements"
                     | "--mode"
                     | "--snapshot-at"
                     | "--replay"
@@ -129,6 +147,9 @@ impl Options {
                 }
                 "--log" => options.log = Some(value.into()),
                 "--csv" => options.csv = Some(value.into()),
+                "--view" => options.view = Some(value.into()),
+                "--peak" => options.peak = Some(as_text()?.into()),
+                "--measurements" => options.measurements = Some(value.into()),
                 "--catalog" => options.catalog = Some(value.into()),
                 "--commands" => options.commands = Some(value.into()),
                 "--replay" => options.replay = Some(value.into()),
@@ -158,16 +179,19 @@ impl Options {
                 || used.iter().any(|flag| {
                     !matches!(
                         flag.as_str(),
-                        "--campaign" | "--checkpoint" | "--repeat" | "--json"
+                        "--campaign" | "--checkpoint" | "--repeat" | "--view" | "--measurements" | "--json"
                     )
                 })
             {
-                return Err("для --campaign допустимы --checkpoint, --repeat и --json".into());
+                return Err("для --campaign допустимы --checkpoint, --repeat, --view, --measurements и --json".into());
+            }
+            if options.view.is_some() && options.repeat.is_none() {
+                return Err("просмотр кампании требует ключ --repeat".into());
             }
             return Ok(options);
         }
-        if options.repeat.is_some() {
-            return Err("--repeat требует --campaign".into());
+        if options.repeat.is_some() || options.measurements.is_some() {
+            return Err("--repeat и --measurements требуют --campaign".into());
         }
         if options.world.as_os_str().is_empty()
             || options.task.is_some() == used.contains("--duration")
@@ -187,10 +211,9 @@ impl Options {
         if options.matrix_full
             && (options.task.is_none()
                 || options.case.is_some()
-                || options.log.is_some()
-                || options.csv.is_some())
+                || options.exports_run())
         {
-            return Err("--matrix full требует --task и исключает --case, --log и --csv".into());
+            return Err("--matrix full требует --task и исключает --case, --log, --csv и --view".into());
         }
         if (!options.matrix_full && options.checkpoint.is_some())
             || (options.task.is_none() && options.jobs.is_some())
@@ -200,8 +223,14 @@ impl Options {
         if options.snapshot_at.is_some_and(|time| time > options.until) {
             return Err("--snapshot-at выходит за --duration".into());
         }
-        if options.log.is_some() && options.log == options.csv {
-            return Err("--log и --csv требуют разных файлов".into());
+        let mut outputs = BTreeSet::new();
+        if [&options.log, &options.csv, &options.view]
+            .into_iter().flatten().any(|path| !outputs.insert(path))
+        {
+            return Err("--log, --csv и --view требуют разных файлов".into());
+        }
+        if options.peak.is_some() && options.view.is_none() {
+            return Err("--peak требует --view".into());
         }
         if options.commands.is_some() && options.replay.is_some() {
             return Err("--commands и --replay нельзя использовать одновременно".into());
@@ -512,6 +541,7 @@ fn run_world(
     install(&mut runtime, &world, options)?;
     drop(world);
     runtime.record_joint_state("запись состояния")?;
+    options.record_view(&mut runtime)?;
     let commands = options
         .commands
         .as_deref()
@@ -544,6 +574,7 @@ fn run_world(
         runtime.verify_replay()?;
     }
 
+    view::save(options, &runtime, None, None)?;
     let log = runtime.log();
     if let Some(path) = &options.log {
         export(path, |out| log.write_binary(out))?;

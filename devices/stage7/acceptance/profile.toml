@@ -1,0 +1,65 @@
+models = ["каретка", "блок", "отсчёт", "стержень"]
+
+[build]
+design = "две-направляющие"
+revision = "схема-в"
+
+[[channels]]
+name = "тяга-а"
+unit = "N"
+role = "command"
+sampling = { kind = "event" }
+[[channels]]
+name = "тяга-б"
+unit = "N"
+role = "command"
+sampling = { kind = "event" }
+[[channels]]
+name = "ход-а"
+unit = "m"
+role = "observation"
+sampling = { kind = "periodic", first_ns = 0, period_ns = 1000000 }
+[[channels]]
+name = "ход-б"
+unit = "m"
+role = "observation"
+sampling = { kind = "periodic", first_ns = 0, period_ns = 1000000 }
+[[channels]]
+name = "маркер-а"
+unit = "1"
+role = "observation"
+sampling = { kind = "event" }
+[[channels]]
+name = "маркер-б"
+unit = "1"
+role = "observation"
+sampling = { kind = "event" }
+
+[[experiments]]
+model = "каретка"
+# Виртуальные часы общие. СКО 500 нс задано для синтетического тракта.
+input = { kind = "delay", sent = "маркер-а", received = "маркер-б", sigma_ns = 500, clock_offset_bound_ns = 0 }
+# В этой постановке требуем полуширину до 1 мкс, СКО остатков до двух заданных.
+criteria = { max_condition = 2, max_reduced_chi_square = 4, max_half_width = { delay = 0.000001 } }
+
+[simulation]
+world = "world.toml"
+catalog = "catalog"
+[[simulation.inputs]]
+recorded = "тяга-а"
+simulated = "каретка/тяга"
+[[simulation.inputs]]
+recorded = "тяга-б"
+simulated = "блок/тяга"
+[[simulation.curves]]
+model = "каретка"
+recorded = "ход-а"
+simulated = "qpos[0]"
+source = "truth"
+alignment = { kind = "exact" }
+[[simulation.curves]]
+model = "блок"
+recorded = "ход-б"
+simulated = "qpos[1]"
+source = "truth"
+alignment = { kind = "exact" }

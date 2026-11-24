@@ -6,6 +6,7 @@ mod components;
 pub mod control;
 mod log;
 pub mod process;
+mod view;
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
@@ -24,6 +25,7 @@ pub use components::{
 };
 pub use log::{CommandSource, Log, LogEnd, LogEntry, LogHeader, LogKind};
 pub use process::interaction::{ResolvedInteraction, register_interaction};
+pub use view::{ViewContacts, ViewEquality, ViewRecording, ViewScene};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
@@ -231,6 +233,7 @@ struct State {
     /// Кинематика движка соответствует текущему qpos.
     fresh: bool,
     log: Log,
+    view: Option<ViewRecording>,
     replay: Option<Replay>,
     control: Option<control::Engine>,
     work: process::Processes,
@@ -260,6 +263,7 @@ impl Snapshot {
 
 pub struct Runtime {
     sim: Sim,
+    view_scene: Rc<ViewScene>,
     world_model_hash: u64,
     process_scene: process::SceneIdentity,
     compiled_drive_names: Rc<BTreeSet<String>>,
@@ -392,21 +396,7 @@ impl Runtime {
 
         let version = sim_mujoco::version();
         let process_scene = process::SceneIdentity::new(&world, &sim);
-        let world_hash = fnv1a(
-            (world.name.len() as u64)
-                .to_le_bytes()
-                .into_iter()
-                .chain(world.name.bytes())
-                .chain((version.len() as u64).to_le_bytes())
-                .chain(version.bytes())
-                .chain((world.mjcf.len() as u64).to_le_bytes())
-                .chain(world.mjcf.bytes())
-                .chain(
-                    effort_dofs
-                        .iter()
-                        .flat_map(|&dof| (dof as u64).to_le_bytes()),
-                ),
-        );
+        let world_hash = ViewScene::world_hash(&world.name, &world.mjcf, &version, &effort_dofs);
         let header = LogHeader {
             world_hash,
             seed: world.seed,
@@ -437,6 +427,7 @@ impl Runtime {
             plant: Vec::new(),
             fresh: true,
             log: Log::new(header, end),
+            view: None,
             replay: None,
             control: None,
             work: process::Processes::default(),
@@ -445,6 +436,13 @@ impl Runtime {
         };
         Ok(Self {
             sim,
+            view_scene: Rc::new(ViewScene {
+                name: world.name,
+                mjcf: world.mjcf,
+                sensors: world.sensors,
+                engine: version,
+                effort_dofs: effort_dofs.clone(),
+            }),
             world_model_hash,
             process_scene,
             compiled_drive_names: Rc::new(
@@ -1126,6 +1124,7 @@ impl Runtime {
         let processes = restore_processes(&self.snapshot_processes()?)?;
         Ok(Self {
             sim: self.sim.fork()?,
+            view_scene: self.view_scene.clone(),
             world_model_hash: self.world_model_hash,
             process_scene: self.process_scene,
             compiled_drive_names: self.compiled_drive_names.clone(),
@@ -1387,6 +1386,7 @@ impl Runtime {
             }
         } else {
             self.sim.step();
+            self.capture_view_contacts(self.time());
         }
         if let Some(q) = held {
             self.sim.qpos_mut()[0] = q;
@@ -1471,6 +1471,9 @@ impl Runtime {
             valid: frame.valid,
         });
         let valid = frame.valid;
+        if let Some(view) = &mut self.state.view {
+            Rc::make_mut(&mut view.frames).push(frame.clone());
+        }
         if ordered {
             self.state.bus.frames[index] = Some(frame);
         }

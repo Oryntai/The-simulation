@@ -6,6 +6,7 @@ mod evaluate;
 pub mod interaction;
 mod live;
 mod live_control;
+pub mod measured;
 pub mod metrics;
 pub mod process;
 pub mod sampling;

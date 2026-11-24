@@ -475,6 +475,13 @@ impl Sampling {
         if self.axes.is_empty() {
             return Ok(Some("разброс пуст: отсутствуют оси допуска"));
         }
+        // Источник закона относится ко всей генеральной совокупности, в том
+        // числе к ветвям, которые не появились при данном зерне и размере серии.
+        if self.probability.as_ref().is_some_and(|law| !law.sourced()) {
+            return Ok(Some(
+                "не подтверждён источник закона разброса или одной из его ветвей",
+            ));
+        }
         let mut distinct = BTreeSet::new();
         let mut random = BTreeSet::new();
         for key in self.keys()? {

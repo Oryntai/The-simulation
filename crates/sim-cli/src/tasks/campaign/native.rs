@@ -34,6 +34,7 @@ struct Spec {
     version: u32,
     paths: Vec<PathSpec>,
     snapshot_ns: Option<u64>,
+    measurement_build: Option<sim_reality::BuildId>,
     #[serde(default)]
     checks: Vec<CheckSpec>,
     #[serde(default)]
@@ -139,6 +140,7 @@ struct CheckSpec {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum CheckKind {
+    Measurement { limit: Limit },
     Truth {
         limit: Limit,
     },
@@ -169,6 +171,7 @@ impl CheckSpec {
             .class;
         let verification = match self.verification {
             CheckKind::Truth { limit } => Verification::Truth(limit),
+            CheckKind::Measurement { limit } => Verification::Measurement(limit),
             CheckKind::Section {
                 geometry,
                 axis,
@@ -213,6 +216,7 @@ pub(super) struct ResultRows {
     pub metric_worst: BTreeSet<String>,
     pub resumed: usize,
     pub readiness: Readiness,
+    pub view: Option<Vec<u8>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -229,6 +233,7 @@ pub(super) fn run(
     installation: &Path,
     options: &Options,
     checkpoint: Option<&Checkpoint>,
+    bench: &[super::bench::Bench],
 ) -> Result<ResultRows, String> {
     let mut files = processes::Inputs::default();
     files.capture(path)?;
@@ -358,13 +363,24 @@ pub(super) fn run(
         files.fingerprints(),
         header.world_hash,
     ))?);
-    let inventory = spec.inventory.resolve(
-        build,
-        spec.checks
-            .into_iter()
-            .map(CheckSpec::resolve)
-            .collect::<Result<_, _>>()?,
-    );
+    let checks = spec.checks.into_iter().map(CheckSpec::resolve).collect::<Result<Vec<_>, _>>()?;
+    let bench: Vec<_> = bench.iter().filter(|record| record.experiment == prefix).collect();
+    for record in &bench {
+        if record.build != build || spec.measurement_build.as_ref() != Some(&record.revision) {
+            return Err(format!("«{prefix}»: заверенный ряд относится к другой сборке или ревизии"));
+        }
+        if plan.row(&record.run).is_none_or(|r| !matches!(r.disposition, Disposition::Ready))
+            || !checks.iter().any(|check| {
+                matches!(&check.verification, Verification::Measurement(Limit::Range { signal, .. } | Limit::Forbidden { signal, .. }) if signal == &record.signal)
+                    && check.selector.station.as_ref().is_none_or(|s| s == &record.run.station)
+                    && check.selector.mode.as_ref().is_none_or(|m| m == &record.run.mode)
+                    && check.selector.path.as_ref().is_none_or(|p| p == &record.run.path)
+            })
+        {
+            return Err(format!("«{prefix}»: нет разрешённой строки и проверки канала заверенного ряда"));
+        }
+    }
+    let inventory = spec.inventory.resolve(build, checks);
     let requirements = derive_requirements(&inventory, &plan).map_err(|e| e.to_string())?;
     let mut evidence = CampaignEvidence::new(&requirements);
     let mut rows = BTreeMap::new();
@@ -375,6 +391,7 @@ pub(super) fn run(
     let mut linked_criteria = BTreeSet::new();
     let mut linked_definitions = BTreeMap::new();
     let mut resumed = 0;
+    let mut view = None;
     for row in plan.rows() {
         let key = &row.key;
         let sampled = plan.materialize(key).map_err(|e| e.to_string())?;
@@ -431,6 +448,8 @@ pub(super) fn run(
             rows.insert(run_key, RowReport::omitted(input));
             continue;
         }
+        let measurements: Vec<_> = bench.iter().filter(|record| &record.run == key).collect();
+        let checkpoint = checkpoint.filter(|_| measurements.is_empty());
         if let Some(checkpoint) = checkpoint {
             let filename = checkpoint_name(&run_key, input)?;
             if let Some(saved) = checkpoint.load_row::<Saved>(&filename)? {
@@ -471,6 +490,9 @@ pub(super) fn run(
             .as_ref()
             .is_some_and(|e| e.kind.is_some())
         {
+            if !measurements.is_empty() {
+                return Err("для заверенного ряда нужна живая строка штатного оценщика".into());
+            }
             let mut result =
                 linked_row(&campaign, &sampled, row, input, &run_key, spec.snapshot_ns)?;
             let reason =
@@ -494,6 +516,7 @@ pub(super) fn run(
             rows.insert(run_key, result);
             continue;
         }
+        let record_view = options.view.is_some() && selected(options, &run_key);
         let install = |runtime: &mut Runtime, sampled: &SampledInputs| {
             let compiled = sampled.world.compile().map_err(|e| e.to_string())?;
             setup(runtime, &compiled, models.as_ref())?;
@@ -505,6 +528,9 @@ pub(super) fn run(
                 &settings,
                 runtime,
             )?;
+            if record_view {
+                runtime.record_view()?;
+            }
             Ok(Installed {
                 installation: Installation {
                     fingerprint: sampled.fingerprint,
@@ -517,12 +543,28 @@ pub(super) fn run(
                 operations: Vec::new(),
             })
         };
-        let result = if let Some(at) = spec.snapshot_ns {
-            evidence.execute_with_snapshot(&requirements, &plan, key, Time(at), install)
-        } else {
-            evidence.execute_timed(&requirements, &plan, key, install, |_, _| Ok(None))
-        };
+        let result = evidence.execute_scenario_observed(
+            &requirements, &plan, key, spec.snapshot_ns.map(Time), install,
+            |runtime| {
+                if record_view {
+                    let mut bytes = Vec::new();
+                    crate::view::write_run_view(runtime, Some(&key.mode), None, None, &mut bytes)?;
+                    view = Some(bytes);
+                }
+                Ok(())
+            },
+        );
         result.map_err(|e| format!("{run_key}: {e}"))?;
+        for record in measurements {
+            let (summary, _, _, _) = evidence.scenario_report(key).ok_or("нет живого ряда оценки")?;
+            if !summary.completed || summary.observed_through_ns != record.horizon_ns {
+                return Err(format!("«{run_key}»: горизонт замера и исполненного прогона расходятся"));
+            }
+            evidence.record_measurement(
+                &requirements, key, record.build, record.signal.clone(),
+                record.source.clone(), record.uncertainty, &record.samples,
+            ).map_err(|e| format!("«{run_key}»: {e}"))?;
+        }
         live.insert(key.clone(), (run_key, input));
     }
     let verdict = assess_campaign(&requirements, &evidence).map_err(|e| e.to_string())?;
@@ -564,6 +606,10 @@ pub(super) fn run(
         } else {
             Outcome::NotAnalyzed
         };
+        let event_ns = findings.iter()
+            .filter(|f| f.outcome == Outcome::Fail && f.journal == Some(Fingerprint::from_fnv1a(journal)))
+            .filter_map(|f| f.event_ns)
+            .min();
         let row = RowReport {
             input,
             outcome,
@@ -578,9 +624,16 @@ pub(super) fn run(
             detail: value(ScenarioReport {
                 summary,
                 journal,
+                event_ns,
                 steps,
                 snapshot,
                 settings: evidence.confirmed_settings(&key),
+                measurement_build: spec.measurement_build.as_ref(),
+                build_fingerprint: spec.measurement_build.as_ref().map(|_| {
+                    // Fingerprint сериализует точное u64. TOML хранит отпечаток строкой.
+                    let stamp = serde_json::to_value(build).expect("u64 представим в JSON");
+                    format!("{:016x}", stamp.as_u64().expect("отпечаток сборки u64"))
+                }),
             })?,
         };
         // Только завершённое нарушение можно повторно показать с диска.
@@ -680,6 +733,7 @@ pub(super) fn run(
         metric_worst,
         resumed,
         readiness: verdict.readiness,
+        view,
     })
 }
 
@@ -815,10 +869,16 @@ fn linked_row(
 struct ScenarioReport<'a> {
     summary: &'a RunSummary,
     journal: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_ns: Option<u64>,
     steps: u64,
     snapshot: Option<&'a sim_task::verdict::SnapshotAudit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     settings: Option<&'a ModelSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    measurement_build: Option<&'a sim_reality::BuildId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    build_fingerprint: Option<String>,
 }
 
 fn checkpoint_name(key: &str, input: Fingerprint) -> Result<String, String> {

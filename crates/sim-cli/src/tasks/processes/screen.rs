@@ -58,10 +58,13 @@ enum Condition {
         guarding: bool,
         ripple_free: bool,
         voltage_only_protection: bool,
-        path: String,
-        duration_ns: u64,
-        elv_ceiling_v: f64,
-        elv_source: String,
+        path_when_positive: [BodyContact; 2],
+        limit_path: [BodyContact; 2],
+        limit_duration_ns: u64,
+        exposure: Exposure,
+        dry_limit_v: f64,
+        wet_limit_v: f64,
+        voltage_source: String,
     },
     Measurement {
         revision: String,
@@ -72,11 +75,32 @@ enum Condition {
     },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum BodyContact {
+    Hand,
+    LeftHand,
+    RightHand,
+    Feet,
+    Torso,
+    Other,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Exposure {
+    DrySmallArea,
+    DryLargeArea,
+    Wet,
+    BodyWorn,
+}
+
 pub(super) struct Observation {
     bounds: [f64; 2],
     at_ns: u64,
     journal: Fingerprint,
-    rejection_applicable: bool,
+    current_applicable: bool,
+    voltage: Option<[f64; 2]>,
 }
 
 impl Screen {
@@ -123,19 +147,25 @@ impl Screen {
             }
             Condition::AccessibleDc {
                 live_parts,
-                path,
-                duration_ns,
-                elv_ceiling_v,
-                elv_source,
+                path_when_positive,
+                limit_path,
+                limit_duration_ns,
+                dry_limit_v,
+                wet_limit_v,
+                voltage_source,
                 ..
             } => {
                 live_parts.iter().all(|s| named(s))
                     && live_parts[0] != live_parts[1]
-                    && named(path)
-                    && *duration_ns > 0
-                    && named(elv_source)
-                    && elv_ceiling_v.is_finite()
-                    && *elv_ceiling_v > 0.0
+                    && path_when_positive[0] != path_when_positive[1]
+                    && limit_path[0] != limit_path[1]
+                    && !limit_path.contains(&BodyContact::Other)
+                    && *limit_duration_ns > 0
+                    && named(voltage_source)
+                    && dry_limit_v.is_finite()
+                    && wet_limit_v.is_finite()
+                    && *wet_limit_v > 0.0
+                    && wet_limit_v <= dry_limit_v
             }
             Condition::Measurement {
                 revision,
@@ -187,7 +217,8 @@ impl Screen {
         }
         let [start, end] = case.window_ns;
         let mut at_ns = end;
-        let mut rejection_applicable = true;
+        let mut current_applicable = true;
+        let mut voltage = None;
         let bounds = match &self.condition {
             Condition::DryContact {
                 surface,
@@ -245,11 +276,17 @@ impl Screen {
                 // У модели две изотермические ёмкости. До начала окна
                 // берётся предыдущий завершённый отсчёт, поэтому окно
                 // содержит обе границы даже для остывающей поверхности.
-                let bounds =
-                    self.process_bounds(runtime, [start, end], "source", "K", |frame| {
+                let bounds = self.process_bounds(
+                    runtime,
+                    [start, end],
+                    "source",
+                    "K",
+                    |x| x,
+                    |frame| {
                         normal_load(frame.interval, &frame.reactions, pair)
                             .is_ok_and(|force| force > 0.0)
-                    })?;
+                    },
+                )?;
                 if bounds[1] - bounds[0] > *max_surface_drift_k {
                     return Err(
                         "поверхность не удерживает температуру на протяжении касания".into(),
@@ -260,10 +297,10 @@ impl Screen {
             Condition::AccessibleDc {
                 guarding: false,
                 ripple_free: true,
-                voltage_only_protection: true,
-                path,
-                duration_ns,
-                elv_ceiling_v,
+                voltage_only_protection,
+                path_when_positive,
+                limit_path,
+                limit_duration_ns,
                 ..
             } => {
                 let Some(models::Spec::Electrical {
@@ -290,18 +327,26 @@ impl Screen {
                     || !direct_input(source)
                     || !fixed_inputs([supply_v, source_ohm, closed_ohm, load_ohm])
                     || case.model_mounts.contains_key(&self.object)
-                    || path != "upward_hand_to_feet"
-                    || end - start != *duration_ns
                 {
                     return Err("цепь прикосновения не замкнута на нагрузку".into());
                 }
-                let voltage =
-                    self.process_bounds(runtime, [start, end], "voltage", "V", |_| true)?;
-                rejection_applicable = voltage[0] > *elv_ceiling_v;
-                self.process_bounds(runtime, [start, end], "current", "A", |_| true)?
+                let mut path = *path_when_positive;
+                if supply_v.value < 0.0 {
+                    path.reverse();
+                }
+                current_applicable = path == *limit_path && end - start == *limit_duration_ns;
+                if *voltage_only_protection {
+                    // Омическая модель замкнута. Напряжение, доступное до
+                    // прикосновения, равно ЭДС этого постоянного источника.
+                    voltage = Some([supply_v.value.abs(); 2]);
+                }
+                self.process_bounds(runtime, [start, end], "current", "A", f64::abs, |_| true)?
             }
             Condition::AccessibleDc { .. } => {
-                return Err("предел относится к открытым полюсам без другой защиты и к постоянному напряжению без пульсаций".into());
+                return Err(
+                    "предел относится к открытым полюсам и к постоянному напряжению без пульсаций"
+                        .into(),
+                );
             }
             Condition::Measurement {
                 revision,
@@ -336,7 +381,8 @@ impl Screen {
             bounds,
             at_ns,
             journal: Fingerprint::from_fnv1a(runtime.log().fingerprint()),
-            rejection_applicable,
+            current_applicable,
+            voltage,
         })
     }
 
@@ -346,6 +392,7 @@ impl Screen {
         [start, end]: [u64; 2],
         field: &str,
         unit: &str,
+        transform: impl Fn(f64) -> f64,
         applicable: impl Fn(&sim_runtime::process::PhysicsFrame) -> bool,
     ) -> Result<[f64; 2], String> {
         let signal = format!("{}/{field}", self.object);
@@ -386,23 +433,24 @@ impl Screen {
             let Analysis::Analyzed { value, .. } = &measurement.result else {
                 return Err(format!("не доказан отсчёт «{signal}» на {at} нс"));
             };
-            if found.next().is_some() || !value.is_finite() || *value <= 0.0 {
+            let value = transform(*value);
+            if found.next().is_some() || !value.is_finite() || value < 0.0 {
                 return Err(format!("невалидный отсчёт «{signal}» на {at} нс"));
             }
-            bounds = Some(bounds.map_or([*value; 2], |[lo, hi]| [lo.min(*value), hi.max(*value)]));
+            bounds = Some(bounds.map_or([value; 2], |[lo, hi]| [lo.min(value), hi.max(value)]));
         }
         bounds
             .filter(|_| began && previous == end)
             .ok_or_else(|| "живой ряд не достиг конца контрольного окна".into())
     }
 
-    pub(super) fn finding(
+    pub(super) fn findings(
         &self,
         case: &Case,
         run: &RunKey,
         convergence: &ConvergenceReport,
         observations: Vec<Result<Observation, String>>,
-    ) -> Finding {
+    ) -> Vec<Finding> {
         let key = RequirementKey {
             class: self.class(),
             object: self.object.clone(),
@@ -420,9 +468,6 @@ impl Screen {
         finding
             .limit_sources
             .push(self.limit_source.reference.clone());
-        if let Condition::AccessibleDc { elv_source, .. } = &self.condition {
-            finding.limit_sources.push(elv_source.clone());
-        }
         finding
             .measurement_sources
             .push(self.source.reference.clone());
@@ -430,7 +475,7 @@ impl Screen {
         if let Some(reason) = observations.iter().find_map(|result| result.as_ref().err()) {
             finding.reason.clone_from(reason);
             finding.missing_data = vec![reason.clone()];
-            return finding;
+            return vec![finding];
         }
         if observations.is_empty()
             || observations.len() != convergence.trials.len()
@@ -439,7 +484,7 @@ impl Screen {
                 .iter()
                 .any(|trial| !trial.completed || trial.steps == 0)
         {
-            return finding;
+            return vec![finding];
         }
         let observations = observations.into_iter().flatten().collect::<Vec<_>>();
         let first = &observations[0];
@@ -449,7 +494,10 @@ impl Screen {
         finding.measurement = Some(bounds);
         finding.event_ns = Some(first.at_ns);
         finding.journal = Some(first.journal);
-        if bounds[0] > self.limit && observations.iter().all(|o| o.rejection_applicable) {
+        if observations.iter().any(|o| !o.current_applicable) {
+            finding.reason = "для пути, направления или длительности ряда нет применимой границы постоянного тока".into();
+            finding.missing_data = vec![finding.reason.clone()];
+        } else if bounds[0] > self.limit {
             finding.reason =
                 "нижняя граница живого ряда превышает применимый предел на всех сетках".into();
             finding.outcome = Outcome::Fail;
@@ -459,6 +507,53 @@ impl Screen {
             finding.reason = "ряд не подтверждает превышение применимого предела".into();
             finding.missing_data = vec!["для вывода о железе нужны стендовые измерения".into()];
         }
-        finding
+        let mut findings = vec![finding.clone()];
+        if let Condition::AccessibleDc {
+            voltage_only_protection: true,
+            exposure,
+            dry_limit_v,
+            wet_limit_v,
+            voltage_source,
+            ..
+        } = &self.condition
+        {
+            let limit = match exposure {
+                Exposure::DrySmallArea => *dry_limit_v,
+                Exposure::DryLargeArea | Exposure::Wet | Exposure::BodyWorn => *wet_limit_v,
+            };
+            let mut voltage = Finding::open(
+                &key,
+                "для защиты нужны подтверждённые условия касания и меры защиты",
+            );
+            voltage.code = "доступное напряжение".into();
+            voltage.unit = Some("V".into());
+            voltage.limit = Some(LimitValue {
+                lower: None,
+                upper: Some([limit; 2]),
+            });
+            voltage.limit_sources.push(voltage_source.clone());
+            voltage.model_scope = finding.model_scope;
+            voltage.measurement_sources = finding.measurement_sources;
+            voltage.event_ns = Some(first.at_ns);
+            voltage.journal = Some(first.journal);
+            voltage.measurement = first.voltage.and_then(|initial| {
+                observations
+                    .iter()
+                    .skip(1)
+                    .try_fold(initial, |[lo, hi], row| {
+                        let [a, b] = row.voltage?;
+                        Some([lo.min(a), hi.max(b)])
+                    })
+            });
+            if voltage.measurement.is_some_and(|[lo, _]| lo > limit) {
+                voltage.outcome = Outcome::Fail;
+                voltage.confirmed_hazard = true;
+                voltage.reason =
+                    "доступное напряжение превышает предел для открытых полюсов".into();
+                voltage.missing_data.clear();
+            }
+            findings.push(voltage);
+        }
+        findings
     }
 }

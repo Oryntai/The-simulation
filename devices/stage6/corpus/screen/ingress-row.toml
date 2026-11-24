@@ -1,0 +1,26 @@
+version = 1
+mode = "ingress"
+object = "оболочка блока"
+scope = "Синтетический осмотр до и после воздействия. В паре тот же объём попал в дренаж."
+origin = { kind = "synthetic", reference = "Баланс стенда: после воздействия 2 мл воды в одной из двух зон, осмотр изоляции задан таблицей состояний." }
+
+[check]
+kind = "ingress"
+limit_source = "В защищаемой зоне стенда запрещена вода, отказ изоляции запрещён. IEC 60529:1989+A1:1999+A2:2013, §14.2.7 и §14.3, https://webstore.iec.ch/en/publication/2452. IPX7 оценивает вредное проникновение, общий порог объёма отсутствует. Режим и область проверки требуют сверки с лицензированным текстом."
+protected_locations = ["узел изоляции"]
+
+[[check.samples]]
+at_ns = 0
+locations = [
+  { location = "узел изоляции", volume_m3 = { value = 0, uncertainty = 0 } },
+  { location = "дренаж", volume_m3 = { value = 0, uncertainty = 0 } },
+]
+insulation = "intact"
+
+[[check.samples]]
+at_ns = 4000000
+locations = [
+  { location = "узел изоляции", volume_m3 = { value = 0.000002, uncertainty = 0 } },
+  { location = "дренаж", volume_m3 = { value = 0, uncertainty = 0 } },
+]
+insulation = "failed"

@@ -1,0 +1,19 @@
+# Сетка 1 мс и 10 м/с² дают точное ручное решение дискретного падения.
+format = 3
+name = "Свободный блок"
+seed = 1
+physics_hz = 1000
+gravity_m_s2 = [0, 0, -10]
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0, 0, 0]
+[[devices]]
+name = "стойка"
+file = "block.toml"
+pose = { position_m = [0, 0, 1] }
+
+# Камера штатного эталонного каталога в начале координат, ось +Z на блок.
+[[sensors]]
+name = "кадр"
+part = "reference-rgb"

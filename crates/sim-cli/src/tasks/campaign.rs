@@ -2,6 +2,7 @@
 
 pub(super) mod installation;
 mod native;
+mod bench;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -950,6 +951,21 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
             ));
         }
     }
+
+    let bench = options.measurements.as_deref()
+        .map(|path| bench::load(path, &mut files))
+        .transpose()?.unwrap_or_default();
+    for record in &bench {
+        let Some((assembly, experiment)) = record.experiment.split_once('/') else {
+            return Err("заверенный ряд требует ключ «сборка/опыт»".into());
+        };
+        if !matches!(
+            manifest.assemblies.get(assembly).and_then(|a| a.experiments.get(experiment)),
+            Some(Experiment::Scenario { .. })
+        ) {
+            return Err(format!("«{}»: нет сценария для заверенного ряда", record.experiment));
+        }
+    }
     let engine = sim_runtime::Runtime::physics_engine_identity()?;
     let identity = if options.checkpoint.is_some() && options.repeat.is_none() {
         let binary = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -981,6 +997,7 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     };
     let mut all_keys = BTreeSet::new();
     let mut worst = None;
+    let mut view = None;
     for (id, mut assembly) in manifest.assemblies {
         if let Some(plan) = &mut assembly.sampling {
             plan.validate().map_err(|e| e.to_string())?;
@@ -1117,7 +1134,11 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
                         &base.join(installation),
                         options,
                         checkpoint.as_ref(),
+                        &bench,
                     )?;
+                    if let Some(archive) = result.view {
+                        view = Some(archive);
+                    }
                     report.resumed += result.resumed;
                     readiness = match (readiness, result.readiness) {
                         (Readiness::Rejected, _) | (_, Readiness::Rejected) => Readiness::Rejected,
@@ -1200,6 +1221,9 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     files.verify()?;
     if sim_runtime::Runtime::physics_engine_identity()? != engine {
         return Err("образ MuJoCo изменился во время кампании".into());
+    }
+    if let (Some(path), Some(bytes)) = (&options.view, view) {
+        crate::export(path, |file| file.write_all(&bytes))?;
     }
     report.worst_run_key = worst.map(|(_, key)| key);
     if options.json {

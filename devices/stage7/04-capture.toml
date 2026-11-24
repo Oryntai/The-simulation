@@ -1,0 +1,53 @@
+# Первичный журнал штатного импульсного интерфейса. Замеров пока нет.
+models = ["импульсный приёмник", "привод", "контакт", "измерение питания"]
+
+[build]
+design = "стенд-04"
+# Заполнить по паспорту собранного экземпляра. Пустая ревизия не принимается в CSV.
+revision = ""
+
+[[channels]]
+name = "период"
+unit = "s"
+role = "command"
+sampling = { kind = "packet", group = "импульс" }
+
+[[channels]]
+name = "ширина"
+unit = "s"
+role = "command"
+sampling = { kind = "packet", group = "импульс" }
+
+[[channels]]
+name = "номер-кадра"
+unit = "1"
+role = "command"
+sampling = { kind = "packet", group = "импульс" }
+
+[[channels]]
+name = "угол-рычага"
+unit = "rad"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true
+
+[[channels]]
+name = "угол-клавиши"
+unit = "rad"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true
+
+[[channels]]
+name = "ток-шины"
+unit = "A"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true
+
+[[channels]]
+name = "напряжение-шины"
+unit = "V"
+role = "observation"
+sampling = { kind = "event" }
+allow_invalid = true

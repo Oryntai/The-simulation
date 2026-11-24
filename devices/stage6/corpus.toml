@@ -136,3 +136,38 @@ scope = "Свободное падение и согласованный син�
 kind = "task"
 world = "corpus/free-world.toml"
 task = "corpus/screen/curve-pair-task.toml"
+
+[assemblies.tissue-load]
+scope = "Поверка обработки синтетического измерения"
+[assemblies.tissue-load.experiments.test]
+kind = "task"
+world = "corpus/free-world.toml"
+task = "corpus/screen/tissue-load-task.toml"
+
+[assemblies.tissue-load-pair]
+scope = "Поверка обработки синтетического измерения"
+[assemblies.tissue-load-pair.experiments.test]
+kind = "task"
+world = "corpus/free-world.toml"
+task = "corpus/screen/tissue-load-pair-task.toml"
+
+[assemblies.ingress]
+scope = "Поверка обработки синтетического измерения"
+[assemblies.ingress.experiments.test]
+kind = "task"
+world = "corpus/free-world.toml"
+task = "corpus/screen/ingress-task.toml"
+
+[assemblies.ingress-pair]
+scope = "Поверка обработки синтетического измерения"
+[assemblies.ingress-pair.experiments.test]
+kind = "task"
+world = "corpus/free-world.toml"
+task = "corpus/screen/ingress-pair-task.toml"
+
+[assemblies.dc-border]
+scope = "Парный порог DC-1, ток на 1 мкА выше границы при ЭДС ниже обоих порогов напряжения"
+[assemblies.dc-border.experiments.test]
+kind = "task"
+world = "../stage4-processes/world-energy.toml"
+task = "corpus/screen/dc-border-task.toml"

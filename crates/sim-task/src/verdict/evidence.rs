@@ -58,6 +58,7 @@ struct Measurement {
     source: Source,
     journal: Fingerprint,
     samples: Vec<Point>,
+    uncertainty: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -150,6 +151,7 @@ impl CampaignEvidence {
             |_, _| Ok(None),
             false,
             None,
+            |_| Ok(()),
         )
     }
 
@@ -172,6 +174,7 @@ impl CampaignEvidence {
             operation,
             true,
             None,
+            |_| Ok(()),
         )
     }
 
@@ -184,6 +187,19 @@ impl CampaignEvidence {
         at: Time,
         install: impl FnMut(&mut Runtime, &SampledInputs) -> Result<Installed, String>,
     ) -> Result<(), Error> {
+        self.execute_scenario_observed(requirements, plan, key, Some(at), install, |_| Ok(()))
+    }
+
+    /// Передаёт наблюдателю живой экземпляр, журнал которого идёт в оценку.
+    pub fn execute_scenario_observed(
+        &mut self,
+        requirements: &RequirementSet,
+        plan: &CampaignPlan,
+        key: &RunKey,
+        snapshot_at: Option<Time>,
+        install: impl FnMut(&mut Runtime, &SampledInputs) -> Result<Installed, String>,
+        observe: impl FnOnce(&Runtime) -> Result<(), String>,
+    ) -> Result<(), Error> {
         self.execute_inner(
             requirements,
             plan,
@@ -192,7 +208,8 @@ impl CampaignEvidence {
             install,
             |_, _| Ok(None),
             true,
-            Some(at),
+            snapshot_at,
+            observe,
         )
     }
 
@@ -233,6 +250,7 @@ impl CampaignEvidence {
             |_, _| Ok(None),
             false,
             None,
+            |_| Ok(()),
         )
     }
 
@@ -246,6 +264,7 @@ impl CampaignEvidence {
         mut operation: impl FnMut(&mut Runtime, &Step) -> Result<Option<StepObservation>, String>,
         timed: bool,
         snapshot_at: Option<Time>,
+        observe: impl FnOnce(&Runtime) -> Result<(), String>,
     ) -> Result<(), Error> {
         self.matches(requirements)?;
         if plan.fingerprint() != requirements.plan || self.runs.contains_key(key) {
@@ -298,6 +317,7 @@ impl CampaignEvidence {
             };
             profiles.entry(kind).or_default().insert(fingerprint);
         }
+        let mut observe = Some(observe);
         let mut run_one = |snapshot_at: Option<Time>| -> Result<_, Error> {
             let mut runtime = Runtime::load(compiled.clone()).map_err(invalid)?;
             let owner = runtime.snapshot();
@@ -507,6 +527,9 @@ impl CampaignEvidence {
             } else {
                 None
             };
+            if let Some(observe) = observe.take() {
+                observe(&runtime).map_err(invalid)?;
+            }
             Ok((
                 log.clone(),
                 complete_faults,
@@ -705,6 +728,7 @@ impl CampaignEvidence {
         build: Fingerprint,
         signal: crate::Signal,
         source: Source,
+        uncertainty: Option<f64>,
         samples: &[MeasurementSample],
     ) -> Result<(), Error> {
         self.matches(requirements)?;
@@ -732,13 +756,20 @@ impl CampaignEvidence {
             points: points.clone(),
         }
         .validate()?;
-        let journal =
-            Fingerprint::of(format!("{build:?}{key:?}{signal:?}{source:?}{points:?}").as_bytes());
+        if uncertainty.is_some_and(|u| {
+            !u.is_finite() || u < 0.0 || points.iter().any(|p| !(p.value.abs() + u).is_finite())
+        }) {
+            return Err(invalid("некорректная граница погрешности стендового канала"));
+        }
+        let journal = Fingerprint::of(
+            format!("{build:?}{key:?}{signal:?}{source:?}{uncertainty:?}{points:?}").as_bytes(),
+        );
         run.bench.push(Measurement {
             signal,
             source,
             journal,
             samples: points,
+            uncertainty,
         });
         Ok(())
     }
@@ -1008,7 +1039,7 @@ impl Run {
             }
             Verification::Truth(limit) => {
                 let series = Series::from_log(&self.log, SeriesKind::Truth, limit.signal())?;
-                compare_truth(&mut finding, limit, check.window, &series, set)?;
+                compare_truth(&mut finding, limit, check.window, &series, 0.0, set)?;
                 if key.class != HazardClass::TaskCriterion
                     && !trace(std::slice::from_ref(limit_source(limit)), &set.derivations).0
                 {
@@ -1017,7 +1048,7 @@ impl Run {
                 if let Some(log) = &self.divergent_repeat {
                     let mut repeated = Finding::open(key, "критерий повторного прогона");
                     let series = Series::from_log(log, SeriesKind::Truth, limit.signal())?;
-                    compare_truth(&mut repeated, limit, check.window, &series, set)?;
+                    compare_truth(&mut repeated, limit, check.window, &series, 0.0, set)?;
                     if repeated.outcome == Outcome::Fail {
                         repeated.journal = Some(Fingerprint::from_fnv1a(log.fingerprint()));
                         vec![finding, repeated]
@@ -1030,16 +1061,22 @@ impl Run {
             }
             Verification::Measurement(limit) => {
                 if let Some(bench) = self.bench.iter().find(|m| &m.signal == limit.signal()) {
-                    compare_truth(
-                        &mut finding,
-                        limit,
-                        check.window,
-                        &Series {
-                            signal: bench.signal.clone(),
-                            points: bench.samples.clone(),
-                        },
-                        set,
-                    )?;
+                    if let Some(uncertainty) = bench.uncertainty {
+                        compare_truth(
+                            &mut finding,
+                            limit,
+                            check.window,
+                            &Series {
+                                signal: bench.signal.clone(),
+                                points: bench.samples.clone(),
+                            },
+                            uncertainty,
+                            set,
+                        )?;
+                    } else {
+                        finding.reason = "не задана граница погрешности стендового канала".into();
+                        finding.coverage_gaps.push(finding.reason.clone());
+                    }
                     finding.journal = Some(bench.journal);
                     sources.push(bench.source.clone());
                     sources.push(limit_source(limit).clone());
@@ -1147,6 +1184,7 @@ impl Run {
                                     &metric.limit,
                                     check.window,
                                     &series,
+                                    0.0,
                                     set,
                                 )?;
                                 // Успех требует подтверждённой причинной цепочки.
@@ -1253,6 +1291,7 @@ fn compare_truth(
     limit: &Limit,
     window: Window,
     series: &Series,
+    uncertainty: f64,
     set: &RequirementSet,
 ) -> Result<(), Error> {
     let points: Vec<_> = series
@@ -1272,21 +1311,30 @@ fn compare_truth(
         Limit::Forbidden { .. } => LimitValue::upper([0.0; 2]),
     });
     if let Some(first) = points.first() {
-        finding.measurement = Some(points.iter().fold([first.value; 2], |[lo, hi], p| {
+        let [lo, hi] = points.iter().fold([first.value; 2], |[lo, hi], p| {
             [lo.min(p.value), hi.max(p.value)]
-        }));
+        });
+        finding.measurement = Some(if uncertainty == 0.0 {
+            [lo, hi]
+        } else {
+            [lo - uncertainty, hi + uncertainty]
+        });
     }
-    let mut invalid_events = false;
     let violation = points.iter().find(|point| match limit {
         Limit::Range { min, max, .. } => {
-            min.is_some_and(|limit| point.value < limit)
-                || max.is_some_and(|limit| point.value > limit)
+            min.is_some_and(|limit| point.value + uncertainty < limit)
+                || max.is_some_and(|limit| point.value - uncertainty > limit)
         }
-        Limit::Forbidden { .. } => point.value == 1.0,
+        Limit::Forbidden { .. } => uncertainty == 0.0 && point.value == 1.0,
     });
-    if matches!(limit, Limit::Forbidden { .. }) {
-        invalid_events = points.iter().any(|p| p.value != 0.0 && p.value != 1.0);
-    }
+    let invalid_events = matches!(limit, Limit::Forbidden { .. })
+        && (uncertainty != 0.0 || points.iter().any(|p| p.value != 0.0 && p.value != 1.0));
+    let possibly_exceeded = match (limit, finding.measurement) {
+        (Limit::Range { min, max, .. }, Some([lo, hi])) => {
+            min.is_some_and(|limit| lo < limit) || max.is_some_and(|limit| hi > limit)
+        }
+        _ => false,
+    };
     let complete = series.slice(window).is_some_and(|p| {
         p.first().is_some_and(|p| p.at_ns == window.start_ns)
             && p.last().is_some_and(|p| p.at_ns == window.end_ns)
@@ -1306,6 +1354,10 @@ fn compare_truth(
         finding.reason = "наблюдалось нарушение критерия".into();
         finding.confirmed_hazard = proved && finding.key.class != HazardClass::TaskCriterion;
         Outcome::Fail
+    } else if possibly_exceeded {
+        finding.reason = "граница погрешности пересекает предел".into();
+        finding.coverage_gaps.push(finding.reason.clone());
+        Outcome::NotAnalyzed
     } else if complete && proved {
         finding.reason = "в полном окне соблюдён критерий".into();
         Outcome::Pass

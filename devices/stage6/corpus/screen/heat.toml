@@ -7,8 +7,8 @@ source = "Сухая кожа, малая площадь касания глад
 object = "поверхность"
 scope = "Гладкий металл без покрытия, сухой контакт без защиты на участке вне головы. Изотермическая поверхность с заданной контактной площадью."
 source = { kind = "datasheet", reference = "Схема расчётного стенда: фиксированное пятно 1 см², площадь тела 1 м², критерий постоянства поверхности 0,01 К." }
-limit_source = { kind = "paper", reference = "ISO 13732-1:2006 §4.1 и табл. 1, 51 °C для 1 мин, гладкий металл без покрытия: https://www.theiteh.com/catalog/standards/cen/1ead613c-b9ee-45c1-9317-aa909f44525a/en-iso-13732-1-2008; сверка с ISO/TS 16976-5:2020 табл. 1: https://cdn.standards.iteh.ai/samples/75719/068abba0a9b344a1847b3f5eae5eb75b/ISO-TS-16976-5-2020.pdf" }
-limit = 324.15 # 51 °C + 273,15 по определению шкал.
+limit_source = { kind = "paper", reference = "ISO 13732-1:2006, §4.1 и табл. 1, https://www.iso.org/standard/43558.html. Консервативное ограничение для длительного касания 44 °C при 1 мин и дольше по таблице 1 правила CPSC, 89 FR 4189: https://www.govinfo.gov/content/pkg/FR-2024-01-23/pdf/FR-2024-01-23.pdf. Условия применимости ISO требуют сверки с лицензированным текстом." }
+limit = 317.15 # 44 °C + 273,15 по определению шкал.
 condition = { kind = "dry_contact", surface = "smooth_uncoated_metal", limit_surface = "smooth_uncoated_metal", region = "стенд/блок/collision/0", dry_bare_skin = true, head_or_vital_face = false, contact_area_m2 = 0.0001, body_area_m2 = 1, max_area_fraction = 0.1, duration_ns = 60000000000, max_surface_drift_k = 0.01 }
 
 [[criteria]]

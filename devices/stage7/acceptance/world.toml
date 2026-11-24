@@ -1,0 +1,25 @@
+format = 3
+name = "Две направляющие"
+# Метка детерминированного опыта и сетка 1 мс для ручного расчёта дискретного шага.
+seed = 73
+physics_hz = 1000
+gravity_m_s2 = [0, 0, 0]
+
+[environment]
+density_kg_m3 = 0
+viscosity_pa_s = 0
+wind_m_s = [0, 0, 0]
+
+[[devices]]
+name = "каретка"
+file = "carriage.toml"
+[[devices]]
+name = "блок"
+file = "carriage.toml"
+# Направляющие разнесены на 0,1 м по Y.
+pose = { position_m = [0, 0.1, 0] }
+
+[[sensors]]
+name = "отсчёт"
+part = "fixture-linear"
+joint = "каретка/ход"

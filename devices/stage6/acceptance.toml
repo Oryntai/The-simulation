@@ -43,6 +43,7 @@ assembly = "over-strength"
 class = "static_strength"
 object = "каретка/стержень"
 mode = "loaded"
+reason_contains = "напряжения изгиба по модулю сечения"
 expected = 7500000.0 # M/W = 40/(0,02·0,04²/6) Па.
 tolerance = 1e-8
 pair_assembly = "under-travel"
@@ -52,6 +53,7 @@ assembly = "over-travel"
 class = "travel_jam"
 object = "каретка/стержень"
 mode = "loaded"
+reason_contains = "наблюдалось нарушение критерия"
 expected = 0.000014 # Начальный 1 мкм + перемещения 1, 2, 4 и 6 мкм на четырёх шагах Euler.
 tolerance = 1e-14
 pair_assembly = "under-travel"
@@ -61,6 +63,7 @@ assembly = "falling"
 class = "fall"
 object = "стойка/блок"
 mode = "observation"
+reason_contains = "наблюдалось нарушение критерия"
 expected = 0.0199 # 20 мм − 10 м/с² · (4²+4)·(1 мс)²/2.
 tolerance = 1e-14
 pair_assembly = "supported"
@@ -70,6 +73,7 @@ assembly = "processes"
 class = "stored_energy"
 object = "накопитель"
 mode = "spring-energy"
+reason_contains = "запасено не менее"
 expected = 1.0 # 200 Н/м · (0,1 м)²/2.
 tolerance = 1e-10
 pair_assembly = "processes"
@@ -82,6 +86,7 @@ assembly = "processes"
 class = "sharp_edge"
 object = "кромка"
 mode = "edge-sharp"
+reason_contains = "радиус кромки меньше допустимого"
 expected = -0.0008 # Радиус 0,2 мм минус порог 1 мм.
 tolerance = 1e-10
 pair_assembly = "processes"
@@ -94,6 +99,7 @@ assembly = "processes"
 class = "overcurrent"
 object = "цепь"
 mode = "circuit-fault"
+reason_contains = "пиковый ток"
 expected = 0.5 # 6 В / (1 + 1 + 10) Ом.
 tolerance = 1e-10
 pair_assembly = "processes"
@@ -106,12 +112,14 @@ assembly = "processes"
 class = "thread_failure"
 object = "стык"
 mode = "thread-strip"
+reason_contains = "срыв при превышении допустимой упругой невязки резьбы"
 expected = 0.000025 # x ≈ (F/M)·t²/2 = (1/2)·(10 мс)²/2, до поправки упругого участка.
 tolerance = 0.000004 # Допуск осевой реакции исходной сверки 0,004 Н делён на 1000 Н/м.
 pair_assembly = "processes"
 pair_mode = "thread-normal"
 pair_metric = "невязка резьбы"
-pair_expected = 0.000024896006581881 # Точное решение e''+k(1/M+a²/J)e=F/M на 10 мс.
+pair_expected = 0.0000024896006581881 # Точное решение e''+k(1/M+a²/J)e=F/M на 10 мс при F=0,1 Н.
+pair_tolerance = 0.0000004 # Десятая доля допуска того же линейного расчёта при десятикратном уменьшении силы.
 
 [[witnesses]]
 assembly = "mechanical-unsafe"
@@ -122,7 +130,7 @@ expected = 122230996.29457562 # 12 Н·м / (π · 0,01³ / 32).
 tolerance = 10.0 # Допуск сверки реакции выдержанного стыка с приложенным моментом: 1 мкН·м / W ≈ 10 Па.
 pair_assembly = "mechanical-safe"
 pair_expected = 61115498.14728781 # 6 Н·м / W.
-mechanical = { criterion = "амплитуда изгиба", upper = 96500000, reason_contains = "симметричного изгиба" }
+mechanical = { criterion = "амплитуда изгиба", upper = 78551000, reason_contains = "симметричного изгиба" }
 
 [[witnesses]]
 assembly = "mechanical-unsafe"
@@ -296,6 +304,7 @@ assembly = "processes"
 class = "wiring_heat"
 object = "проводник"
 mode = "conductor-hot"
+reason_contains = "по диссипации I²R"
 expected = 301.0 # 300 К + (6/12 А)²·1 Ом·4 мс/(1 мДж/К).
 tolerance = 1e-10 # Округление сумм диссипации на трёх сетках.
 pair_assembly = "processes"
@@ -321,11 +330,12 @@ assembly = "dc"
 class = "electric_shock"
 object = "контакт"
 mode = "dc"
+reason_contains = "нижняя граница живого ряда"
 expected = 0.499001996007984 # 500 В / (1 + 1 + 1000) Ом.
 tolerance = 1e-10 # Точность сверки деления.
 pair_assembly = "dc-pair"
 pair_mode = "dc-pair"
-pair_expected = 0.011976047904191617 # 12 В / 1002 Ом.
+pair_expected = 0.001999 # 2,002998 В / 1002 Ом, на 1 мкА ниже предела.
 paired_finding = { bound = 1, reason_contains = "ряд" }
 reject_only = true
 
@@ -340,6 +350,34 @@ pair_assembly = "curve-pair"
 pair_mode = "curve-pair"
 pair_expected = 0.000025 # Невязка Euler 15 мкм + погрешность 10 мкм.
 paired_finding = { bound = 1, reason_contains = "ряд" }
+reject_only = true
+
+[[witnesses]]
+assembly = "tissue-load"
+class = "tissue_load"
+object = "пятно блока"
+mode = "tissue-load"
+reason_contains = "ряд карты давления превышает локальный предел"
+expected = 110000 # Наибольшее давление: 5,5 Н / 0,5 см².
+tolerance = 0 # Точное синтетическое значение.
+pair_assembly = "tissue-load-pair"
+pair_mode = "tissue-load-pair"
+pair_expected = 50000 # 2,5 Н / 0,5 см².
+paired_finding = { bound = 0, reason_contains = "ряд" }
+reject_only = true
+
+[[witnesses]]
+assembly = "ingress"
+class = "ingress"
+object = "оболочка блока"
+mode = "ingress"
+reason_contains = "ряд подтверждает проникновение в зоне «узел изоляции»"
+expected = 0.000002 # 2 мл = 2·10⁻⁶ м³ в защищаемой зоне.
+tolerance = 0 # Точное синтетическое значение.
+pair_assembly = "ingress-pair"
+pair_mode = "ingress-pair"
+pair_expected = 0 # Весь объём в дренажной зоне.
+paired_finding = { bound = 0, reason_contains = "ряд" }
 reject_only = true
 
 [[reference]]
@@ -513,15 +551,8 @@ tolerance = 1e-9 # Допуск стадии 5 для той же геометр
 [corpus]
 # Реестр учитывает дополнительные классы условий доказательства. Инвентарь,
 # полнота исполнения и общий критерий постановки не являются опасностью корпуса.
-open = ["tissue_load", "ingress"]
+# Открытые вычислительные пары отсутствуют. Для tissue_load и ingress вход
+# синтетический, поэтому живые физические свидетельства для этих классов открыты.
+open = []
 
-[corpus.gaps.tissue_load]
-orientation_limit = 140 # Н, ISO/TS 15066, таблица A.2, область 8, квазистатический режим.
-source = "https://files.infocentre.io/files/docs_clients/126_2007938440_3134709_ISO_TS%2015066_2016.pdf"
-applicability = "Сила 140 Н для квазистатического контакта с грудиной в коллаборативной робототехнике, порог боли в заданном опыте. Нужны соответствие геометрии и площади, длительности и популяции."
-measurement = "Калиброванные сила и карта давления во времени на привязанном к области имитаторе, площадь и геометрия пятна, длительность и повторы."
-
-[corpus.gaps.ingress]
-source = "https://law.resource.org/pub/in/bis/S05/is.iec.60529.2001.pdf"
-applicability = "IEC 60529 IPX7, §14.2.7 и §14.3: 30 мин полной иммерсии в рабочем положении. При высоте корпуса менее 850 мм нижняя точка на глубине 1 м; иначе верхняя точка на 0,15 м. Критерий вредного проникновения, единый предел объёма отсутствует."
-measurement = "Испытание оболочки IPX7: объём и место проникновения, состояние изоляции и соединений после заданного перепада давления и выдержки."
+[corpus.gaps]

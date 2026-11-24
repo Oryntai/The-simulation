@@ -1,0 +1,8 @@
+version = 1
+
+[assemblies.block]
+scope = "Короткий блок на направляющей. Изолированный синтетический стенд."
+[assemblies.block.experiments.travel]
+kind = "scenario"
+campaign = "task.toml"
+installation = "installation.toml"

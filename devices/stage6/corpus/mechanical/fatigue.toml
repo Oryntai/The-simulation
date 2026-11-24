@@ -12,7 +12,7 @@ values = [{ at_ns = 0, value = 12 }, { at_ns = 400000000, value = -12 }, { at_ns
 [models."стержень"]
 kind = "mechanical_monitor"
 scope = "Поверка амплитуды чистого симметричного изгиба гладкого образца в трёх выдержанных фазах A→B→A."
-upper = { value = 96500000, source = { datasheet = "Расчётное задание для гладкого образца 6061-T6: 96,5 МПа на 5·10⁸ циклов, R=−1 (точка AA/MatWeb из sim-materials, AL_6061_T6)." } }
+upper = { value = 78551000, source = { datasheet = "Предел условной оснастки: 96,5 МПа × 0,814 = 78,551 МПа. Точка 6061-T6 из AA/MatWeb на 5·10⁸ циклов при R=−1 требует сверки с исходными данными. Коэффициент Shigley, табл. 6-5, принят из настройки R99 в sim-materials как запас стенда. Надёжность реальной детали по этой точке не выводится." } }
 observation = { kind = "fatigue", weld = "attachment/заделка", section_body = "стенд/стержень", world_axis = [0, 0, 1], samples_ns = [400000000, 800000000, 1200000000], section_modulus_m3 = { value = 9.817477042468104e-8, source = { datasheet = "Размер гладкого круга по чертежу: W=π·(0,01 м)^3/32." } }, reversal_error_nm = { value = 0.012, source = { datasheet = "Невязка выдержанных фаз не выше 0,1% от 12 Н·м стенда." } }, maximum_force_n = { value = 0.001, source = { datasheet = "Разрешение поверки отсутствия продольной/поперечной результирующей силы численной оснастки: 1 мН." } }, maximum_cross_moment_nm = { value = 0.001, source = { datasheet = "Разрешение поверки отсутствия второй компоненты изгиба численной оснастки: 1 мН·м." } }, elastic_limit_pa = { value = 240000000, source = { datasheet = "EN 755-2, Rp0,2 для 6061-T6 из каталога sim-materials." } } }
 
 [[criteria]]
@@ -20,7 +20,7 @@ name = "амплитуда изгиба"
 series = { measurement = "стержень/reversed_stress" }
 unit = "Pa"
 statistic = "maximum"
-upper = { value = 96500000, source = { datasheet = "Расчётное задание для гладкого образца 6061-T6: 96,5 МПа на 5·10⁸ циклов, R=−1 (точка AA/MatWeb из sim-materials, AL_6061_T6)." } }
+upper = { value = 78551000, source = { datasheet = "Предел условной оснастки: 96,5 МПа × 0,814 = 78,551 МПа. Точка 6061-T6 из AA/MatWeb на 5·10⁸ циклов при R=−1 требует сверки с исходными данными. Коэффициент Shigley, табл. 6-5, принят из настройки R99 в sim-materials как запас стенда. Надёжность реальной детали по этой точке не выводится." } }
 tolerance = { value = 150000, source = { datasheet = "Допуск порядка 0,012 Н·м / W = 122 кПа плюс резерв на сетку." } }
 remainder = [
   { value = 10000, source = { datasheet = "Допуск порядка 0,012 Н·м / W = 122 кПа плюс резерв на сетку." } },

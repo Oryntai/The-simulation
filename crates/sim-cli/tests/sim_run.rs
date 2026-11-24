@@ -673,3 +673,202 @@ formula = { kind = "position", index = 0 }
         "{denied}"
     );
 }
+
+#[test]
+fn attested_series_reaches_campaign_verdict() {
+    let fixture = Fixture::new("bench-series");
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../devices/stage6/corpus");
+    let existing = fs::read_to_string(corpus.join("under-travel-install.toml")).unwrap();
+    let install = existing.replacen("version = 1", r#"
+version = 1
+measurement_build = { design = "стержень", revision = "r1" }
+"#, 1);
+    fs::write(fixture.path("install.toml"), format!(r#"{install}
+
+[[inventory.components]]
+object = "ход"
+kind = "critical_measurement"
+source = {{ kind = "datasheet", reference = "Проверка источника и шага ряда в испытании интерфейса." }}
+
+[[checks]]
+class = "measurement"
+object = "ход"
+window = {{ start_ns = 0, end_ns = 4000000, max_gap_ns = 1000000 }}
+applicability = {{ kind = "datasheet", reference = "Интерфейсный опыт длительностью 4 мс из профиля." }}
+scope = "Опыт допуска ряда с измерителем хода."
+inputs = [{{ kind = "datasheet", reference = "Заявленная оснастка опыта и предел хода." }}]
+verification = {{ kind = "measurement", limit = {{ kind = "range", signal = {{ name = "ход", unit = "m" }}, max = 0.000012, source = {{ kind = "datasheet", reference = "Предел испытательной оснастки: расчётные 10 мкм и запас 2 мкм." }} }} }}
+"#)).unwrap();
+    fs::write(fixture.path("campaign.toml"), format!(r#"
+version = 1
+[assemblies.block]
+scope = "Изолированный стержень"
+[assemblies.block.experiments.test]
+kind = "scenario"
+campaign = {}
+installation = "install.toml"
+"#, toml::Value::String(corpus.join("under-travel.toml").to_str().unwrap().into()))).unwrap();
+    fs::write(fixture.path("profile.toml"), r#"
+build = { design = "стержень", revision = "r1" }
+models = ["движение"]
+[[channels]]
+name = "ход"
+unit = "m"
+role = "observation"
+sampling = { kind = "periodic", first_ns = 0, period_ns = 1000000 }
+"#).unwrap();
+
+    let run = |measurements: bool, status| {
+        let mut args = vec!["campaign.toml", "--json"];
+        if measurements { args.extend(["--measurements", "records.toml"]); }
+        json(&fixture.run("--campaign", &args, b""), status)
+    };
+    let before = run(false, 0);
+    let assembly = &before["assemblies"]["block"];
+    assert_eq!(assembly["readiness"], "BenchOnly");
+    let rows = assembly["runs"].as_object().unwrap();
+    let (run_key, row) = rows.iter().find(|(_, row)| {
+        row["detail"]["summary"]["key"]["sample"]["kind"] == "nominal"
+    }).expect("номинальная строка");
+    let detail = &row["detail"];
+    assert_eq!(detail["measurement_build"]["revision"], "r1");
+    let run_table: sim_task::campaign::RunKey = serde_json::from_value(detail["summary"]["key"].clone()).unwrap();
+    let run_table = toml::Value::try_from(run_table).unwrap();
+    let build = detail["build_fingerprint"].as_str().unwrap();
+
+    let register = |origin, revision, receipt_revision, fingerprint, last| {
+        // Только тест протокола. Синтетические координаты равны сумме шагов Euler с a = 1 м/с².
+        let raw = format!(
+            "sim-reality,1,{origin}\nbuild,стержень,{revision},4000000\ntime_ns,signal,unit,seq,value,valid\n0,ход,m,0,0,1\n1000000,ход,m,1,0.000001,1\n2000000,ход,m,2,0.000003,1\n3000000,ход,m,3,0.000006,1\n4000000,ход,m,4,{last},1\nend,5\n"
+        );
+        fs::write(fixture.path("bench.csv"), &raw).unwrap();
+        let log_fingerprint = format!("{:016x}", sim_signal::fnv1a(raw.bytes()));
+        fs::write(fixture.path("records.toml"), format!(r#"
+version = 1
+[[records]]
+experiment = "block/test"
+run = {run_table}
+build_fingerprint = "{fingerprint}"
+signal = {{ name = "ход", unit = "m" }}
+# Точные значения тестового регистратора получены рекурсией Euler без шума.
+uncertainty = 0.0
+profile = "profile.toml"
+capture = "bench.csv"
+[records.receipt]
+build = {{ design = "стержень", revision = "{receipt_revision}" }}
+log_fingerprint = "{log_fingerprint}"
+capture_id = "Имитация допуска в интеграционном тесте"
+calibration = "Условная калибровка шкалы интеграционного теста"
+scope = "Изолированная ось на полном окне 4 мс"
+"#)).unwrap();
+    };
+    let finding = |report: &Value| {
+        report["assemblies"]["block"]["runs"][run_key]["findings"].as_array().unwrap()
+            .iter().find(|f| f["key"]["class"] == "measurement").unwrap().clone()
+    };
+    assert_eq!(finding(&before)["outcome"], "not_analyzed");
+    register("recorded", "r1", "r1", build, "0.000010");
+    let accepted = finding(&run(true, 0));
+    assert_eq!(accepted["outcome"], "pass");
+    assert_eq!(accepted["measurement"], serde_json::json!([0.0, 1e-5]));
+    assert!(accepted["measurement_sources"].as_array().unwrap().iter().any(|s| {
+        s.as_str().is_some_and(|s| s.contains("Условная калибровка"))
+    }));
+
+    let path = fixture.path("records.toml");
+    let exact = fs::read_to_string(&path).unwrap();
+    // Второй замер привязан к граничному образцу. Его начальный сдвиг 1 мкм
+    // даёт ряд 1, 2, 4, 7, 11 мкм по той же рекурсии.
+    let boundary_key = rows.values().find_map(|row| {
+        let key = &row["detail"]["summary"]["key"];
+        (key["sample"]["kind"] == "boundary").then_some(key)
+    }).unwrap();
+    let boundary_key: sim_task::campaign::RunKey = serde_json::from_value(boundary_key.clone()).unwrap();
+    let boundary_log = "sim-reality,1,recorded\nbuild,стержень,r1,4000000\ntime_ns,signal,unit,seq,value,valid\n0,ход,m,0,0.000001,1\n1000000,ход,m,1,0.000002,1\n2000000,ход,m,2,0.000004,1\n3000000,ход,m,3,0.000007,1\n4000000,ход,m,4,0.000011,1\nend,5\n";
+    fs::write(fixture.path("boundary.csv"), boundary_log).unwrap();
+    let mut both: toml::Value = toml::from_str(&exact).unwrap();
+    let records = both["records"].as_array_mut().unwrap();
+    let mut boundary = records[0].clone();
+    boundary["run"] = toml::Value::try_from(boundary_key).unwrap();
+    boundary["capture"] = "boundary.csv".into();
+    boundary["receipt"]["capture_id"] = "Граничный образец интеграционного теста".into();
+    boundary["receipt"]["log_fingerprint"] = format!("{:016x}", sim_signal::fnv1a(boundary_log.bytes())).into();
+    records.push(boundary);
+    fs::write(&path, toml::to_string(&both).unwrap()).unwrap();
+    let both_accepted = run(true, 0);
+    assert_eq!(both_accepted["assemblies"]["block"]["verdict"], "PassedSimulation");
+    // Измерены две точки допуска. Непрерывная огибающая остаётся открытой.
+    assert_eq!(both_accepted["assemblies"]["block"]["readiness"], "BenchOnly");
+    assert_eq!(both_accepted["assemblies"]["block"]["coverage"]["executed"], 2);
+    assert!(both_accepted["assemblies"]["block"]["runs"].as_object().unwrap().values().all(|row| {
+        row["findings"].as_array().unwrap().iter().any(|f| {
+            f["key"]["class"] == "measurement" && f["outcome"] == "pass"
+        })
+    }));
+
+    // Ошибка 3 мкм даёт верхнюю границу 13 мкм при пределе 12 мкм.
+    fs::write(&path, exact.replace("uncertainty = 0.0", "uncertainty = 0.000003")).unwrap();
+    let uncertain = run(true, 0);
+    let open = finding(&uncertain);
+    assert_eq!(open["outcome"], "not_analyzed");
+    assert_eq!(uncertain["assemblies"]["block"]["readiness"], "BenchOnly");
+    assert!((open["measurement"][1].as_f64().unwrap() - 0.000013).abs() < 1e-15);
+    fs::write(&path, exact.replace("uncertainty = 0.0\n", "")).unwrap();
+    assert_eq!(finding(&run(true, 0))["outcome"], "not_analyzed");
+    for invalid in ["nan", "inf", "-0.000003"] {
+        fs::write(&path, exact.replace("uncertainty = 0.0", &format!("uncertainty = {invalid}"))).unwrap();
+        assert_eq!(run(true, 2)["proof_status"], "not_analyzed");
+    }
+
+    register("recorded", "r1", "r1", build, "0.000015");
+    let rejected = run(true, 0);
+    assert_eq!(rejected["assemblies"]["block"]["verdict"], "Rejected");
+    assert_eq!(finding(&rejected)["event_ns"], 4_000_000);
+    for (origin, revision, receipt_revision, fingerprint, reason) in [
+        ("synthetic", "r1", "r1", build, "синтетический"),
+        ("recorded", "r2", "r1", build, "ревизии"),
+        ("recorded", "r1", "r2", build, "ревизии"),
+        ("recorded", "r1", "r1", "0000000000000000", "другой сборке"),
+    ] {
+        register(origin, revision, receipt_revision, fingerprint, "0.000010");
+        let result = run(true, 2);
+        assert_eq!(result["proof_status"], "not_analyzed");
+        assert!(result["detail"].as_str().unwrap().contains(reason), "{result}");
+        assert!(result.get("assemblies").is_none());
+    }
+    register("recorded", "r1", "r1", build, "0.000010");
+    let path = fixture.path("records.toml");
+    let record = fs::read_to_string(&path).unwrap();
+    fs::write(&path, record.replace("\n[records.receipt]", "\n[records.absent]")).unwrap();
+    assert_eq!(run(true, 2)["proof_status"], "not_analyzed");
+}
+
+#[test]
+fn view_keeps_journal_and_rejects_corruption() {
+    let fixture = Fixture::new("view");
+    let run = fixture.run("world.toml", &[
+        "--duration", "0.1", "--view", "run.simview", "--log", "run.bin", "--json",
+    ], b"");
+    json(&run, 0);
+    let bytes = fs::read(fixture.path("run.simview")).unwrap();
+    let view = sim_cli::view::RunView::read(&bytes).unwrap();
+    assert_eq!(view.binary, fs::read(fixture.path("run.bin")).unwrap());
+    assert_eq!(view.metadata.scene.world_hash(), view.journal.header().world_hash);
+    // Свободное падение в сцене без поверхности: нет контактов и события для перехода.
+    assert!(view.metadata.peak.is_none());
+    assert!(view.metadata.reactions.is_empty());
+    assert!(view.frames.is_empty());
+    assert!(sim_cli::view::RunView::read(&bytes[..bytes.len() - 1]).is_err());
+
+    let mut corrupted = bytes;
+    let index = corrupted.windows("блок".len()).position(|s| s == "блок".as_bytes()).unwrap();
+    // Изменяем байт имени модели так, чтобы строка осталась корректным UTF-8.
+    corrupted[index + 1] ^= 1;
+    assert!(sim_cli::view::RunView::read(&corrupted).is_err());
+
+    let run = fixture.run("world.toml", &[
+        "--duration", "0.1", "--view", "missing.simview", "--peak", "отсутствует", "--json",
+    ], b"");
+    assert_eq!(json(&run, 2)["proof_status"], "not_analyzed");
+    assert!(!fixture.path("missing.simview").exists());
+}

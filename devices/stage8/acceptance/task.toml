@@ -1,0 +1,26 @@
+version = 1
+world = "world.toml"
+catalog = "../../stage6/corpus/catalog.toml"
+seed = 7 # Номер серии, зафиксированный в приёмке A.
+
+[sampling]
+# Люфт установки: номинал и фиксированное смещение на 1 мкм.
+axes = [{ id = "начальная координата", parameter = { kind = "joint_position", joint = "каретка/блок" }, scope = "run", unit = "m", nominal = 0.0, min = 0.0, max = 0.000001, source = { kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." } }]
+boundaries = [{ id = "смещение", values = { "начальная координата" = 0.000001 }, source = { kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." } }]
+
+[stations.stand]
+experiment = { kind = "scenario" }
+
+[stations.stand.modes.loaded]
+horizon_ns = 4000000
+source = { kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." }
+steps = [
+  { id = "load", target = { kind = "effort", name = "каретка/сила" }, at_ns = 0, value = 1.0, unit = "N", source = { kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." } },
+  { id = "change", target = { kind = "effort", name = "каретка/сила" }, at_ns = 2000000, value = 2.0, unit = "N", source = { kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." } },
+]
+criteria = [{ id = "направление", window = "whole", limit = { kind = "range", signal = { name = "qpos[0]", unit = "m" }, min = 0.0, source = { kind = "datasheet", reference = "Движение начинается в неотрицательной координате, скорости и силы направлены по оси." } } }]
+metrics = [{ id = "конечный ход", signal = { name = "qpos[0]", unit = "m" }, series = "truth", reference = { kind = "constant", value = 0.0, unit = "m" }, window = "whole", interpolation = "linear", operation = { kind = "absolute", at_ns = 4000000 }, worse = "higher", source = { kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." } }]
+[stations.stand.modes.loaded.windows.whole]
+start_ns = 0
+end_ns = 4000000
+max_gap_ns = 1000000

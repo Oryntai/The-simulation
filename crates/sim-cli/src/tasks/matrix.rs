@@ -249,7 +249,7 @@ fn run_case(
     {
         return Ok(row);
     }
-    let (run, comparison, observations) = execution.run_case(case, |_| Ok(()))?;
+    let (run, comparison, observations) = execution.run_case(case, false, |_| Ok(()))?;
     let mut report = run.report().clone();
     if observations.iter().any(|value| value.outcome == Outcome::Fail) {
         report.outcome = Outcome::Fail;

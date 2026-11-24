@@ -1050,6 +1050,17 @@ impl Runtime {
                     .collect();
                 self.sim
                     .apply_step_effects_diagnostic(&loads, &switches, &diagnostic)?;
+                if let Some(view) = &mut self.state.view
+                    && !switches.is_empty()
+                {
+                    Rc::make_mut(&mut view.equality).extend(switches.iter().map(|switch| {
+                        crate::ViewEquality {
+                            at,
+                            name: switch.name.to_owned(),
+                            active: switch.active,
+                        }
+                    }));
+                }
             }
         }
         let work = &mut self.state.work;

@@ -1,0 +1,4 @@
+version = 1
+source = "Протокол синтетического ряда с односторонней оценкой"
+[cases]
+ingress-pair = { file = "measured.toml", overlay = "ingress-pair.toml" }
