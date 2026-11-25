@@ -1,9 +1,16 @@
 mod avr;
 mod esp;
+pub mod esp_adc;
 mod esp_bus;
+pub mod esp_dma;
+pub mod esp_flash;
+pub(crate) mod esp_rtc;
+pub(crate) mod esp_system;
+mod esp_uart;
 mod pico;
 mod stm;
 
+use crate::esp_memory::EspMemory;
 use crate::{
     BoardFault, BoardId, BoardInput, BoardOutput, GpioMode, InputOutcome, OutputEvent, PwmOutput,
     ResetCause,
@@ -198,6 +205,8 @@ enum Chip {
 pub(crate) struct Hardware {
     id: BoardId,
     chip: Chip,
+    rtc: Option<Box<esp_rtc::EspRtc>>,
+    pub(crate) esp_boot: Option<Box<esp::BootPeripherals>>,
     pub cycles: u64,
     pub vector_base: u32,
     pub arm_active: u16,
@@ -222,6 +231,8 @@ impl Hardware {
         Self {
             id,
             chip,
+            rtc: (id == BoardId::Esp32C3).then(Box::default),
+            esp_boot: None,
             cycles: 0,
             vector_base,
             arm_active: 0,
@@ -250,6 +261,9 @@ impl Hardware {
     }
 
     pub fn restart(&mut self, watchdog: bool) {
+        if self.rtc_cpu_restart(watchdog) {
+            return;
+        }
         let mut reset = Self::new(self.id);
         reset.cycles = self.cycles;
         reset.adc.volts = self.adc.volts;
@@ -295,13 +309,47 @@ impl Hardware {
                 new.buses.next_id = old.buses.next_id;
                 new.buses.requests = std::mem::take(&mut old.buses.requests);
                 new.buses.completed = std::mem::take(&mut old.buses.completed);
+                if let Some(mut boot) = self.esp_boot.take() {
+                    new.reset_boot_pads();
+                    boot.reset();
+                    reset.rtc = Some(Box::new(
+                        esp_rtc::EspRtc::new(boot.wdt_delay_sel)
+                            .expect("значение проверено при установке eFuse"),
+                    ));
+                    reset.esp_boot = Some(boot);
+                }
             }
             _ => unreachable!(),
         }
+        self.rtc_finish_restart(&mut reset, watchdog);
         *self = reset;
     }
 
     pub fn access(&mut self, addr: u32, size: u8, v: Option<u32>) -> Access {
+        self.access_with_memory(addr, size, v, None)
+    }
+
+    pub(crate) fn access_with_memory(
+        &mut self,
+        addr: u32,
+        size: u8,
+        v: Option<u32>,
+        esp_memory: Option<&mut EspMemory>,
+    ) -> Access {
+        if let (Some(boot), Chip::Esp(chip)) = (&mut self.esp_boot, &mut self.chip)
+            && let Some(value) = boot.access(chip, self.cycles, addr, size, v)?
+        {
+            return Ok(Some(value));
+        }
+        if let Chip::Esp(chip) = &mut self.chip
+            && let Some(boot) = &self.esp_boot
+            && let Some(value) = chip.dma.access(boot.pc, addr, size, v)?
+        {
+            return Ok(Some(value));
+        }
+        if let Some(value) = self.rtc_access(addr, size, v)? {
+            return Ok(Some(value));
+        }
         let now = self.cycles;
         if matches!(self.chip, Chip::Pico(_) | Chip::Stm(_))
             && (0xe000_e000..0xe001_0000).contains(&addr)
@@ -323,12 +371,24 @@ impl Hardware {
                 p.access(addr, v, now, &mut self.uart, &mut self.adc)
             }
             Chip::Avr(p) if size == 1 => p.access(addr, v, now, &mut self.uart, &mut self.adc),
-            Chip::Esp(p) if size == 4 => p.access(addr, v, now, &mut self.uart, &mut self.adc),
+            Chip::Esp(p) if size == 4 => p.access(
+                addr,
+                v,
+                now,
+                &mut self.uart,
+                &mut self.adc,
+                self.esp_boot.as_deref(),
+                esp_memory,
+            ),
             _ => Ok(None),
         }
     }
 
     pub fn tick(&mut self, passed: u64) {
+        self.tick_with_memory(passed, None);
+    }
+
+    pub(crate) fn tick_with_memory(&mut self, passed: u64, esp_memory: Option<&mut EspMemory>) {
         self.cycles = self.cycles.saturating_add(passed);
         self.uart.tick(self.cycles);
         let adc_completed = self.adc.tick(self.cycles);
@@ -341,11 +401,14 @@ impl Hardware {
                 }
                 p.tick(passed, self.cycles)
             }
-            Chip::Esp(p) => p.tick(passed, self.cycles),
+            Chip::Esp(p) => p.tick(passed, self.cycles, self.esp_boot.as_deref(), esp_memory),
         };
         self.reset_requested |= watchdog;
         if watchdog {
             self.nvic.watchdog_reset = true;
+        }
+        if self.esp_boot.is_none() {
+            self.tick_rtc(passed);
         }
         if matches!(self.chip, Chip::Pico(_) | Chip::Stm(_)) {
             self.nvic.tick(self.id, passed);
@@ -378,11 +441,58 @@ impl Hardware {
         }
     }
 
-    pub fn esp_irq(&mut self) -> Result<Option<u32>, BoardFault> {
-        match &mut self.chip {
-            Chip::Esp(p) => p.interrupt(),
-            _ => Ok(None),
+    pub(crate) fn install_esp_boot(
+        &mut self,
+        flash: esp_flash::EspFlash,
+        phase: Option<esp_system::SystimerPhase>,
+        wdt_delay_sel: u8,
+    ) -> Result<(), BoardFault> {
+        self.rtc = Some(Box::new(esp_rtc::EspRtc::new(wdt_delay_sel)?));
+        if let Chip::Esp(chip) = &mut self.chip {
+            chip.reset_boot_pads();
         }
+        self.esp_boot = Some(Box::new(esp::BootPeripherals::new(
+            flash,
+            phase,
+            wdt_delay_sel,
+        )));
+        Ok(())
+    }
+
+    pub(crate) fn enter_esp_flash_boot(&mut self) -> Result<(), BoardFault> {
+        self.rtc
+            .as_mut()
+            .expect("RTC установлен вместе с flash")
+            .enter_flash_boot()
+    }
+
+    pub(crate) fn advance_esp_boot(
+        &mut self,
+        passed: u64,
+        rates: crate::esp_clock::EspClockRates,
+        stalled: bool,
+    ) -> Result<(), BoardFault> {
+        // TRM §6.2.3, табл. 9.3-1: номинальный RC_SLOW_CLK.
+        const RC_SLOW_HZ: u128 = 136_000;
+        use crate::esp_clock::QUARTERS_PER_SECOND;
+        let slow_tick = |t| t * RC_SLOW_HZ / u128::from(QUARTERS_PER_SECOND);
+        let boot = self.esp_boot.as_mut().expect("установлена flash");
+        let before = boot.system.elapsed_quarter_ns();
+        boot.system.advance_cpu(passed, rates, stalled)?;
+        if let Chip::Esp(chip) = &mut self.chip {
+            chip.advance_boot_io(boot, rates, before, passed, self.cycles, &mut self.uart)?;
+        }
+        let slow_passed = slow_tick(boot.system.elapsed_quarter_ns()) - slow_tick(before);
+        let rtc = self.rtc.as_mut().expect("RTC установлен вместе с flash");
+        rtc.advance_slow(slow_passed as u64, false);
+        if let Some(reason) = rtc.pending_reset() {
+            self.reset_requested = true;
+            self.nvic.watchdog_reset |= !matches!(
+                reason,
+                esp_rtc::EspRtcReset::SoftwareCpu | esp_rtc::EspRtcReset::SoftwareCore
+            );
+        }
+        Ok(())
     }
 
     pub fn feed_watchdog(&mut self) {
@@ -523,7 +633,7 @@ impl Hardware {
     pub fn apply_port(&mut self, input: BoardInput) -> Result<InputOutcome, BoardFault> {
         match (&mut self.chip, input) {
             (Chip::Esp(p), BoardInput::Uart { port, bytes }) => {
-                p.uart_receive(port, self.cycles, &bytes)
+                p.uart_receive(port, self.cycles, &bytes, self.esp_boot.as_deref())
             }
             (Chip::Esp(p), input @ (BoardInput::I2cReply { .. } | BoardInput::SpiReply { .. })) => {
                 p.buses.reply(self.cycles, input)?;

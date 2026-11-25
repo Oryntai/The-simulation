@@ -1,13 +1,18 @@
 //! Электрическая схема устройства. Физические участки и выводы сохраняются при раскрытии в MNA.
 
 mod assembly;
+pub mod capacitor_stress;
 mod catalog;
 mod checks;
 mod compile;
+pub mod deep_discharge;
+pub mod fuse_coordination;
 mod graph;
 mod modes;
 mod pins;
 mod reference;
+pub mod sleep_drain;
+pub mod switch_thermal;
 
 pub use assembly::*;
 pub use catalog::*;

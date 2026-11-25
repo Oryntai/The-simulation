@@ -1,16 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    Analysis, ProcessError, SourcedRange,
-    work::{HazardCheck, electrical::assess_current_envelope},
+    Analysis, Interval, ProcessError, SourcedRange,
+    work::{HazardCheck, cable_flex::*, electrical::assess_current_envelope},
 };
 use sim_circuit::SimOptions;
 use sim_signal::Time;
+use sim_world::Provenance;
 
 use super::{
     Binding, BindingTarget, CompiledSchematic, Connection, ElectricalSeries, Endpoint, Envelope,
-    JointKind, Mode, ModeCoverage, ModePlan, Parameter, Part, PartKind, Primitive, PrimitiveKind,
-    Probe, Quantity, Scope, Section, Status, identifier, invalid,
+    Finding, JointKind, Mode, ModeCoverage, ModePlan, Parameter, Part, PartKind, Primitive,
+    PrimitiveKind, Probe, Quantity, Scope, Section, Status, capacitor_stress::*, deep_discharge::*,
+    fuse_coordination::*, identifier, invalid, sleep_drain::*, supports_source, switch_thermal::*,
+    validate_source,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -483,12 +486,17 @@ impl CompiledSchematic {
                 mode.model_confirmed && (mode.window.is_none() || mode.linear_window)
             });
             let reference_point = self.schematic.scope == Scope::Reference
-                && prepared.as_ref().is_some_and(|mode| mode.model_confirmed && mode.window.is_none());
+                && prepared
+                    .as_ref()
+                    .is_some_and(|mode| mode.model_confirmed && mode.window.is_none());
             let reference_repeat = if self.schematic.scope == Scope::Reference
-                && witnesses.iter().any(|w| w.limit.is_some() && w.needs_reference_repeat(&report.mode))
-                && report.source_fronts.values().any(|front| {
-                    front.points.windows(2).any(|pair| pair[0].1 != pair[1].1)
-                })
+                && witnesses
+                    .iter()
+                    .any(|w| w.limit.is_some() && w.needs_reference_repeat(&report.mode))
+                && report
+                    .source_fronts
+                    .values()
+                    .any(|front| front.points.windows(2).any(|pair| pair[0].1 != pair[1].1))
                 && let Some(mode) = &prepared
             {
                 reference_repeat(mode)
@@ -535,7 +543,8 @@ impl CompiledSchematic {
                         complete,
                         observed,
                         reference_point,
-                        reference_repeat.as_ref()
+                        reference_repeat
+                            .as_ref()
                             .filter(|_| witness.needs_reference_repeat(&report.mode))
                             .and_then(|rows| rows.get(&witness.probe)),
                         point_confirmed,
@@ -566,7 +575,12 @@ impl CompiledSchematic {
                     && let Some(prepared) = &prepared
                     && let Some(nominal) = &nominal
                 {
-                    findings.extend(pin_injection(prepared, nominal, &report.mode, reference_point)?);
+                    findings.extend(pin_injection(
+                        prepared,
+                        nominal,
+                        &report.mode,
+                        reference_point,
+                    )?);
                 }
                 if class == ElectricalClass::RegulatorOverload {
                     for (id, _) in self
@@ -601,7 +615,8 @@ impl CompiledSchematic {
                 nominal: nominal.is_some(),
                 journal: match &report.nominal {
                     Analysis::Analyzed { value, .. } => {
-                        let mut material = format!("{:?}{:?}{:?}", report.mode, report.source_fronts, value);
+                        let mut material =
+                            format!("{:?}{:?}{:?}", report.mode, report.source_fronts, value);
                         if let Some(repeat) = &reference_repeat {
                             material.push_str(&format!("{repeat:?}"));
                         }
@@ -790,8 +805,11 @@ impl CompiledSchematic {
             .bindings()
             .iter()
             .any(|b| matches!(b.target, BindingTarget::DrivePower { .. }));
-        let powered_load = drive || self.bindings().iter()
-            .any(|b| matches!(b.target, BindingTarget::SensorPower { .. }));
+        let powered_load = drive
+            || self
+                .bindings()
+                .iter()
+                .any(|b| matches!(b.target, BindingTarget::SensorPower { .. }));
         let switch = has(|part| {
             matches!(
                 part.kind,
@@ -851,9 +869,14 @@ impl CompiledSchematic {
             ),
             (
                 RailSag,
-                board_power || board_pin || powered_load || switch
+                board_power
+                    || board_pin
+                    || powered_load
+                    || switch
                     || primitive(PrimitiveKind::Current)
-                    || self.part_instances().any(|(_, part)| supply_rating(part).is_some()),
+                    || self
+                        .part_instances()
+                        .any(|(_, part)| supply_rating(part).is_some()),
                 "в разрешённой схеме нет питаемой платы, управляемой нагрузки или вывода с порогом питания",
             ),
             (
@@ -992,7 +1015,8 @@ impl CompiledSchematic {
         for (id, part) in self.part_instances() {
             if let Some(rating) = supply_rating(part) {
                 let [plus, minus] = rating.nodes.each_ref().map(|pin| Endpoint {
-                    component: id.into(), pin: pin.clone(),
+                    component: id.into(),
+                    pin: pin.clone(),
                 });
                 witnesses.push(Witness {
                     class: RailSag,
@@ -1006,12 +1030,14 @@ impl CompiledSchematic {
             let fixed_off = part.elements.values().any(|element| {
                 element.kind == PrimitiveKind::Switch
                     && element.nodes[2] == element.nodes[3]
-                    && element.parameters["threshold_v"].range.as_ref().is_some_and(|range| {
-                        self.schematic.scope.exact(range) && range.min > 0.0
-                    })
-                    && element.parameters["hysteresis_v"].range.as_ref().is_some_and(|range| {
-                        self.schematic.scope.exact(range) && range.max == 0.0
-                    })
+                    && element.parameters["threshold_v"]
+                        .range
+                        .as_ref()
+                        .is_some_and(|range| self.schematic.scope.exact(range) && range.min > 0.0)
+                    && element.parameters["hysteresis_v"]
+                        .range
+                        .as_ref()
+                        .is_some_and(|range| self.schematic.scope.exact(range) && range.max == 0.0)
             });
             for (name, element) in &part.elements {
                 let section = Section::Element {
@@ -1022,8 +1048,11 @@ impl CompiledSchematic {
                 if !is_regulator(part.kind) && element.kind == PrimitiveKind::Voltage {
                     let rating = source_output_rating(part, element);
                     witnesses.push(Witness {
-                        class: SourceConflict, subject: subject.clone(), probe: Probe::Current(section.clone()),
-                        sense: Sense::ForwardCurrent, limit: rating.map(|r| r.limit.clone()),
+                        class: SourceConflict,
+                        subject: subject.clone(),
+                        probe: Probe::Current(section.clone()),
+                        sense: Sense::ForwardCurrent,
+                        limit: rating.map(|r| r.limit.clone()),
                         conditions: rating.map_or_else(
                             || "нужен паспортный предел тока, входящего в плюс источника".into(),
                             |r| r.conditions.clone(),
@@ -1041,8 +1070,11 @@ impl CompiledSchematic {
                         && matches_pair(rating, branch_nodes)
                     {
                         witnesses.push(Witness {
-                            class, subject: subject.clone(), probe: Probe::Current(section.clone()),
-                            sense: Sense::PeakCurrent, limit: Some(rating.limit.clone()),
+                            class,
+                            subject: subject.clone(),
+                            probe: Probe::Current(section.clone()),
+                            sense: Sense::PeakCurrent,
+                            limit: Some(rating.limit.clone()),
                             conditions: rating.conditions.clone(),
                         });
                     }
@@ -1179,7 +1211,9 @@ fn branch_ends(element: &Primitive) -> [&str; 2] {
 }
 
 fn named_rating<'a>(part: &'a Part, name: &str, quantity: Quantity) -> Option<&'a super::Rating> {
-    part.ratings.get(name).filter(|rating| rating.quantity == quantity)
+    part.ratings
+        .get(name)
+        .filter(|rating| rating.quantity == quantity)
 }
 
 fn power_port(part: &Part, rating: &super::Rating) -> bool {
@@ -1206,11 +1240,14 @@ fn source_output_rating<'a>(part: &'a Part, emf: &Primitive) -> Option<&'a super
     }
     let resolved = match part.elements.len() {
         1 => emf_plus == positive,
-        2 => !part.pins.contains_key(emf_plus) && part.elements.values().any(|element| {
-            element.kind == PrimitiveKind::Resistor
-                && (branch_ends(element) == [emf_plus, positive]
-                    || branch_ends(element) == [positive, emf_plus])
-        }),
+        2 => {
+            !part.pins.contains_key(emf_plus)
+                && part.elements.values().any(|element| {
+                    element.kind == PrimitiveKind::Resistor
+                        && (branch_ends(element) == [emf_plus, positive]
+                            || branch_ends(element) == [positive, emf_plus])
+                })
+        }
         _ => false,
     };
     resolved.then_some(rating)
@@ -1232,9 +1269,10 @@ fn rated(
     quantity: Quantity,
 ) -> Witness {
     // Если применимость нескольких пределов двусмысленна, требуется их подтверждение.
-    let mut ratings = part.ratings.values().filter(|r| {
-        r.quantity == quantity && matches_pair(r, nodes)
-    });
+    let mut ratings = part
+        .ratings
+        .values()
+        .filter(|r| r.quantity == quantity && matches_pair(r, nodes));
     let rating = ratings.next().filter(|_| ratings.next().is_none());
     Witness {
         class,
@@ -1303,11 +1341,19 @@ impl Witness {
 
     fn failure_reason(&self) -> &'static str {
         match self.class {
-            ElectricalClass::GroundSwitchBackfeed => "ток возврата через сигнальную ветвь при выключенном ключе превышает предел",
+            ElectricalClass::GroundSwitchBackfeed => {
+                "ток возврата через сигнальную ветвь при выключенном ключе превышает предел"
+            }
             ElectricalClass::RailSag => "минимум напряжения шины ниже порога сброса",
-            ElectricalClass::StartupActuation => "ток нагрузки при сбросе или загрузке превышает предел непреднамеренного включения",
-            ElectricalClass::InductiveSpike => "импульс напряжения при отключении индуктивной цепи превышает предел",
-            ElectricalClass::SwitchUnderdrive => "потери канала при фактическом напряжении управления превышают предел",
+            ElectricalClass::StartupActuation => {
+                "ток нагрузки при сбросе или загрузке превышает предел непреднамеренного включения"
+            }
+            ElectricalClass::InductiveSpike => {
+                "импульс напряжения при отключении индуктивной цепи превышает предел"
+            }
+            ElectricalClass::SwitchUnderdrive => {
+                "потери канала при фактическом напряжении управления превышают предел"
+            }
             _ => "подтверждённое наблюдение превышает применимый предел",
         }
     }
@@ -1384,8 +1430,9 @@ impl Witness {
         {
             let lower = matches!(self.sense, Sense::MinimumVoltage);
             let extreme = |row: &Envelope| {
-                if lower { (row.min.value, row.min.time) }
-                else if row.min.value.abs() > row.max.value.abs() {
+                if lower {
+                    (row.min.value, row.min.time)
+                } else if row.min.value.abs() > row.max.value.abs() {
                     (row.min.value.abs(), row.min.time)
                 } else {
                     (row.max.value.abs(), row.max.time)
@@ -1409,9 +1456,11 @@ impl Witness {
                     finding.reason = self.failure_reason().into();
                 } else if (lower && low > limit.max) || (!lower && high < limit.min) {
                     finding.status = Status::Pass;
-                    finding.reason = "на двух сетках экстремум стенда внутри применимого предела".into();
+                    finding.reason =
+                        "на двух сетках экстремум стенда внутри применимого предела".into();
                 }
-                finding.witness = Some("экстремумы на исходной и половинной сетках эталонного перехода".into());
+                finding.witness =
+                    Some("экстремумы на исходной и половинной сетках эталонного перехода".into());
             } else {
                 finding.reason = "экстремум эталонного перехода расходится на двух сетках".into();
             }
@@ -1461,7 +1510,13 @@ impl Witness {
         (finding.status, finding.reason) = match check {
             HazardCheck::Violation { reason } => (
                 Status::Fail,
-                if matches!(self.class, ElectricalClass::GroundSwitchBackfeed | ElectricalClass::StartupActuation | ElectricalClass::SwitchUnderdrive | ElectricalClass::InductiveSpike) {
+                if matches!(
+                    self.class,
+                    ElectricalClass::GroundSwitchBackfeed
+                        | ElectricalClass::StartupActuation
+                        | ElectricalClass::SwitchUnderdrive
+                        | ElectricalClass::InductiveSpike
+                ) {
                     self.failure_reason().into()
                 } else {
                     reason
@@ -1591,4 +1646,327 @@ pub(super) fn order(
         )));
     }
     Ok(ordered)
+}
+
+/// Дополнительные наблюдения сохраняются отдельно от прежних кодов электрического вердикта.
+#[derive(Clone, Copy, Debug)]
+pub enum DepthCheck<'a> {
+    CapacitorStress(CapacitorStressInput<'a>, CapacitorRatings<'a>),
+    FuseCoordination(FuseCoordinationInput<'a>, FuseCoordinationRatings<'a>),
+    SwitchThermal(SwitchThermalInput<'a>, SwitchThermalRatings<'a>),
+    DeepDischarge(DeepDischargeInput<'a>),
+    SleepDrain(SleepDrainInput<'a>),
+    CableFlex(CableFlexInput<'a>, CableFlexRatings<'a>),
+}
+
+#[derive(Clone, Debug)]
+pub enum DepthEvidence {
+    CapacitorStress(CapacitorStressEvidence),
+    FuseCoordination(FuseCoordinationEvidence),
+    SwitchThermal(SwitchThermalEvidence),
+    DeepDischarge(DeepDischargeEvidence),
+    SleepDrain(SleepDrainEvidence),
+    CableFlex(CableFlexEvidence),
+}
+
+#[derive(Clone, Debug)]
+pub struct DepthEvent {
+    pub kind: DepthEventKind,
+    pub at: Time,
+    pub branch: Section,
+    /// Источник подтверждает, что событие произошло на этой ветви в журнале опыта.
+    pub source: Provenance,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DepthEventKind {
+    WireOpened,
+    FaultApplied,
+    ModeEntered,
+}
+
+impl DepthEventKind {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::WireOpened => "wire_opened",
+            Self::FaultApplied => "fault_applied",
+            Self::ModeEntered => "mode_entered",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DepthModeMark<'a> {
+    /// Подтверждение привязки всех входов к этой установке, ветви, режиму и окну.
+    pub applicability: Option<&'a Provenance>,
+    pub event: Option<&'a DepthEvent>,
+    pub passport: Option<&'a str>,
+    /// Данные стенда ограничены стендовой областью независимо от вида их источника.
+    pub reference_only: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct DepthFinding {
+    pub code: &'static str,
+    pub scope: Scope,
+    pub mode: Mode,
+    pub branch: Section,
+    pub window: Option<Interval>,
+    pub event: Option<DepthEvent>,
+    pub applicability: Option<Provenance>,
+    pub passport: Option<String>,
+    pub applicability_gap: Option<&'static str>,
+    pub status: Status,
+    pub reason: String,
+    pub evidence: Option<DepthEvidence>,
+}
+
+impl CompiledSchematic {
+    /// Разрешает физическую ветвь и возвращает каталожную позицию для ветви элемента.
+    pub fn depth_part(&self, branch: &Section) -> Result<Option<&str>, ProcessError> {
+        match branch {
+            Section::Connection(id) if self.schematic.connections.contains_key(id) => Ok(None),
+            Section::Element { component, element } => {
+                if let Some(item) = self.schematic.components.get(component)
+                    && self
+                        .catalog
+                        .part(&item.part)
+                        .unwrap()
+                        .elements
+                        .contains_key(element)
+                {
+                    return Ok(Some(&item.part));
+                }
+                Err(invalid(format!("неизвестная ветвь {branch:?}")))
+            }
+            _ => Err(invalid(format!("неизвестная ветвь {branch:?}"))),
+        }
+    }
+
+    /// Проверяет тип и адреса модели до использования её результатов в отчёте.
+    pub fn assess_depth(
+        &self,
+        plan: &ModePlan,
+        mark: DepthModeMark<'_>,
+        check: DepthCheck<'_>,
+    ) -> Result<DepthFinding, ProcessError> {
+        self.validate_mode_plan(plan)?;
+        let (scope, mode, branch, window) = match check {
+            DepthCheck::CapacitorStress(i, _) => (i.scope, i.mode, i.branch, Some(i.window)),
+            DepthCheck::FuseCoordination(i, _) => (i.scope, i.mode, i.fuse, Some(i.window)),
+            DepthCheck::SwitchThermal(i, _) => (i.scope, i.mode, i.branch, Some(i.window)),
+            DepthCheck::DeepDischarge(i) => (i.scope, i.mode, i.branch, Some(i.window)),
+            DepthCheck::SleepDrain(i) => (
+                i.scope,
+                i.mode,
+                i.branch,
+                i.required.map(|r| Interval {
+                    start: Time::ZERO,
+                    end: r.duration,
+                }),
+            ),
+            DepthCheck::CableFlex(i, _) => (i.scope, i.mode, i.branch, Some(i.window)),
+        };
+        if scope != self.schematic.scope {
+            return Err(invalid("область расчёта должна совпадать с областью схемы"));
+        }
+        let mut reference_only = self.depth_reference_branch(branch)? || mark.reference_only;
+        if mark.passport.is_some_and(|id| !identifier(id)) {
+            return Err(invalid("нужно имя углублённого паспорта"));
+        }
+        if let Some(source) = mark.applicability {
+            validate_source(source)?;
+        }
+        if let Mode::OpenWire(id) = mode {
+            self.depth_part(&Section::Connection(id.clone()))?;
+        }
+        if let Some(event) = mark.event {
+            reference_only |= self.depth_reference_branch(&event.branch)?;
+            validate_source(&event.source)?;
+            if !window.is_some_and(|window| (window.start..window.end).contains(&event.at)) {
+                return Err(invalid("отметка события вне окна проверки"));
+            }
+            if let Mode::OpenWire(id) = mode
+                && (event.kind != DepthEventKind::WireOpened
+                    || event.branch != Section::Connection(id.clone()))
+            {
+                return Err(invalid("событие не подтверждает обрыв ветви режима"));
+            }
+        }
+
+        let (code, mut status, mut reason, evidence) = match check {
+            DepthCheck::CapacitorStress(input, ratings) => {
+                let (kind, terminals) = self.depth_element::<2>(branch)?;
+                if kind != PrimitiveKind::Capacitor || terminals != *input.terminals {
+                    return Err(invalid(
+                        "ветвь или полярность выводов конденсатора не совпадают со схемой",
+                    ));
+                }
+                depth_evidence(
+                    CAPACITOR_STRESS_CODE,
+                    assess_capacitor_stress(&input, &ratings)?,
+                    DepthEvidence::CapacitorStress,
+                )
+            }
+            DepthCheck::FuseCoordination(input, ratings) => {
+                reference_only |= self.depth_reference_branch(input.wire)?;
+                reference_only |= self.depth_reference_branch(input.switch)?;
+                depth_evidence(
+                    FUSE_COORDINATION_CODE,
+                    assess_fuse_coordination(&input, &ratings)?,
+                    DepthEvidence::FuseCoordination,
+                )
+            }
+            DepthCheck::SwitchThermal(input, ratings) => {
+                let (kind, terminals) = self.depth_element::<3>(branch)?;
+                if !matches!(
+                    kind,
+                    PrimitiveKind::Nmos | PrimitiveKind::Pmos | PrimitiveKind::Switch
+                ) || terminals != *input.terminals
+                {
+                    return Err(invalid(
+                        "ветвь или выводы силового ключа не совпадают со схемой",
+                    ));
+                }
+                depth_evidence(
+                    SWITCH_THERMAL_CODE,
+                    assess_switch_thermal(&input, &ratings)?,
+                    DepthEvidence::SwitchThermal,
+                )
+            }
+            DepthCheck::DeepDischarge(input) => depth_evidence(
+                DEEP_DISCHARGE_CODE,
+                assess_deep_discharge(&input)?,
+                DepthEvidence::DeepDischarge,
+            ),
+            DepthCheck::SleepDrain(input) => {
+                if let Some(profile) = input.profile {
+                    for load in profile
+                        .states
+                        .iter()
+                        .filter_map(|state| state.loads)
+                        .flatten()
+                    {
+                        reference_only |= self.depth_reference_branch(load.branch)?;
+                    }
+                }
+                depth_evidence(
+                    SLEEP_DRAIN_CODE,
+                    assess_sleep_drain(&input)?,
+                    DepthEvidence::SleepDrain,
+                )
+            }
+            DepthCheck::CableFlex(input, ratings) => {
+                let mut finding = assess_cable_flex(&input, &ratings)?;
+                if finding.status == Status::Pass
+                    && (input.duty.is_some() || scope == Scope::Assembly)
+                    && finding.evidence.fatigue.status == Status::NotAnalyzed
+                {
+                    finding.status = Status::NotAnalyzed;
+                    finding.reason = "не подтверждён ресурс для заданного цикла изгиба".into();
+                }
+                depth_evidence(CABLE_FLEX_CODE, finding, DepthEvidence::CableFlex)
+            }
+        };
+        let reference_gap = reference_only && scope == Scope::Assembly;
+        let event_required =
+            matches!(mode, Mode::OpenWire(_)) || matches!(check, DepthCheck::FuseCoordination(..));
+        let applicability_gap = if reference_gap {
+            Some("данные эталонного стенда требуют подтверждения для физической сборки")
+        } else if !mark
+            .applicability
+            .is_some_and(|source| supports_source(scope, source))
+        {
+            Some("не подтверждена применимость данных к ветви и режиму")
+        } else if !plan
+            .cases
+            .get(mode)
+            .is_some_and(|case| supports_source(scope, &case.source))
+        {
+            Some("нет подтверждённой постановки для указанного режима")
+        } else if event_required
+            && !mark.event.is_some_and(|event| {
+                supports_source(scope, &event.source)
+                    && (!matches!(check, DepthCheck::FuseCoordination(..))
+                        || (matches!(
+                            event.kind,
+                            DepthEventKind::WireOpened | DepthEventKind::FaultApplied
+                        ) && window.is_some_and(|window| window.start == event.at)))
+            })
+        {
+            Some("не подтверждена инъекция отказа в требуемую отметку")
+        } else {
+            None
+        };
+        if let Some(gap) = applicability_gap {
+            status = Status::NotAnalyzed;
+            if reference_gap {
+                reason = gap.into();
+            } else {
+                reason = format!("{gap}. {reason}");
+            }
+        }
+        Ok(DepthFinding {
+            code,
+            scope,
+            mode: mode.clone(),
+            branch: branch.clone(),
+            window,
+            event: mark.event.cloned(),
+            applicability: mark.applicability.cloned(),
+            passport: mark.passport.map(str::to_owned),
+            applicability_gap,
+            status,
+            reason,
+            evidence: (!reference_gap).then_some(evidence),
+        })
+    }
+
+    pub fn depth_scope(&self) -> Scope {
+        self.schematic.scope
+    }
+
+    fn depth_reference_branch(&self, section: &Section) -> Result<bool, ProcessError> {
+        let part = self.depth_part(section)?;
+        let reference = match section {
+            Section::Element { .. } => self.catalog.part(part.unwrap()).unwrap().reference_only,
+            Section::Connection(id) => self.schematic.connections[id].ends.iter().any(|end| {
+                let component = &self.schematic.components[&end.component];
+                self.catalog.part(&component.part).unwrap().reference_only
+            }),
+        };
+        Ok(reference)
+    }
+
+    fn depth_element<const N: usize>(
+        &self,
+        branch: &Section,
+    ) -> Result<(PrimitiveKind, [Endpoint; N]), ProcessError> {
+        let Section::Element { component, element } = branch else {
+            return Err(invalid("проверка требует ветвь элемента"));
+        };
+        let part = self.depth_part(branch)?.unwrap();
+        let model = &self.catalog.part(part).unwrap().elements[element];
+        let indices: &[usize] = match (N, model.kind) {
+            (2, PrimitiveKind::Capacitor) => &[0, 1],
+            (3, PrimitiveKind::Nmos | PrimitiveKind::Pmos) => &[0, 2, 1],
+            (3, PrimitiveKind::Switch) if model.nodes[1] == model.nodes[3] => &[0, 1, 2],
+            _ => return Err(invalid("для проверки нужны совместимые выводы элемента")),
+        };
+        Ok((
+            model.kind,
+            std::array::from_fn(|i| Endpoint {
+                component: component.clone(),
+                pin: model.nodes[indices[i]].clone(),
+            }),
+        ))
+    }
+}
+
+fn depth_evidence<E>(
+    code: &'static str,
+    finding: Finding<E>,
+    wrap: impl FnOnce(E) -> DepthEvidence,
+) -> (&'static str, Status, String, DepthEvidence) {
+    (code, finding.status, finding.reason, wrap(finding.evidence))
 }

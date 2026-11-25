@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Group {
     Mechanics,
     Parts,
@@ -68,7 +68,10 @@ use crate::{
 
 pub use crate::interaction::SafetyDecision as Readiness;
 pub use evidence::{CampaignEvidence, ElectricalEvidence, Installed, MeasurementSample, SnapshotAudit};
-pub use registry::{ClassSpec, ELECTRICAL_REGISTRY, HazardClass, Method, REGISTRY, REGISTRY_VERSION};
+pub use registry::{
+    ClassSpec, DEPTH_REGISTRY, DepthCauseSpec, ELECTRICAL_REGISTRY, HazardClass, Method, REGISTRY,
+    REGISTRY_VERSION,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -137,7 +140,7 @@ pub struct Component {
     pub source: Source,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Level {
     Construction,
@@ -283,7 +286,7 @@ pub struct ResolvedInventory {
     pub unresolved_ranges: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct RequirementKey {
     pub class: HazardClass,
     pub object: String,
@@ -293,9 +296,11 @@ pub struct RequirementKey {
     pub level: Level,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LimitValue {
+    #[serde(default, deserialize_with = "deserialize_bounds")]
     pub lower: Option<[f64; 2]>,
+    #[serde(default, deserialize_with = "deserialize_bounds")]
     pub upper: Option<[f64; 2]>,
 }
 
@@ -308,13 +313,14 @@ impl LimitValue {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Finding {
     pub key: RequirementKey,
     pub code: String,
     pub group: Group,
     pub outcome: Outcome,
     pub reason: String,
+    #[serde(default, deserialize_with = "deserialize_bounds")]
     pub measurement: Option<[f64; 2]>,
     pub limit: Option<LimitValue>,
     pub unit: Option<String>,
@@ -330,9 +336,11 @@ pub struct Finding {
     pub confirmed_hazard: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub electrical: Option<ElectricalFindingIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<DepthFindingIdentity>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ElectricalFindingIdentity {
     pub schematic: Fingerprint,
     pub inputs: Fingerprint,
@@ -340,6 +348,36 @@ pub struct ElectricalFindingIdentity {
     pub mode: Option<String>,
     pub probe: Option<String>,
     pub witness: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DepthFindingIdentity {
+    pub id: String,
+    pub scope: String,
+    pub passport: Option<String>,
+    pub applicability: Option<Source>,
+    /// Отпечаток входного ряда, паспорта, отметки режима и установки.
+    pub observation: Fingerprint,
+    pub event: Option<DepthEventIdentity>,
+    /// Величина, вынесенная в поля measurement и limit.
+    pub metric: Option<String>,
+    pub related: Vec<HazardClass>,
+    /// Ранее рассчитанный свидетель той же величины и того же предела.
+    pub legacy_voltage: Option<LegacyVoltageWitness>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DepthEventIdentity {
+    pub kind: String,
+    pub at_ns: u64,
+    pub branch: String,
+    pub source: Source,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LegacyVoltageWitness {
+    pub key: RequirementKey,
+    pub journal: Fingerprint,
 }
 
 impl Finding {
@@ -365,11 +403,12 @@ impl Finding {
             journal: None,
             confirmed_hazard: false,
             electrical: None,
+            depth: None,
         }
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct NotApplicable {
     pub class: HazardClass,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -387,7 +426,8 @@ pub enum SimulationVerdict {
     PassedSimulation,
 }
 
-#[derive(Debug, Serialize)]
+/// Дисковый отчёт пригоден для чтения, без импорта его содержимого в доказательства.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct VerdictReport {
     pub registry_version: u32,
     pub plan: Fingerprint,
@@ -487,6 +527,17 @@ fn checked_pair(values: [f64; 2]) -> Result<(), Error> {
     } else {
         Err(invalid("неконечный или обратный интервал доказательства"))
     }
+}
+
+fn deserialize_bounds<'de, D>(deserializer: D) -> Result<Option<[f64; 2]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let bounds = Option::deserialize(deserializer)?;
+    if let Some(bounds) = bounds {
+        checked_pair(bounds).map_err(serde::de::Error::custom)?;
+    }
+    Ok(bounds)
 }
 
 fn limit_source(limit: &Limit) -> &Source {

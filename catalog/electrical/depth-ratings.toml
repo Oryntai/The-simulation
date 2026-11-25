@@ -1,0 +1,57 @@
+# Углублённые паспорта подключаются отдельной ссылкой rating из depth_checks.
+# scope = "reference" ограничивает запись стендом. part привязывает её к
+# позиции электрического каталога. Для физического соединения part опускается.
+# Запись схемы [[depth_checks]] задаёт id, mode, branch, window в наносекундах,
+# источник applicability и таблицу check с kind и данными наблюдения.
+# В check.rating указывают имя паспорта или таблицу его величин. Паспорт ячейки
+# и её состояние задаются в check.cells для разряда либо в check.battery для сна.
+# Для отказа event хранит kind, at_ns, branch и источник фактической отметки.
+format = 1
+[parts]
+
+[depth_ratings.capacitor_rc_bench]
+scope = "reference"
+part = "capacitor"
+
+# Расчётная постановка RC-стенда из sim-process/tests/capacitor_stress.rs.
+# 12 В × 0,75 = 9 В. Для 1 А RMS при ESR 1 Ом потери составляют 1 Вт.
+[depth_ratings.capacitor_rc_bench.data]
+kind = "capacitor_stress"
+rated_voltage_v = { min = 12.0, nominal = 12.0, max = 12.0, source = { derived = "Условный предел RC-стенда, 12 В перед derating" } }
+max_hotspot_k = { min = 303.0, nominal = 303.0, max = 303.0, source = { derived = "Условный предел горячей точки RC-стенда, 303 К" } }
+
+[depth_ratings.capacitor_rc_bench.data.voltage_derating]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+cells = [{ range = { min = 0.75, nominal = 0.75, max = 0.75, source = { derived = "RC-стенд при Ta = 300 К, напряжение ограничено 75% номинала" } } }]
+
+[depth_ratings.capacitor_rc_bench.data.ripple_rms_a]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+frequencies_hz = [1000.0]
+cells = [{ range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условный предел RMS RC-стенда при 1 кГц и 300 К" } } }]
+
+[depth_ratings.capacitor_rc_bench.data.esr_ohm]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+frequencies_hz = [1000.0]
+cells = [{ range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Последовательный резистор 1 Ом в эквиваленте RC-стенда" } } }]
+
+# Для монтажных эквивалентов публикуются только подтверждённые данные.
+# Выбранный артикул предохранителя, полное время отключения, I²t жгута
+# и SOA ключа заполняются по паспорту или квалификационному замеру.
+[depth_ratings.fuse_series_pending]
+scope = "assembly"
+part = "fuse_series"
+data = { kind = "fuse_coordination" }
+
+# Параметры корпуса, платы, охлаждения и SOA выбранного ключа пока открыты.
+[depth_ratings.nmos_pending]
+scope = "assembly"
+part = "nmos"
+data = { kind = "switch_thermal" }
+
+# Свободная длина, радиус и кривая изгиба относятся к конкретному жгуту и укладке.
+[depth_ratings.connection_flex_pending]
+scope = "assembly"
+data = { kind = "cable_flex" }

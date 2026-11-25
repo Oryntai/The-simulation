@@ -1,0 +1,78 @@
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["p", "g"]
+
+[components.battery]
+part = "source_4"
+nets = { p = "p", g = "g" }
+
+[components.module]
+part = "resistor_400_over_7"
+nets = { a = "p", b = "g" }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Аналитическая постановка синтетического стенда Т3" }
+probes = [{ kind = "current", branch = { kind = "element", component = "battery", element = "emf" } }]
+
+[[depth_checks]]
+id = "sleep_drain"
+mode = { kind = "normal" }
+branch = { kind = "element", component = "battery", element = "emf" }
+# Окно берётся из required.duration_ns.
+applicability = { derived = "Аналитическая постановка синтетического стенда Т3" }
+reference_only = true
+
+[depth_checks.check]
+kind = "sleep_drain"
+# Десять периодов 90 с сна и 10 с пробуждения. Контроллер 15 Кл,
+# ветвь за регулятором 70 / 25 Кл на входе, саморазряд 2 Кл.
+required = { duration_ns = 1000000000000, source = { derived = "Заявленная длительность стендового опыта 1000 с" } }
+
+[depth_checks.check.profile]
+repeat = true
+source = { derived = "Фиксированный период 100 с. Токи ветви приведены ко входу источника" }
+
+[[depth_checks.check.profile.states]]
+id = "sleep"
+duration_ns = 90000000000
+controller_a = { min = 0.005, nominal = 0.005, max = 0.005, source = { derived = "Стенд: 5 мА в сне, 105 мА при пробуждении" } }
+loads = [{ branch = { kind = "element", component = "module", element = "r" }, battery_current_a = { min = 0.07, nominal = 0.07, max = 0.07, source = { derived = "Эквивалентный входной ток ветви за регулятором" } } }]
+
+[[depth_checks.check.profile.states]]
+id = "wake"
+duration_ns = 10000000000
+controller_a = { min = 0.105, nominal = 0.105, max = 0.105, source = { derived = "Стенд: 5 мА в сне, 105 мА при пробуждении" } }
+loads = [{ branch = { kind = "element", component = "module", element = "r" }, battery_current_a = { min = 0.07, nominal = 0.07, max = 0.07, source = { derived = "Эквивалентный входной ток ветви за регулятором" } } }]
+
+[depth_checks.check.battery]
+applicability = { derived = "Условная батарея с OCV = 3 В + SOC, R0 = 0,5 Ом и без RC-звеньев" }
+capacity_ah = { min = 0.027777777777777776, nominal = 0.027777777777777776, max = 0.027777777777777776, source = { derived = "Ёмкость полной батареи 100 Кл" } }
+initial_soc = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Полный начальный заряд" } }
+initial_polarization_v = []
+temperature_c = { min = 25.0, nominal = 25.0, max = 25.0, source = { derived = "Опорная температура 25 °C" } }
+self_discharge_a = { min = 0.002, nominal = 0.002, max = 0.002, source = { derived = "Заданный сток 2 мА мимо клемм" } }
+cutoff_v = { min = 3.2, nominal = 3.2, max = 3.2, source = { derived = "Условный порог нагруженных клемм 3,2 В" } }
+voltage_error_v = { min = 1e-09, nominal = 1e-09, max = 1e-09, source = { derived = "Численный допуск сверки линейной модели" } }
+
+# Изотермическая модель. Неиспользуемые тепловые метаданные условно заданы как 10 г и 10 Дж/К.
+[depth_checks.check.battery.params]
+name = "Блок"
+capacity_ah = 0.027777777777777776
+nominal_v = 3.5
+v_min = 3.2
+v_max = 4.0
+ocv = [[0.0, 3.0], [1.0, 4.0]]
+entropic = [[0.0, 0.0], [1.0, 0.0]]
+r0 = [[0.0, 0.5], [1.0, 0.5]]
+rc = []
+ea_r0 = 0.0
+ea_rc = 0.0
+capacity_factor = [[25.0, 1.0]]
+charge_temp_c = [25.0, 25.0]
+discharge_temp_c = [25.0, 25.0]
+max_charge_a = [[25.0, 0.0]]
+max_discharge_a = [[25.0, 0.175]]
+mass_kg = 0.01
+heat_capacity_j_k = 10.0

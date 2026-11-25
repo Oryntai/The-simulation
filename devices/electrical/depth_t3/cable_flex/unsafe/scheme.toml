@@ -1,0 +1,54 @@
+format = 1
+name = "Каретка"
+scope = "reference"
+nets = ["a", "g"]
+
+[components.base]
+part = "resistor_1"
+nets = { a = "a", b = "g" }
+
+[components.slide]
+part = "resistor_1"
+nets = { a = "a", b = "g" }
+
+
+[connections.lead]
+kind = "solder"
+ends = ["base/a", "slide/a"]
+resistance_ohm = { measurement = "Эквивалент ветви", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Стендовый эквивалент жгута 0,1 Ом" } } }
+current_limit_a = { measurement = "Условный ток стыка", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Ток прозвонки ограничен 1 А" } } }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Аналитическая постановка синтетического стенда Т3" }
+probes = [{ kind = "current", branch = { kind = "connection", id = "lead" } }]
+
+[[depth_checks]]
+id = "cable_flex"
+mode = { kind = "normal" }
+branch = { kind = "connection", id = "lead" }
+window = { start_ns = 0, end_ns = 1000000000 }
+applicability = { derived = "Аналитическая постановка синтетического стенда Т3" }
+reference_only = true
+
+[depth_checks.check]
+kind = "cable_flex"
+# Поворот 90°: радиус равен отступу 0.009 м. На конце хода Lmax = 0,080 + 0,120 − 2r + πr/2.
+rating = "cable_bench"
+duty = { cycles = 10000, orientation = "plane", profile = "stroke", temperature_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "Ресурсная постановка при 300 К" } }, applicability = { derived = "Синтетический цикл полного хода каретки" } }
+
+[depth_checks.check.mount]
+applicability = { derived = "Шаблон монтажа каретки с разгруженными концами" }
+ends = [
+  { site = "base", relief = { installed = true, source = { derived = "Фиксатор на блоке" } } },
+  { site = "slide", relief = { installed = true, source = { derived = "Фиксатор на каретке" } } },
+]
+guides = [{ site = "guide", setback_m = 0.009 }]
+
+[depth_checks.check.motion]
+start = { at_ns = 0, sites_m = { base = [0.0, 0.0, 0.0], guide = [0.080, 0.0, 0.0], slide = [0.080, 0.060, 0.0] } }
+
+[[depth_checks.check.motion.steps]]
+end = { at_ns = 1000000000, sites_m = { base = [0.0, 0.0, 0.0], guide = [0.080, 0.0, 0.0], slide = [0.080, 0.120, 0.0] } }
+length_error_m = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Монотонный ход: максимум длины на правом конце" } }
+curvature_error_inv_m = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Угол и отступ постоянны, кривизна неизменна" } }

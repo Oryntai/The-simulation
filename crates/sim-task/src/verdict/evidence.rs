@@ -3,6 +3,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use sim_mujoco::{JointInfo, JointKind};
+use sim_process::{
+    Analysis, SourcedRange,
+    schematic::{
+        CompiledSchematic, DepthCheck, DepthEvidence, DepthFinding, DepthModeMark, ElectricalClass,
+        ModePlan, Probe, Scope, Status as ElectricalStatus,
+        capacitor_stress::CapacitorVoltageSense, switch_thermal::SwitchSoaTime,
+    },
+};
 use sim_runtime::{Evaluator, Log, LogEnd, LogEntry, LogKind, Runtime, Status, Truth, TruthId, TruthOut};
 use sim_signal::{Command, Rng, SignalSpec, Time};
 use sim_world::{
@@ -26,8 +34,9 @@ use crate::{
 };
 
 use super::{
-    Check, ControlCriterion, Finding, HazardClass, LimitValue, Requirement, RequirementKey, SectionLoad,
-    RequirementSet, Verification, compiled_world_fingerprint, fault_class,
+    Check, ControlCriterion, DEPTH_REGISTRY, DepthEventIdentity, DepthFindingIdentity, Finding,
+    HazardClass, LegacyVoltageWitness, LimitValue, Requirement, RequirementKey, SectionLoad,
+    RequirementSet, Verification, checked_pair, compiled_world_fingerprint, fault_class,
     limit_source, provenance, requires_fault, section_reaction::{self, Wrench, cross, sub}, trace,
     section_span::{self, Distribution, Motion},
 };
@@ -201,7 +210,7 @@ impl ElectricalEvidence {
 
         crate::task::check_name(instance)?;
         let file = Fingerprint::of(schematic_bytes);
-        let inputs = Fingerprint::of(format!("{file:?}{compiled:?}{plan:?}").as_bytes());
+        let inputs = electrical_inputs(file, compiled, plan);
         let assessment = compiled.assess_electrical(plan).map_err(|err| invalid(err.to_string()))?;
         let modes: BTreeMap<_, _> = assessment.modes.iter().map(|mode| (&mode.mode, mode)).collect();
         let mut findings = Vec::new();
@@ -324,6 +333,215 @@ impl ElectricalEvidence {
             _ => None,
         }).collect();
         Ok(Self { instance: instance.into(), file, build, inputs, boards, live: None, assessment, findings })
+    }
+
+    /// Исполняет профильную проверку и добавляет её обязательство к этой установке.
+    /// Возвращает полный предметный результат для отчёта. Готовые исходы не принимаются.
+    pub fn record_depth(
+        &mut self,
+        compiled: &CompiledSchematic,
+        plan: &ModePlan,
+        id: &str,
+        mark: DepthModeMark<'_>,
+        check: DepthCheck<'_>,
+    ) -> Result<DepthFinding, Error> {
+        crate::task::check_name(id)?;
+        if id.chars().any(char::is_control)
+            || self
+                .findings
+                .iter()
+                .any(|f| f.depth.as_ref().is_some_and(|d| d.id == id))
+        {
+            return Err(invalid(
+                "некорректное или повторное имя углублённой проверки",
+            ));
+        }
+        if self.inputs != electrical_inputs(self.file, compiled, plan) {
+            return Err(invalid(
+                "углублённая проверка относится к другой схеме, каталогу или режимам",
+            ));
+        }
+        let depth = compiled
+            .assess_depth(plan, mark, check)
+            .map_err(|err| invalid(err.to_string()))?;
+        let spec = DEPTH_REGISTRY
+            .iter()
+            .find(|spec| spec.code == depth.code)
+            .ok_or_else(|| invalid("неизвестная углублённая причина"))?;
+        let branch = format!("{:?}", depth.branch);
+        let window_ns = depth.window.map(|window| [window.start.0, window.end.0]);
+        let key = RequirementKey {
+            class: spec.class,
+            object: format!("{}/{branch}", self.instance),
+            extension: Some(format!("depth/{}/{}", spec.code, id)),
+            run: None,
+            window_ns,
+            level: super::Level::Simulation,
+        };
+        let mut finding = Finding::open(&key, &depth.reason);
+        let scope = match depth.scope {
+            Scope::Assembly => "assembly",
+            Scope::Reference => "reference",
+        };
+        finding.code = spec.code.into();
+        finding.verification = spec.independent_check.into();
+        finding.model_scope = Some(
+            match depth.scope {
+                Scope::Assembly => "ветвь, режим и окно сборки",
+                Scope::Reference => "эталонный стенд, только указанная ветвь, режим и окно",
+            }
+            .into(),
+        );
+        if depth.applicability_gap.is_none() {
+            finding.outcome = match depth.status {
+                ElectricalStatus::Pass => Outcome::Pass,
+                ElectricalStatus::Fail => Outcome::Fail,
+                ElectricalStatus::NotAnalyzed => Outcome::NotAnalyzed,
+            };
+        }
+        finding.confirmed_hazard = finding.outcome == Outcome::Fail;
+        if finding.outcome != Outcome::NotAnalyzed {
+            finding.missing_data.clear();
+        }
+        finding
+            .coverage_gaps
+            .extend(depth.applicability_gap.map(str::to_owned));
+        let observation = Fingerprint::of(
+            format!("{:?}{:?}{id:?}{mark:?}{check:?}", self.build, self.inputs).as_bytes(),
+        );
+        finding.measurement_sources.push(format!(
+            "углублённое наблюдение {:016x}",
+            observation.as_u64()
+        ));
+
+        let metric = depth_metric(&depth, check);
+        if let Some(metric) = &metric {
+            checked_pair(metric.observed)?;
+            if let Some(limit) = &metric.limit {
+                for bounds in limit.lower.into_iter().chain(limit.upper) {
+                    checked_pair(bounds)?;
+                }
+            }
+            finding.measurement = Some(metric.observed);
+            finding.limit.clone_from(&metric.limit);
+            finding.unit = Some(metric.unit.into());
+            finding.event_ns = metric.at.map(|at| at.0);
+            if let Some(source) = metric.source {
+                let source = provenance(&source.provenance);
+                finding
+                    .limit_sources
+                    .push(format!("{:?}: {}", source.kind, source.reference));
+            }
+        }
+        finding.electrical = Some(super::ElectricalFindingIdentity {
+            schematic: self.file,
+            inputs: self.inputs,
+            build: self.build,
+            mode: Some(format!("{:?}", depth.mode)),
+            probe: Some(branch),
+            witness: None,
+        });
+        finding.depth = Some(DepthFindingIdentity {
+            id: id.into(),
+            scope: scope.into(),
+            passport: depth.passport.clone(),
+            applicability: depth.applicability.as_ref().map(provenance),
+            observation,
+            event: depth.event.as_ref().map(|event| DepthEventIdentity {
+                kind: event.kind.code().into(),
+                at_ns: event.at.0,
+                branch: format!("{:?}", event.branch),
+                source: provenance(&event.source),
+            }),
+            metric: metric.map(|item| item.name),
+            related: spec.related.to_vec(),
+            legacy_voltage: self.legacy_voltage(&depth, check),
+        });
+        self.findings.push(finding);
+        Ok(depth)
+    }
+
+    fn legacy_voltage(
+        &self,
+        depth: &DepthFinding,
+        check: DepthCheck<'_>,
+    ) -> Option<LegacyVoltageWitness> {
+        // Прежний переход подтверждает только абсолютный пик напряжения на стенде.
+        // Пульсации, нагрев, ток отсечки и прочность требуют собственных данных.
+        let DepthCheck::CapacitorStress(input, ratings) = check else {
+            return None;
+        };
+        let Some(DepthEvidence::CapacitorStress(evidence)) = &depth.evidence else {
+            return None;
+        };
+        if depth.scope != Scope::Reference
+            || depth.applicability_gap.is_some()
+            || input.voltage_sense != CapacitorVoltageSense::Absolute
+        {
+            return None;
+        }
+        let Analysis::Analyzed { value, .. } = &evidence.voltage_v else {
+            return None;
+        };
+        let rating = ratings.rated_voltage_v?;
+        // Единичный derating сохраняет паспортный предел. Модель округляет его наружу.
+        if !rating.can_prove()
+            || !ratings.voltage_derating.is_some_and(|curve| {
+                curve.cells.iter().flatten().all(|range| range.min == 1.0 && range.max == 1.0)
+            })
+        {
+            return None;
+        }
+        let status = if value.margin.max < 0.0 {
+            ElectricalStatus::Fail
+        } else if value.margin.min > 0.0 {
+            ElectricalStatus::Pass
+        } else {
+            return None;
+        };
+        let window = depth.window?;
+        let mode = self
+            .assessment
+            .modes
+            .iter()
+            .find(|m| m.mode == depth.mode)?;
+        if window.start != Time::ZERO || mode.horizon != Some(window.end) {
+            return None;
+        }
+        let journal = self.mode_journal(mode)?;
+        let [plus, minus] = &evidence.terminals;
+        let conditions = provenance(depth.applicability.as_ref()?).reference;
+        self.assessment
+            .findings
+            .iter()
+            .enumerate()
+            .find_map(|(index, old)| {
+                if old.class != ElectricalClass::InductiveSpike
+                    || old.status != status
+                    || old.witness.is_none()
+                    || old.mode.as_ref() != Some(&depth.mode)
+                    || old.conditions.as_deref() != Some(conditions.as_str())
+                    || old.limit.as_ref() != Some(rating)
+                    || old.unit != Some("V")
+                    || !matches!(&old.probe, Some(Probe::Voltage(a, b))
+                    if (a == plus && b == minus) || (a == minus && b == plus))
+                    || !old.measurement.is_some_and(|[low, high]| {
+                        low <= value.observed.max && high >= value.observed.min
+                    })
+                {
+                    return None;
+                }
+                let extension = format!("{}/{index}", old.class.code());
+                let old_finding = self.findings.iter().find(|f| {
+                    f.key.class == HazardClass::InductiveSpike
+                        && f.key.extension.as_deref() == Some(extension.as_str())
+                        && f.journal == Some(journal)
+                })?;
+                Some(LegacyVoltageWitness {
+                    key: old_finding.key.clone(),
+                    journal,
+                })
+            })
     }
 
     /// Добавляет фактическую шину и фронт сброса из установленного контура.
@@ -510,6 +728,278 @@ impl ElectricalEvidence {
             return Err(invalid("электрическое доказательство относится к другому экземпляру, версии или схеме"));
         }
         Ok(())
+    }
+}
+
+fn electrical_inputs(
+    file: Fingerprint,
+    compiled: &CompiledSchematic,
+    plan: &ModePlan,
+) -> Fingerprint {
+    Fingerprint::of(format!("{file:?}{compiled:?}{plan:?}").as_bytes())
+}
+
+struct DepthMetric<'a> {
+    name: String,
+    observed: [f64; 2],
+    unit: &'static str,
+    limit: Option<LimitValue>,
+    at: Option<Time>,
+    source: Option<&'a SourcedRange>,
+}
+
+impl<'a> DepthMetric<'a> {
+    fn new(name: impl Into<String>, observed: [f64; 2], unit: &'static str) -> Self {
+        Self {
+            name: name.into(),
+            observed,
+            unit,
+            limit: None,
+            at: None,
+            source: None,
+        }
+    }
+
+    fn upper(mut self, bounds: [f64; 2], source: Option<&'a SourcedRange>) -> Self {
+        self.limit = Some(LimitValue::upper(bounds));
+        self.source = source;
+        self
+    }
+
+    fn lower(mut self, bounds: [f64; 2], source: Option<&'a SourcedRange>) -> Self {
+        self.limit = Some(LimitValue {
+            lower: Some(bounds),
+            upper: None,
+        });
+        self.source = source;
+        self
+    }
+}
+
+fn analyzed<T>(analysis: &Analysis<T>) -> Option<&T> {
+    match analysis {
+        Analysis::Analyzed { value, .. } => Some(value),
+        Analysis::NotAnalyzed { .. } => None,
+    }
+}
+
+fn depth_metric<'a>(depth: &DepthFinding, check: DepthCheck<'a>) -> Option<DepthMetric<'a>> {
+    match (depth.evidence.as_ref()?, check) {
+        (DepthEvidence::CapacitorStress(result), DepthCheck::CapacitorStress(_, ratings)) => [
+            (
+                "пиковое напряжение",
+                &result.voltage_v,
+                "V",
+                result.voltage_peak_sample,
+                None,
+            ),
+            ("RMS пульсаций", &result.ripple_a, "A", None, None),
+            (
+                "пик температуры",
+                &result.hotspot_k,
+                "K",
+                None,
+                ratings.max_hotspot_k,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(label, analysis, unit, at, source)| {
+            let value = analyzed(analysis)?;
+            let mut metric =
+                DepthMetric::new(label, [value.observed.min, value.observed.max], unit)
+                    .upper([value.limit.min, value.limit.max], source);
+            metric.at = at;
+            Some((value.margin.max < 0.0, metric))
+        })
+        .max_by_key(|(violation, _)| *violation)
+        .map(|(_, metric)| metric),
+        (DepthEvidence::FuseCoordination(result), DepthCheck::FuseCoordination(input, ratings)) => {
+            if let Some(interrupt) = ratings.interrupt {
+                for (status, name, observed, unit, limit) in [
+                    (
+                        result.interrupt_current,
+                        "отключающий ток",
+                        input.prospective_current_a,
+                        "A",
+                        interrupt.max_prospective_current_a,
+                    ),
+                    (
+                        result.interrupt_voltage,
+                        "восстанавливающееся напряжение",
+                        input.recovery_voltage_v,
+                        "V",
+                        interrupt.max_recovery_voltage_v,
+                    ),
+                ] {
+                    if status == ElectricalStatus::Fail {
+                        let observed = observed?;
+                        return Some(
+                            DepthMetric::new(name, [observed.min, observed.max], unit)
+                                .upper([limit.min, limit.max], Some(limit)),
+                        );
+                    }
+                }
+            }
+            let clear = analyzed(&result.clearing_time_s)?;
+            let times = [
+                (
+                    "время полного отключения до повреждения провода",
+                    result.wire_margin_s,
+                    analyzed(&result.wire).map(|wire| wire.damage_time_s),
+                ),
+                (
+                    "время полного отключения до повреждения ключа",
+                    result.switch_margin_s,
+                    analyzed(&result.switch).copied(),
+                ),
+            ];
+            let (label, damage) = times
+                .into_iter()
+                .filter_map(|(label, margin, damage)| Some((label, margin?, damage?)))
+                .min_by(|(_, a, _), (_, b, _)| {
+                    let violated =
+                        |m: &sim_process::schematic::fuse_coordination::FuseTimeMargin| {
+                            m.max.is_some_and(|max| max < 0.0)
+                        };
+                    violated(b).cmp(&violated(a)).then(a.min.total_cmp(&b.min))
+                })
+                .map(|(label, _, damage)| (label, Some(damage)))
+                .unwrap_or(("время полного отключения", None));
+            let mut metric = DepthMetric::new(label, [clear.min, clear.max], "s");
+            if let Some(damage) = damage
+                && let Some(latest) = damage.latest_s
+            {
+                metric = metric.upper([damage.earliest_s, latest], None);
+            }
+            Some(metric)
+        }
+        (DepthEvidence::SwitchThermal(result), DepthCheck::SwitchThermal(_, ratings)) => {
+            if depth.status == ElectricalStatus::Fail
+                && let Some(pulse) = analyzed(&result.linear_soa)
+                    .into_iter()
+                    .flatten()
+                    .find(|pulse| pulse.status == ElectricalStatus::Fail)
+                && let Some(&[SwitchSoaTime::Seconds(lo), SwitchSoaTime::Seconds(hi)]) =
+                    analyzed(&pulse.allowed)
+            {
+                return Some(
+                    DepthMetric::new(
+                        "длительность линейного режима",
+                        [pulse.duration_s.min, pulse.duration_s.max],
+                        "s",
+                    )
+                    .upper([lo, hi], None),
+                );
+            }
+            let (name, value) = if result.sustained
+                && let Some(steady) = analyzed(&result.steady_junction_k)
+                && steady.margin.max < 0.0
+                && depth.status == ElectricalStatus::Fail
+            {
+                ("стационарная Tj", steady)
+            } else {
+                ("пик Tj", analyzed(&result.foster_peak_junction_k)?)
+            };
+            Some(
+                DepthMetric::new(name, [value.observed.min, value.observed.max], "K")
+                    .upper([value.limit.min, value.limit.max], ratings.max_junction_k),
+            )
+        }
+        (DepthEvidence::DeepDischarge(result), DepthCheck::DeepDischarge(input)) => {
+            let cell = result
+                .cells
+                .iter()
+                .find(|cell| cell.violation.is_some())
+                .or_else(|| {
+                    result
+                        .cells
+                        .iter()
+                        .find(|cell| Some(&cell.id) == result.limiting_cell.as_ref())
+                })?;
+            let limit = input
+                .cells?
+                .iter()
+                .find(|input| input.id == cell.id)?
+                .min_voltage_v?;
+            let (observed, at) = match cell.violation {
+                Some(violation) => (violation.voltage_v, Some(violation.time)),
+                None => (*analyzed(&cell.minimum_voltage_v)?, None),
+            };
+            let mut metric = DepthMetric::new(
+                format!("минимум напряжения ячейки {}", cell.id),
+                [observed.min, observed.max],
+                "V",
+            )
+            .lower([limit.min, limit.max], Some(limit));
+            metric.at = at;
+            Some(metric)
+        }
+        (DepthEvidence::SleepDrain(result), DepthCheck::SleepDrain(_)) => {
+            // Запас определён как доступная величина минус требуемая. Ноль означает равенство.
+            if let Some(violation) = &result.cutoff_violation {
+                let mut metric = DepthMetric::new(
+                    "запас до порога отсечки",
+                    [violation.margin_v.min, violation.margin_v.max],
+                    "V",
+                )
+                .lower([0.0; 2], None);
+                metric.at = Some(violation.time);
+                return Some(metric);
+            }
+            let reserve = analyzed(&result.charge_margin_ah)?;
+            Some(
+                DepthMetric::new("запас заряда", [reserve.min, reserve.max], "Ah")
+                    .lower([0.0; 2], None),
+            )
+        }
+        (DepthEvidence::CableFlex(result), DepthCheck::CableFlex(_, ratings)) => {
+            if let Some(end) = result
+                .relief
+                .iter()
+                .position(|&s| s == ElectricalStatus::Fail)
+            {
+                // Двоичная отметка установки. Единица означает подтверждённое крепление.
+                return Some(
+                    DepthMetric::new(format!("разгрузка конца {}", end + 1), [0.0; 2], "bool")
+                        .lower([1.0; 2], None),
+                );
+            }
+            if result.fatigue.status == ElectricalStatus::Fail {
+                let margin = analyzed(&result.fatigue.result)?;
+                return Some(
+                    DepthMetric::new(
+                        "запас радиуса по кривой гибкости",
+                        [margin.min_m?, margin.max_m?],
+                        "m",
+                    )
+                    .lower([0.0; 2], None),
+                );
+            }
+            if result.slack.status != ElectricalStatus::Fail
+                && let Some(radius) = analyzed(&result.minimum_radius_m)
+                && let (Some(lo), Some(hi)) = (radius.min_m, radius.max_m)
+                && let Some(limit) = ratings.min_bend_radius_m
+                && analyzed(&result.bend.result).is_some()
+            {
+                return Some(
+                    DepthMetric::new("минимальный радиус изгиба", [lo, hi], "m")
+                        .lower([limit.min, limit.max], Some(limit)),
+                );
+            }
+            let length = analyzed(&result.maximum_length_m)?;
+            let limit = ratings
+                .usable_length_m
+                .filter(|_| analyzed(&result.slack.result).is_some())?;
+            let mut metric = DepthMetric::new(
+                "максимальная длина трассы",
+                [length.bounds.min, length.bounds.max],
+                "m",
+            )
+            .upper([limit.min, limit.max], Some(limit));
+            metric.at = Some(length.sample_at);
+            Some(metric)
+        }
+        _ => None,
     }
 }
 

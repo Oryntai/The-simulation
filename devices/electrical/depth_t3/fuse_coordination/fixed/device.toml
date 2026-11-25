@@ -1,0 +1,8 @@
+format = 3
+name = "Блок"
+schematic = "scheme.toml"
+[[links]]
+name = "block"
+joint = { kind = "slide", axis = [1.0, 0.0, 0.0] }
+# Куб 1 м и 6 кг: I = m·a²/6 = 1 кг·м². Механика носителя вне опыта.
+mass = { kind = "explicit", mass_kg = 6.0, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [1.0, 1.0, 1.0, 0.0, 0.0, 0.0], provenance = { derived = "Формула инерции куба" } }

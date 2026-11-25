@@ -1,0 +1,6 @@
+# ESP-IDF v6.1.1, examples/get-started/hello_world/sdkconfig.defaults.
+CONFIG_APP_REPRODUCIBLE_BUILD=y
+# ESP-IDF components/esp_system/Kconfig: консоль на штатном UART0.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# ESP-IDF components/esp_hw_support/Kconfig: на входе wake внешняя подтяжка.
+CONFIG_ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS=n

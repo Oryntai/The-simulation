@@ -1,11 +1,18 @@
 //! Реестр обязательств. Идентификаторы являются частью формата отчёта.
 
-use serde::Serialize;
-use sim_process::{schematic::ElectricalClass, work::HazardKind};
+use serde::{Deserialize, Serialize};
+use sim_process::{
+    schematic::{
+        ElectricalClass, capacitor_stress::CAPACITOR_STRESS_CODE,
+        deep_discharge::DEEP_DISCHARGE_CODE, fuse_coordination::FUSE_COORDINATION_CODE,
+        sleep_drain::SLEEP_DRAIN_CODE, switch_thermal::SWITCH_THERMAL_CODE,
+    },
+    work::{HazardKind, cable_flex::CABLE_FLEX_CODE},
+};
 
 use super::{ComponentKind, Group};
 
-pub const REGISTRY_VERSION: u32 = 2;
+pub const REGISTRY_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,7 +55,7 @@ macro_rules! registry {
             $($electric:ident, $code:literal, $electric_group:ident, $origin:literal, $verification:literal;)*
         }
     ) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
         pub enum HazardClass {
             $(#[serde(rename = $id)] $class,)*
             $(#[serde(rename = $code)] $electric,)*
@@ -59,8 +66,7 @@ macro_rules! registry {
             class_spec!($class, $id, $group, [$($kind),*], $method, $limit, $check),
         )*];
 
-        /// Дополнительные классы отдельного электрического корпуса.
-        /// Две причины превышения тока используют запись Overcurrent.
+        /// Дополнительные классы электрического вердикта.
         pub const ELECTRICAL_REGISTRY: &[ClassSpec] = &[$(
             class_spec!($electric, $code, $electric_group, [], Electrical, $origin, $verification),
         )*];
@@ -121,8 +127,58 @@ registry! {
         StartupActuation, "startup_actuation", Firmware, "штатное состояние нагрузки при пуске", "подтяжки, ток и реакция нагрузки";
         InductiveSpike, "inductive_spike", Power, "импульсный предел", "напряжение ограничения и сходимость по шагу";
         SwitchUnderdrive, "switch_underdrive", Power, "применимая область ключа", "напряжение управления и баланс потерь";
+        CapacitorStress, "capacitor_stress", Power, "пределы напряжения, RMS пульсаций и температуры", "пик напряжения, интеграл квадрата тока и баланс потерь";
+        SwitchThermal, "switch_thermal", Power, "тепловая характеристика монтажа, предел Tj и линейная SOA", "стационарный тепловой баланс и переходная тепловая модель";
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct DepthCauseSpec {
+    pub code: &'static str,
+    pub class: HazardClass,
+    /// Смежные классы со своими обязательствами и условиями доказательства.
+    pub related: &'static [HazardClass],
+    pub independent_check: &'static str,
+}
+
+pub const DEPTH_REGISTRY: &[DepthCauseSpec] = &[
+    DepthCauseSpec {
+        code: CAPACITOR_STRESS_CODE,
+        class: HazardClass::CapacitorStress,
+        related: &[HazardClass::InductiveSpike],
+        independent_check: "пик напряжения, интеграл квадрата тока и баланс потерь",
+    },
+    DepthCauseSpec {
+        code: FUSE_COORDINATION_CODE,
+        class: HazardClass::Overcurrent,
+        related: &[HazardClass::WiringHeat, HazardClass::SwitchThermal],
+        independent_check: "полная TCC, интеграл I²t и время повреждения ключа по SOA",
+    },
+    DepthCauseSpec {
+        code: SWITCH_THERMAL_CODE,
+        class: HazardClass::SwitchThermal,
+        related: &[HazardClass::SwitchUnderdrive],
+        independent_check: "стационарный тепловой баланс и переходная тепловая модель",
+    },
+    DepthCauseSpec {
+        code: DEEP_DISCHARGE_CODE,
+        class: HazardClass::Battery,
+        related: &[],
+        independent_check: "напряжение каждой ячейки под нагрузкой, баланс заряда и момент отсечки",
+    },
+    DepthCauseSpec {
+        code: SLEEP_DRAIN_CODE,
+        class: HazardClass::Battery,
+        related: &[],
+        independent_check: "интеграл токов покоя и пробуждения, доступный заряд и порог отсечки",
+    },
+    DepthCauseSpec {
+        code: CABLE_FLEX_CODE,
+        class: HazardClass::ConnectionFailure,
+        related: &[HazardClass::Fatigue, HazardClass::WireFault],
+        independent_check: "длина и радиус на траектории, шаблон монтажа и испытание на циклы",
+    },
+];
 
 impl From<HazardKind> for HazardClass {
     fn from(kind: HazardKind) -> Self {

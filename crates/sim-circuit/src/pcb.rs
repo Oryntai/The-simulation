@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+pub mod kicad;
+
 /// 1 mil = 0.001 дюйма, м.
 pub const MIL: f64 = 25.4e-6;
 

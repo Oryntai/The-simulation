@@ -1,6 +1,7 @@
 //! Сборка электроники и управление в общей шкале времени.
 mod board;
 mod bus;
+pub mod external_board;
 mod install;
 mod journal;
 mod program;

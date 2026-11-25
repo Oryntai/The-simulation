@@ -14,6 +14,8 @@ use super::bus::{BusModel, Profile};
 use super::schema::{BoardWire, DeliverySlot};
 use super::{CommandOrigin, Engine, EventKind, FaultAction, Rejection, Schedule, add};
 
+const QUARTERS_PER_NS: u128 = 4;
+
 #[derive(Clone)]
 pub(super) struct Board {
     pub name: String,
@@ -36,13 +38,55 @@ pub(super) struct Board {
 }
 
 impl Board {
+    fn epoch_offset(&self, at: Time) -> Result<u64, String> {
+        at.0.checked_sub(self.epoch.0)
+            .ok_or_else(|| "отметка платы относится к прошлой эпохе".into())
+    }
+
     fn cycle_at(&self, at: Time) -> Result<u64, String> {
         self.epoch_cycle
             .checked_add(time_cycle(
-                Time(at.0 - self.epoch.0),
+                Time(self.epoch_offset(at)?),
                 self.sim.capabilities().cpu_hz,
             )?)
             .ok_or_else(|| "такт платы вне диапазона".into())
+    }
+
+    fn time_at(&self, cycle: u64) -> Result<Time, String> {
+        let from_epoch = cycle
+            .checked_sub(self.epoch_cycle)
+            .ok_or("событие платы относится к прошлой эпохе")?;
+        let offset = match (
+            self.sim
+                .cycle_time_quarter_ns(self.epoch_cycle)
+                .map_err(|e| e.to_string())?,
+            self.sim
+                .cycle_time_quarter_ns(cycle)
+                .map_err(|e| e.to_string())?,
+        ) {
+            (Some(epoch), Some(at)) => {
+                let elapsed = at
+                    .checked_sub(epoch)
+                    .ok_or("шкала времени платы пошла назад")?;
+                u64::try_from(elapsed / QUARTERS_PER_NS).map_err(|_| "время платы вне диапазона")?
+            }
+            (None, None) => cycle_time(from_epoch, self.sim.capabilities().cpu_hz)?.0,
+            _ => return Err("плата изменила способ преобразования времени".into()),
+        };
+        add(self.epoch, offset)
+    }
+
+    fn fault(&self, error: sim_boards::BoardFault) -> String {
+        if let Some(position) = self.sim.esp_boot_position() {
+            format!(
+                "плата «{}», шаг CPU {}, PC {:#010x}: {error}",
+                self.name,
+                position.step + 1,
+                position.pc
+            )
+        } else {
+            format!("плата «{}»: {error}", self.name)
+        }
     }
 }
 
@@ -136,8 +180,7 @@ impl Engine {
             let Some(slot) = self.boards[index].electrical else {
                 continue;
             };
-            let target = self.boards[index].cycle_at(at)?;
-            self.advance_board(at, index, target)?;
+            self.advance_board(at, index, at)?;
             if let Some(boot) = self.boards[index].electrical_restart.take() {
                 circuit.boards[slot].restart(boot);
             }
@@ -303,8 +346,7 @@ impl Engine {
         } else {
             self.boards[index].input_at
         };
-        let target_cycles = self.boards[index].cycle_at(at)?;
-        self.advance_board(at, index, target_cycles)?;
+        self.advance_board(at, index, at)?;
         let fault = self.use_fault(at, &format!("board:{name}"));
         if self.boards[index].electrical.is_none()
             && fault != Some(FaultAction::PowerOff)
@@ -340,8 +382,7 @@ impl Engine {
         if end_sample {
             // Выход вычисляется по выборке конца того же численного интервала.
             if let Some(next) = next.filter(|next| *next <= self.horizon()) {
-                let target = self.boards[index].cycle_at(next)?;
-                self.advance_board(at, index, target)?;
+                self.advance_board(at, index, next)?;
             }
         } else {
             self.receive_packets(at, index)?;
@@ -372,15 +413,40 @@ impl Engine {
         Ok(())
     }
 
-    fn advance_board(&mut self, at: Time, index: usize, target: u64) -> Result<(), String> {
+    fn advance_board(&mut self, at: Time, index: usize, deadline: Time) -> Result<(), String> {
         // Входы текущего момента подаются после исполнения предыдущего интервала.
         self.board_events(at, index)?;
+        let board = &self.boards[index];
+        let epoch = board
+            .sim
+            .cycle_time_quarter_ns(board.epoch_cycle)
+            .map_err(|e| board.fault(e))?;
+        if let Some(epoch) = epoch {
+            let end = epoch
+                .checked_add(u128::from(board.epoch_offset(deadline)?) * QUARTERS_PER_NS)
+                .ok_or("время платы вне диапазона")?;
+            loop {
+                let board = &mut self.boards[index];
+                let previous = board.sim.cycles();
+                let result = board.sim.run_until_quarter_ns(end);
+                self.board_events(at, index)?;
+                let progress = result
+                    .map_err(|e| self.boards[index].fault(e))?
+                    .ok_or("плата не подтвердила шкалу холодной загрузки")?;
+                if !progress.bus_request_pending {
+                    return Ok(());
+                }
+                if progress.cycle <= previous {
+                    return Err("плата не продвинулась до запроса шины".into());
+                }
+            }
+        }
+        let target = board.cycle_at(deadline)?;
         while self.boards[index].sim.cycles() < target {
             let previous = self.boards[index].sim.cycles();
             let result = self.boards[index].sim.run_cycles(target - previous);
             self.board_events(at, index)?;
-            let progress =
-                result.map_err(|e| format!("плата «{}»: {e}", self.boards[index].name))?;
+            let progress = result.map_err(|e| self.boards[index].fault(e))?;
             if progress.cycle <= previous || progress.cycle > target {
                 return Err("плата не продвинулась до допустимого такта".into());
             }
@@ -495,14 +561,9 @@ impl Engine {
     }
 
     fn board_events(&mut self, at: Time, index: usize) -> Result<(), String> {
-        let hz = self.boards[index].sim.capabilities().cpu_hz;
         let name = self.boards[index].name.clone();
         for event in self.boards[index].sim.take_events() {
-            let cycle = event
-                .cycle
-                .checked_sub(self.boards[index].epoch_cycle)
-                .ok_or("событие платы относится к прошлой эпохе")?;
-            let produced_at = add(self.boards[index].epoch, cycle_time(cycle, hz)?.0)?;
+            let produced_at = self.boards[index].time_at(event.cycle)?;
             if self.boards[index].electrical.is_some()
                 && matches!(
                     event.output,

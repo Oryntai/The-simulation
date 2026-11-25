@@ -1,7 +1,15 @@
-//! ESP32-C3 TRM: IO MUX/GPIO, Interrupt Matrix, Timer Group, MWDT, UART,
-//! LEDC и ADC. Поля и смещения также сверены с заголовками ESP-IDF v5.2.
+//! ESP32-C3 TRM: IO MUX/GPIO, Timer Group, MWDT, UART,
+//! LEDC и ADC. Поля GPIO, LEDC и UART сверены с ESP-IDF v6.1.1.
 
 use super::esp_bus::EspBuses;
+use super::esp_dma::EspDma;
+use super::esp_uart::EspUart;
+use super::{
+    esp_flash::EspFlash,
+    esp_system::{EspSystem, SystimerPhase},
+};
+use crate::esp_clock::{EspClockRates, QUARTERS_PER_SECOND, XTAL_HZ};
+use crate::esp_memory::EspMemory;
 use crate::{BoardFault, InputOutcome, PwmOutput};
 use std::collections::VecDeque;
 
@@ -10,6 +18,68 @@ use super::{Access, Adc, Pins, Uart, checked_rw, command, invalid, ro, rw, unsup
 const GPIO_MASK: u32 = (1 << 22) - 1;
 const TIMER_MASK: u64 = (1 << 54) - 1;
 const WDT_KEY: u32 = 0x50d8_3aa1;
+
+// ESP-IDF soc/esp32c3/register/soc/system_reg.h, SYSTEM_PERIP_{CLK,RST}_EN0.
+const PERIP_CLK_EN0: u32 = crate::esp_clock::SYSTEM + 0x10;
+const PERIP_CLK_EN1: u32 = crate::esp_clock::SYSTEM + 0x14;
+const PERIP_RST_EN1: u32 = crate::esp_clock::SYSTEM + 0x1c;
+const GDMA_GATE: u32 = 1 << 6;
+const PERIP_RST_EN1_RESET: u32 = 0x1fe; // SYSTEM_PERIP_RST_EN1: биты 1…8 сброшены в 1.
+const PERIP_RST_EN0: u32 = crate::esp_clock::SYSTEM + 0x18;
+const PERIP_CLK_EN0_RESET: u32 = 0xf9c1_e06f;
+const UART_GATE: [u32; 2] = [1 << 2, 1 << 5];
+const UART_MEM: u32 = 1 << 24;
+const I2C_GATE: u32 = 1 << 7;
+const LEDC_GATE: u32 = 1 << 11;
+const SPI_GATE: u32 = 1 << 6;
+const SPI_DMA_GATE: u32 = 1 << 22;
+const IO_GATES: u32 =
+    UART_GATE[0] | UART_GATE[1] | UART_MEM | I2C_GATE | LEDC_GATE | SPI_GATE | SPI_DMA_GATE;
+// gpio_sig_map.h: индексы GPIO Matrix.
+const UART_DATA: [u32; 2] = [6, 9];
+const I2C_LINES: [u32; 2] = [53, 54];
+const SPI_CLOCK: u32 = 63;
+const SPI_MISO: u32 = 64;
+const SPI_MOSI: u32 = 65;
+const SPI_CS0: u32 = 68;
+const LEDC_FIRST: u32 = 45;
+const GPIO_OUT: u32 = 128;
+const LOOPBACK: std::ops::RangeInclusive<u32> = 97..=100;
+// gpio_reg.h: FUNCx_IN_SEL_CFG и FUNCx_OUT_SEL_CFG.
+const MATRIX_IN: u32 = 1 << 6;
+const INPUT_INVERT: u32 = 1 << 5;
+const INPUT_PAD: u32 = 0x1f;
+const INPUT_ONE: u32 = 0x1e;
+const INPUT_ZERO: u32 = 0x1f;
+const OUTPUT_SIGNAL: u32 = 0xff;
+const OUTPUT_INVERT: u32 = 1 << 8;
+const ENABLE_FROM_GPIO: u32 = 1 << 9;
+const ENABLE_INVERT: u32 = 1 << 10;
+const PAD_OPEN_DRAIN: u32 = 1 << 2;
+// io_mux_reg.h: поля IO_MUX_GPIOn.
+const INPUT_ENABLE: u32 = 1 << 9;
+const GPIO_FUNC: u32 = 1;
+const MUX_FUNC_SHIFT: u32 = 12;
+const PULL_UP: u32 = 1 << 8;
+const PULL_DOWN: u32 = 1 << 7;
+const PAD_ACTIVE_MASK: u32 = 0x7fff;
+// ledc_reg.h: LSTIMERx_CONF, LSCHx_CONF0/1.
+const LED_TIMER_RESET: u32 = 1 << 23;
+const LED_TIMER_PAUSE: u32 = 1 << 22;
+const LED_TIMER_UPDATE: u32 = 1 << 25;
+const LED_TIMER_TICK_SEL: u32 = 1 << 24;
+const LED_DUTY_START: u32 = 1 << 31;
+const LED_DUTY_INC: u32 = 1 << 30;
+const LED_OUTPUT_ENABLE: u32 = 1 << 2;
+const LED_IDLE: u32 = 1 << 3;
+const LED_CHANNEL_UPDATE: u32 = 1 << 4;
+// TRM 6.2: прежний ELF-профиль использует PLL, APB=CPU=80 МГц.
+const PLL80_HZ: u32 = 80_000_000;
+// ESP-IDF soc/esp32c3/register/soc/reg_base.h, DR_REG_SYSTIMER_BASE и SPI2.
+const SYSTIMER_WINDOW: std::ops::Range<u32> = 0x6002_3000..0x6002_4000;
+// ESP-IDF soc/esp32c3/register/soc/extmem_reg.h, EXTMEM_ICACHE_CTRL_REG.
+const ICACHE_CTRL: u32 = 0x600c_4000;
+const ICACHE_ENABLE: u32 = 1;
 
 #[derive(Clone)]
 struct Group {
@@ -183,13 +253,33 @@ fn pair(parts: [u32; 2]) -> u64 {
     u64::from(parts[0]) | (u64::from(parts[1]) << 32)
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct LedChannel {
     cfg: u32,
+    shadow: u32,
     hpoint: u32,
+    active_hpoint: u32,
     duty: u32,
+    duty_cfg: u32,
     active: u32,
     start: bool,
+    pending: Option<(u32, u32, u32)>,
+}
+
+impl Default for LedChannel {
+    fn default() -> Self {
+        Self {
+            cfg: 0,
+            shadow: 0,
+            hpoint: 0,
+            active_hpoint: 0,
+            duty: 0,
+            duty_cfg: LED_DUTY_INC, // ledc_reg.h: CONF1 reset.
+            active: 0,
+            start: false,
+            pending: None,
+        }
+    }
 }
 #[derive(Clone)]
 struct LedTimer {
@@ -197,36 +287,55 @@ struct LedTimer {
     cfg: u32,
     ctr: u32,
     phase: u64,
+    pending: Option<u32>,
 }
 
 impl Default for LedTimer {
     fn default() -> Self {
         Self {
-            shadow: 1 << 23,
-            cfg: 1 << 23,
+            shadow: LED_TIMER_RESET,
+            cfg: LED_TIMER_RESET,
             ctr: 0,
             phase: 0,
+            pending: None,
         }
     }
 }
 
 impl LedTimer {
-    fn params(&self, clock: u32) -> Option<(u32, u64)> {
-        let div = u64::from(self.cfg >> 4 & 0x3ffff);
+    fn params(&self) -> Option<(u32, u128)> {
+        let div = u128::from(self.cfg >> 4 & 0x3ffff);
         let bits = self.cfg & 15;
-        if clock & 3 != 1 || self.cfg & 0x1c0_0000 != 0 || div == 0 || bits == 0 || bits > 14 {
-            return None;
-        }
-        Some((1 << bits, div))
+        (div != 0 && bits != 0).then(|| (1 << bits, div))
     }
 
-    fn tick(&mut self, cycles: u64, clock: u32) {
-        let Some((period, div)) = self.params(clock) else {
-            return;
+    fn tick(&mut self, source_ticks: u128) -> bool {
+        let Some((period, div)) = self.params() else {
+            return false;
         };
-        self.phase += cycles * 256;
-        self.ctr = ((u64::from(self.ctr) + self.phase / div) % u64::from(period)) as u32;
-        self.phase %= div;
+        if self.cfg & (LED_TIMER_RESET | LED_TIMER_PAUSE) != 0 {
+            return false;
+        }
+        // TRM §32.3.2: восемь дробных бит делителя и применение новой
+        // настройки при первом переполнении старого счётчика.
+        let phase = u128::from(self.phase) + source_ticks * 256;
+        let count = u128::from(self.ctr) + phase / div;
+        let overflow = count >= u128::from(period);
+        if let Some(next) = self.pending
+            && overflow
+        {
+            let until_wrap =
+                (u128::from(period - self.ctr) * div - u128::from(self.phase)).div_ceil(256);
+            self.cfg = next;
+            self.pending = None;
+            self.ctr = 0;
+            self.phase = 0;
+            self.tick(source_ticks - until_wrap);
+        } else {
+            self.ctr = (count % u128::from(period)) as u32;
+            self.phase = (phase % div) as u64;
+        }
+        overflow
     }
 }
 
@@ -318,27 +427,222 @@ impl Serial {
     }
 }
 
-#[derive(Clone, Default)]
-struct Interrupts {
-    map: [[u32; 2]; 2],
-    serial_bus_map: [u32; 4],
-    enabled: u32,
-    priority: [u32; 32],
-    threshold: u32,
+#[derive(Clone)]
+pub(crate) struct BootPeripherals {
+    pub(crate) system: EspSystem,
+    flash: EspFlash,
+    pub(crate) wdt_delay_sel: u8,
+    pub(crate) pc: u32,
+    clk_io: u32,
+    rst_io: u32,
+    clk_dma: bool,
+    rst_dma: bool,
+    has_systimer_phase: bool,
+}
+
+impl BootPeripherals {
+    pub(super) fn new(flash: EspFlash, phase: Option<SystimerPhase>, wdt_delay_sel: u8) -> Self {
+        Self {
+            // TRM §10.3 задаёт /2 и /3. Без входной фазы доступна только
+            // шкала CPU и общие поля SYSREG, не состояние SYSTIMER.
+            system: EspSystem::new(phase.unwrap_or(SystimerPhase::FirstAfterTwoXtalCycles)),
+            has_systimer_phase: phase.is_some(),
+            flash,
+            wdt_delay_sel,
+            pc: 0,
+            clk_io: PERIP_CLK_EN0_RESET & IO_GATES,
+            rst_io: 0,
+            clk_dma: false,
+            rst_dma: true,
+        }
+    }
+
+    pub(super) fn reset(&mut self) {
+        self.flash.reset();
+        self.system.reset();
+        self.clk_io = PERIP_CLK_EN0_RESET & IO_GATES;
+        self.rst_io = 0;
+        self.clk_dma = false;
+        self.rst_dma = true;
+    }
+
+    pub(super) fn access(
+        &mut self,
+        chip: &mut Esp,
+        now: u64,
+        addr: u32,
+        size: u8,
+        value: Option<u32>,
+    ) -> Access {
+        // TRM §3.3.3: включение кэша меняет отображение обоих окон.
+        // Bus ещё обслуживает эти окна через регионы ELF.
+        if addr == ICACHE_CTRL && value.is_some_and(|bits| bits & ICACHE_ENABLE != 0) {
+            return Err(BoardFault::UnsupportedRegister {
+                pc: self.pc,
+                addr,
+                size,
+                write: true,
+                block: "EXTMEM: окна IROM/DROM не подключены к шине CPU",
+            });
+        }
+        if let Some(result) = self.flash.access(self.pc, addr, size, value)? {
+            return Ok(Some(result));
+        }
+        if !self.has_systimer_phase && SYSTIMER_WINDOW.contains(&addr) {
+            return Err(BoardFault::UnsupportedRegister {
+                pc: self.pc,
+                addr,
+                size,
+                write: value.is_some(),
+                block: "SYSTIMER: не задана начальная фаза",
+            });
+        }
+        if [PERIP_CLK_EN1, PERIP_RST_EN1].contains(&addr) {
+            return self.access_gdma_gate(chip, now, addr, size, value);
+        }
+        let mask = EspSystem::shared_sysreg_mask(addr);
+        if mask == 0 {
+            // Пакетные запросы задают срок через публичные такты CPU.
+            // Нельзя менять длительность такта до завершения уже выданного запроса.
+            let bus_active = chip.buses.active();
+            if value.is_some()
+                && [
+                    crate::esp_clock::SYSCLK_CONF,
+                    crate::esp_clock::CPU_PER_CONF,
+                ]
+                .contains(&addr)
+            {
+                let mut next = self.system.clone();
+                let result = next.access(self.pc, addr, size, value)?;
+                if bus_active && next.clocks().cpu_hz() != self.system.clocks().cpu_hz() {
+                    return Err(invalid("смена частоты CPU во время обмена I²C/SPI"));
+                }
+                self.system = next;
+                return Ok(result);
+            }
+            return self.system.access(self.pc, addr, size, value);
+        }
+
+        let (external, previous) = match addr {
+            PERIP_CLK_EN0 => (PERIP_CLK_EN0_RESET & !(mask | IO_GATES), self.clk_io),
+            PERIP_RST_EN0 => (0, self.rst_io),
+            _ => unreachable!("известные общие регистры ESP32-C3"),
+        };
+        let unknown = || BoardFault::UnsupportedRegister {
+            pc: self.pc,
+            addr,
+            size,
+            write: value.is_some(),
+            block: "поля SYSREG других блоков",
+        };
+        if value.is_some_and(|bits| (bits ^ external) & !(mask | IO_GATES) != 0) {
+            return Err(unknown());
+        }
+        if addr == PERIP_CLK_EN0
+            && let Some(bits) = value
+        {
+            let disabled = previous & !bits;
+            if (disabled & I2C_GATE != 0 && chip.buses.i2c_active())
+                || (disabled & SPI_GATE != 0 && chip.buses.spi_active())
+                || (disabled & SPI_DMA_GATE != 0 && chip.buses.spi_dma_active())
+            {
+                return Err(unsupported("закрытие тактов во время обмена I²C/SPI"));
+            }
+        }
+        let result = self
+            .system
+            .access(self.pc, addr, size, value.map(|bits| bits & mask))?;
+        if let Some(bits) = value {
+            let io = bits & IO_GATES;
+            if addr == PERIP_RST_EN0 {
+                let asserted = io & !previous;
+                for (port, bit) in UART_GATE.into_iter().enumerate() {
+                    if asserted & (bit | UART_MEM) != 0 {
+                        chip.sdk_uart[port] = sdk_uart();
+                        chip.uart_source[port] = 3;
+                        chip.uart_time[port] = 0;
+                    }
+                }
+                if asserted & LEDC_GATE != 0 {
+                    chip.led_clock = 0;
+                    chip.led_timers = std::array::from_fn(|_| LedTimer::default());
+                    chip.channels = std::array::from_fn(|_| LedChannel::default());
+                }
+                chip.buses.reset_io(
+                    asserted & I2C_GATE != 0,
+                    asserted & (SPI_GATE | SPI_DMA_GATE) != 0,
+                    now,
+                );
+                self.rst_io = io;
+            } else {
+                self.clk_io = io;
+            }
+        }
+        Ok(result.map(|bits| {
+            if value.is_none() {
+                bits | external | previous
+            } else {
+                bits
+            }
+        }))
+    }
+
+    fn access_gdma_gate(
+        &mut self,
+        chip: &mut Esp,
+        now: u64,
+        addr: u32,
+        size: u8,
+        value: Option<u32>,
+    ) -> Access {
+        let (other, flag) = if addr == PERIP_CLK_EN1 {
+            (0, &mut self.clk_dma)
+        } else {
+            (PERIP_RST_EN1_RESET & !GDMA_GATE, &mut self.rst_dma)
+        };
+        if size as usize != size_of::<u32>() || value.is_some_and(|bits| bits & !GDMA_GATE != other)
+        {
+            return Err(BoardFault::UnsupportedRegister {
+                pc: self.pc,
+                addr,
+                size,
+                write: value.is_some(),
+                block: "поля SYSREG других блоков",
+            });
+        }
+        let Some(bits) = value else {
+            return ro(value, other | u32::from(*flag) * GDMA_GATE);
+        };
+        let next = bits & GDMA_GATE != 0;
+        if addr == PERIP_CLK_EN1 && !next && *flag && chip.buses.spi_dma_active() {
+            return Err(unsupported("закрытие тактов GDMA во время SPI2"));
+        }
+        *flag = next;
+        if self.rst_dma && chip.buses.spi_dma_active() {
+            chip.buses.reset_io(false, true, now);
+        }
+        chip.dma.set_bus_control(self.clk_dma, self.rst_dma);
+        Ok(Some(0))
+    }
 }
 
 #[derive(Clone)]
 pub(super) struct Esp {
     pub pins: Pins,
     routes: [u32; 22],
+    inputs: [u32; GPIO_OUT as usize],
     mux: [u32; 22],
     pin_config: [u32; 22],
     groups: [Group; 2],
-    interrupts: Interrupts,
     pub(super) buses: EspBuses,
+    pub(super) dma: EspDma,
     channels: [LedChannel; 6],
     led_timers: [LedTimer; 4],
     led_clock: u32,
+    led_source_hz: Option<(u32, u16)>,
+    sdk_uart: [EspUart; 2],
+    uart_time: [u64; 2],
+    uart_source: [u32; 2],
     serial: [Serial; 2],
     adc_setup: u32,
     adc_irq_cleared: bool,
@@ -349,15 +653,20 @@ impl Default for Esp {
     fn default() -> Self {
         Self {
             pins: Pins::default(),
-            routes: [128; 22],
+            routes: [GPIO_OUT; 22],         // TRM, GPIO_FUNCx_OUT_SEL reset.
+            inputs: [0; GPIO_OUT as usize], // TRM, GPIO_FUNCy_IN_SEL_CFG reset.
             mux: [0; 22],
             pin_config: [0; 22],
             groups: std::array::from_fn(|_| Group::default()),
-            interrupts: Interrupts::default(),
             buses: EspBuses::default(),
+            dma: EspDma::default(),
             channels: std::array::from_fn(|_| LedChannel::default()),
             led_timers: std::array::from_fn(|_| LedTimer::default()),
             led_clock: 0,
+            led_source_hz: None,
+            sdk_uart: std::array::from_fn(|_| sdk_uart()),
+            uart_time: [0; 2],
+            uart_source: [3; 2], // uart_reg.h: SCLK_SEL=XTAL при сбросе.
             serial: std::array::from_fn(|_| Serial::default()),
             adc_setup: 13 << 25,
             adc_irq_cleared: false,
@@ -367,90 +676,235 @@ impl Default for Esp {
 }
 
 impl Esp {
-    pub fn tick(&mut self, cycles: u64, now: u64) -> bool {
-        self.buses.tick(now, false);
-        for port in &mut self.serial {
-            port.tick(now);
-        }
-        let a = self.groups[0].tick(cycles, now);
-        let b = self.groups[1].tick(cycles, now);
-        if self.led_clock != 0 {
-            for timer in &mut self.led_timers {
-                timer.tick(cycles, self.led_clock);
-            }
-        }
-        a || b
+    pub(super) fn reset_boot_pads(&mut self) {
+        // TRM табл. 5.12-1, MCU_SEL=0 и индивидуальные IE/WPU/DRV.
+        // Уровни USB и выходы JTAG живут в отдельных блоках.
+        self.mux = std::array::from_fn(|pin| {
+            let drive = if matches!(pin, 18 | 19) { 3 } else { 2 };
+            let active = match pin {
+                2..=8 | 10 => INPUT_ENABLE,
+                9 | 12..=17 | 20 => INPUT_ENABLE | PULL_UP,
+                21 => PULL_UP,
+                _ => 0,
+            };
+            (drive << 10) | active
+        });
     }
 
-    fn pending(&self) -> u32 {
-        let mut mask = 0;
-        for (group, map) in self.groups.iter().zip(self.interrupts.map) {
-            for (bit, line) in map.into_iter().enumerate() {
-                if line != 0 && group.raw & group.int_en & (1 << bit) != 0 {
-                    mask |= 1 << line;
+    pub fn tick(
+        &mut self,
+        cycles: u64,
+        now: u64,
+        boot: Option<&BootPeripherals>,
+        memory: Option<&mut EspMemory>,
+    ) -> bool {
+        self.buses
+            .tick_with_dma(now, false, memory.map(|m| (&mut self.dma, m)));
+        match boot {
+            Some(_) => false, // TIMG/ADC с деревом холодной загрузки пока недоступны.
+            None => {
+                for port in &mut self.serial {
+                    port.tick(now);
+                }
+                self.advance_led(u128::from(cycles), 0, (PLL80_HZ, 1), true);
+                let a = self.groups[0].tick(cycles, now);
+                let b = self.groups[1].tick(cycles, now);
+                a || b
+            }
+        }
+    }
+
+    pub(super) fn advance_boot_io(
+        &mut self,
+        boot: &BootPeripherals,
+        rates: EspClockRates,
+        before: u128,
+        passed: u64,
+        cycle: u64,
+        uart: &mut Uart,
+    ) -> Result<(), BoardFault> {
+        let after = boot.system.elapsed_quarter_ns();
+        let (apb, den) = rates.apb_hz();
+        let period = u128::from(QUARTERS_PER_SECOND / apb) * u128::from(den);
+        let xtal = u128::from(QUARTERS_PER_SECOND / XTAL_HZ);
+        self.advance_led(
+            after / period - before / period,
+            after / xtal - before / xtal,
+            rates.apb_hz(),
+            boot.enabled(LEDC_GATE),
+        );
+        // EspUart считает APB на номинальной шкале 80 МГц. Передаём ему
+        // столько виртуальных периодов, сколько пришло физических фронтов APB.
+        // XTAL использует ту же шкалу четвертей наносекунды без пересчёта.
+        let quantum = u128::from(QUARTERS_PER_SECOND / PLL80_HZ);
+        let apb_ticks = after / period - before / period;
+        let first = uart.done.len();
+        for (port, serial) in self.sdk_uart.iter_mut().enumerate() {
+            if !boot.enabled(UART_GATE[port] | UART_MEM) {
+                continue;
+            }
+            let local = self.uart_time[port];
+            let from_apb = self.uart_source[port] == 1;
+            let delta = if from_apb {
+                apb_ticks * quantum
+            } else {
+                after - before
+            };
+            let end = u64::try_from(u128::from(local) + delta)
+                .map_err(|_| invalid("время UART вне шкалы"))?;
+            serial.tick(end)?;
+            self.uart_time[port] = end;
+            for (at, byte) in serial.take_tx() {
+                let local_offset = u128::from(at - local);
+                let absolute = if from_apb {
+                    (before / period + local_offset.div_ceil(quantum)) * period
+                } else {
+                    before + local_offset
+                };
+                let offset =
+                    (absolute - before).div_ceil(u128::from(rates.cpu_cycle_quarters())) as u64;
+                debug_assert!(offset <= passed);
+                uart.done.push(crate::OutputEvent {
+                    cycle: cycle + offset,
+                    output: crate::BoardOutput::Uart {
+                        port: port as u32,
+                        byte,
+                    },
+                });
+            }
+        }
+        uart.done[first..].sort_by_key(|event| event.cycle);
+        Ok(())
+    }
+
+    fn advance_led(&mut self, apb: u128, xtal: u128, apb_hz: (u32, u16), enabled: bool) {
+        self.led_source_hz = enabled
+            .then_some(match self.led_clock & 3 {
+                1 => Some(apb_hz),
+                3 => Some((XTAL_HZ, 1)),
+                _ => None,
+            })
+            .flatten();
+        if self.led_source_hz.is_some() {
+            let ticks = if self.led_clock & 3 == 1 { apb } else { xtal };
+            let overflows = self.led_timers.each_mut().map(|timer| timer.tick(ticks));
+            for ch in &mut self.channels {
+                if let Some((cfg, hpoint, duty)) = ch.pending
+                    && overflows[(cfg & 3) as usize]
+                {
+                    ch.cfg = cfg;
+                    ch.active = duty;
+                    ch.active_hpoint = hpoint;
+                    ch.start = true;
+                    ch.pending = None;
+                    ch.duty_cfg &= !LED_DUTY_START;
                 }
             }
         }
-        let [i2c, spi] = self.buses.irq();
-        let active = [
-            self.serial[0].raw() & self.serial[0].enable != 0,
-            self.serial[1].raw() & self.serial[1].enable != 0,
-            i2c,
-            spi,
-        ];
-        for (active, line) in active.into_iter().zip(self.interrupts.serial_bus_map) {
-            if active && line != 0 {
-                mask |= 1 << line;
-            }
+    }
+
+    fn mux_func(&self, pin: usize) -> u32 {
+        self.mux[pin] >> MUX_FUNC_SHIFT & 7
+    }
+
+    fn direct_signal(&self, pin: usize) -> Option<u32> {
+        // io_mux_reg.h, FUNC_U0{RX,TX}D_U0{RX,TX}D и esp_hal_gpspi/esp32c3/include/soc/spi_pins.h.
+        match (self.mux_func(pin), pin) {
+            (0, 20 | 21) => Some(UART_DATA[0]),
+            (0, 0..=3 | 8..=11) => Some(GPIO_OUT), // TRM табл. 5.12-1.
+            (2, 2) => Some(SPI_MISO),
+            (2, 6) => Some(SPI_CLOCK),
+            (2, 7) => Some(SPI_MOSI),
+            (2, 10) => Some(SPI_CS0),
+            _ => None,
         }
-        mask
     }
 
-    pub fn interrupt(&self) -> Result<Option<u32>, crate::BoardFault> {
-        let mut bits = self.pending() & self.interrupts.enabled;
-        let mut best = None;
-        let mut level = 0;
-        while bits != 0 {
-            let line = bits.trailing_zeros();
-            bits &= bits - 1;
-            let p = self.interrupts.priority[line as usize];
-            if p >= self.interrupts.threshold && p > level {
-                best = Some(line);
-                level = p;
-            }
+    fn input_pad(&self, signal: u32) -> Option<usize> {
+        let route = self.inputs[signal as usize];
+        if route & MATRIX_IN != 0 {
+            let pin = (route & INPUT_PAD) as usize;
+            return self
+                .mux
+                .get(pin)
+                .filter(|mux| **mux & INPUT_ENABLE != 0)
+                .map(|_| pin);
         }
-        Ok(best)
+        (0..self.mux.len()).find(|&pin| {
+            pin != 21
+                && self.mux[pin] & INPUT_ENABLE != 0
+                && self.direct_signal(pin) == Some(signal)
+        })
     }
 
-    fn gpio_mux(&self, pin: usize) -> bool {
-        self.mux[pin] >> 12 & 7 == 1
-    }
-
-    fn pwm_params(&self, pin: usize) -> Option<(&LedTimer, u32, u32, u32)> {
+    fn output_route(&self, pin: usize) -> Option<(u32, bool)> {
         let route = *self.routes.get(pin)?;
-        if !self.gpio_mux(pin)
-            || self.pin_config[pin] & 4 != 0
-            || route & 0x200 != 0 && self.pins.enable & (1 << pin) == 0
-        {
+        if self.mux_func(pin) != GPIO_FUNC {
+            return match self.direct_signal(pin) {
+                Some(GPIO_OUT) => (self.pins.enable & (1 << pin) != 0).then_some((GPIO_OUT, false)),
+                Some(signal) if pin != 20 && signal != SPI_MISO => Some((signal, false)),
+                _ => None,
+            };
+        }
+        let signal = route & OUTPUT_SIGNAL;
+        // TRM §5.5: SIG_GPIO_OUT берёт OE из GPIO_ENABLE. Для остальных
+        // индексов выбирается GPIO_ENABLE или OE источника, затем OEN_INV.
+        let gpio_oe = self.pins.enable & (1 << pin) != 0;
+        let oe = if signal == GPIO_OUT || route & ENABLE_FROM_GPIO != 0 {
+            gpio_oe
+        } else {
+            true
+        };
+        (oe ^ (route & ENABLE_INVERT != 0)).then_some((signal, route & OUTPUT_INVERT != 0))
+    }
+
+    fn output_pad(&self, signal: u32, open_drain: bool) -> bool {
+        (0..self.mux.len()).any(|pin| {
+            self.output_route(pin) == Some((signal, false))
+                && (self.pin_config[pin] & PAD_OPEN_DRAIN != 0) == open_drain
+        })
+    }
+
+    fn input_level(&self, pin: usize) -> bool {
+        self.output_inner(pin, false)
+            .unwrap_or_else(|| self.external_level(pin))
+    }
+
+    fn external_level(&self, pin: usize) -> bool {
+        let pull = if self.mux[pin] & PULL_UP != 0 {
+            1 << pin
+        } else {
+            0
+        };
+        self.pins.input_with_pull(pull) & (1 << pin) != 0
+    }
+
+    fn pwm_params(&self, pin: usize) -> Option<(&LedTimer, u32, u32, u32, bool)> {
+        let (signal, invert) = self.output_route(pin)?;
+        if self.pin_config[pin] & PAD_OPEN_DRAIN != 0 {
             return None;
         }
-        let i = (route & 255).checked_sub(45)?;
-        let ch = self.channels.get(i as usize)?;
+        let ch = self
+            .channels
+            .get(signal.checked_sub(LEDC_FIRST)? as usize)?;
         let timer = &self.led_timers[(ch.cfg & 3) as usize];
-        let (period, _) = timer.params(self.led_clock)?;
-        if !ch.start || ch.cfg & 4 == 0 || ch.hpoint >= period {
+        let (period, _) = timer.params()?;
+        if !ch.start || ch.cfg & LED_OUTPUT_ENABLE == 0 || ch.active_hpoint >= period {
             return None;
         }
-        let high = (ch.active >> 4).min(period);
-        Some((timer, period, ch.hpoint, high))
+        let high = ch.active >> 4;
+        (high <= period).then_some((timer, period, ch.active_hpoint, high, invert))
     }
 
     pub fn pwm(&self, pin: u32) -> Option<PwmOutput> {
-        let (timer, period, _, high) = self.pwm_params(pin as usize)?;
-        let (_, divider) = timer.params(self.led_clock)?;
-        // LEDC: 8 дробных бит делителя, модель работает от APB = CPU.
-        let seconds = f64::from(period) * divider as f64
-            / (256.0 * super::Hardware::frequency(crate::BoardId::Esp32C3) as f64);
+        let (hz, den) = self.led_source_hz?;
+        let (timer, period, _, high, invert) = self.pwm_params(pin as usize)?;
+        if timer.cfg & (LED_TIMER_RESET | LED_TIMER_PAUSE) != 0 {
+            return None;
+        }
+        let (_, divider) = timer.params()?;
+        let seconds = f64::from(period) * divider as f64 * f64::from(den) / (256.0 * f64::from(hz));
+        let high = if invert { period - high } else { high };
         Some(PwmOutput::new(f64::from(high) / f64::from(period), seconds))
     }
 
@@ -459,48 +913,111 @@ impl Esp {
         port: u32,
         now: u64,
         bytes: &[u8],
+        boot: Option<&BootPeripherals>,
     ) -> Result<InputOutcome, BoardFault> {
-        self.serial
-            .get_mut(port as usize)
-            .ok_or_else(|| unsupported("номер UART ESP32-C3"))?
-            .receive(now, bytes)
+        let port = port as usize;
+        if port >= UART_DATA.len() {
+            return Err(unsupported("номер UART ESP32-C3"));
+        }
+        let Some(boot) = boot else {
+            return self.serial[port].receive(now, bytes);
+        };
+        let signal = UART_DATA[port];
+        if self.input_pad(signal).is_none()
+            || self.inputs[signal as usize] & (MATRIX_IN | INPUT_INVERT) == MATRIX_IN | INPUT_INVERT
+        {
+            return Err(invalid("UART: RX требует активный маршрут без инверсии"));
+        }
+        if !boot.enabled(UART_GATE[port] | UART_MEM) {
+            return Err(invalid("UART: нет тактов SYSREG или активен сброс"));
+        }
+        self.sdk_uart[port].receive(self.uart_time[port], bytes)
     }
 
     pub fn output(&self, pin: u32) -> Option<bool> {
-        let i = pin as usize;
-        let route = *self.routes.get(i)?;
-        if let Some((timer, period, start, high)) = self.pwm_params(i) {
-            Some((timer.ctr + period - start) % period < high)
-        } else if route & 255 == 128 && self.gpio_mux(i) {
-            if self.pin_config[i] & 4 != 0 && self.pins.out & (1 << pin) != 0 {
-                None
-            } else {
-                self.pins.output(pin)
+        self.output_inner(pin as usize, true)
+    }
+
+    fn output_inner(&self, pin: usize, loopback: bool) -> Option<bool> {
+        let (signal, invert) = self.output_route(pin)?;
+        let level = if signal == GPIO_OUT {
+            self.pins.out & (1 << pin) != 0
+        } else if let Some((timer, period, start, high, _)) = self.pwm_params(pin) {
+            (timer.ctr + period - start) % period < high
+        } else if let Some(ch) = signal
+            .checked_sub(LEDC_FIRST)
+            .and_then(|i| self.channels.get(i as usize))
+        {
+            if ch.start && ch.cfg & LED_OUTPUT_ENABLE != 0 {
+                return None; // Недопустимые HPOINT или DUTY.
             }
+            ch.cfg & LED_IDLE != 0
+        } else if loopback && LOOPBACK.contains(&signal) {
+            let route = self.inputs[signal as usize];
+            if route & MATRIX_IN == 0 {
+                return None;
+            }
+            let value = match route & INPUT_PAD {
+                INPUT_ONE => true,
+                INPUT_ZERO => false,
+                _ => self.input_level(self.input_pad(signal)?),
+            };
+            value ^ (route & INPUT_INVERT != 0)
         } else {
-            None
-        }
+            return None; // У кадровых шин нет модели мгновенного уровня на выводе.
+        } ^ invert;
+        (self.pin_config[pin] & PAD_OPEN_DRAIN == 0 || !level).then_some(level)
     }
 
     pub(super) fn passive_pin(&self, pin: u32) -> Option<crate::GpioMode> {
         use crate::GpioMode::*;
-        let mux = *self.mux.get(pin as usize)?;
-        // I²C/SPI в этой модели обмениваются пакетами. Уровни выбранной
-        // линии шины нельзя вывести из состояния обычного GPIO.
-        if self.gpio_mux(pin as usize) && matches!(self.routes[pin as usize] & 255, 6 | 9) {
+        let pin = pin as usize;
+        let mux = *self.mux.get(pin)?;
+        if self.output_route(pin).is_some_and(|(s, _)| {
+            UART_DATA.contains(&s)
+                || I2C_LINES.contains(&s)
+                || (SPI_CLOCK..SPI_CS0 + 6).contains(&s)
+        }) {
             return None;
         }
-        // ESP32-C3 TRM, IO_MUX_GPIOx_REG: FUN_IE, FUN_WPU и FUN_WPD.
-        match mux & 0x180 {
-            0x100 => Some(PullUp),
-            0x80 => Some(PullDown),
-            0 => Some(if mux & (1 << 9) != 0 {
-                Input
-            } else {
-                HighImpedance
-            }),
+        match mux & (PULL_UP | PULL_DOWN) {
+            PULL_UP => Some(PullUp),
+            PULL_DOWN => Some(PullDown),
+            0 if mux & INPUT_ENABLE != 0 => Some(Input),
+            0 => Some(HighImpedance),
             _ => None,
         }
+    }
+
+    fn check_i2c_routes(&self) -> Result<(), BoardFault> {
+        for signal in I2C_LINES {
+            let Some(pin) = self.input_pad(signal) else {
+                return Err(invalid("I²C: SDA/SCL без входного маршрута"));
+            };
+            if self.output_route(pin) != Some((signal, false))
+                || self.inputs[signal as usize] & INPUT_INVERT != 0
+                || self.pin_config[pin] & PAD_OPEN_DRAIN == 0
+            {
+                return Err(invalid("I²C: SDA/SCL требуют двунаправленный open drain"));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_spi_routes(&self) -> Result<(), BoardFault> {
+        let cs = self.buses.spi_chip_select()?;
+        if ![SPI_CLOCK, SPI_MOSI, SPI_CS0 + u32::from(cs)]
+            .into_iter()
+            .all(|s| self.output_pad(s, false))
+            || self.input_pad(SPI_MISO).is_none()
+            || self.inputs[SPI_MISO as usize] & (MATRIX_IN | INPUT_INVERT)
+                == MATRIX_IN | INPUT_INVERT
+        {
+            return Err(invalid(
+                "SPI2: нужны маршруты SCLK, MOSI, MISO и выбранного CS",
+            ));
+        }
+        Ok(())
     }
 
     pub fn access(
@@ -510,9 +1027,43 @@ impl Esp {
         now: u64,
         uart: &mut Uart,
         adc: &mut Adc,
+        boot: Option<&BootPeripherals>,
+        memory: Option<&mut EspMemory>,
     ) -> Access {
         let o = addr & 0xfff;
-        match addr & !0xfff {
+        let block = addr & !0xfff;
+        // Блоки прежней модели используют сроки в фиксированных тактах 80 МГц.
+        // Базы регистров: ESP-IDF soc/esp32c3/register/soc/reg_base.h.
+        if let Some(boot) = boot {
+            let pc = boot.pc;
+            let unsupported_block = match block {
+                0x6001_f000 | 0x6002_0000 | 0x6004_0000 => {
+                    "периферия с тактовым деревом холодной загрузки"
+                }
+                _ => "",
+            };
+            if !unsupported_block.is_empty() {
+                return Err(BoardFault::UnsupportedRegister {
+                    pc,
+                    addr,
+                    size: size_of::<u32>() as u8,
+                    write: v.is_some(),
+                    block: unsupported_block,
+                });
+            }
+        }
+        if boot.is_some()
+            && v.is_some()
+            && self.buses.active()
+            && (block == 0x6000_9000
+                || block == 0x6000_4000
+                    && matches!(o, 0x20 | 0x24 | 0x28 | 0x74..=0xc8 | 0x154..=0x350 | 0x554..=0x5a8))
+        {
+            return Err(unsupported(
+                "изменение маршрутов GPIO во время пакетного обмена",
+            ));
+        }
+        match block {
             0x6000_4000 => match o {
                 4 => rw(v, &mut self.pins.out, GPIO_MASK),
                 8 => command(v, |v| self.pins.out |= v & GPIO_MASK),
@@ -523,99 +1074,134 @@ impl Esp {
                 0x3c => ro(
                     v,
                     (0..22).fold(0, |all, i| {
-                        if self.mux[i] & (1 << 9) == 0 {
-                            return all;
-                        }
-                        let pull_up = if self.mux[i] & 0x180 == 0x100 {
-                            1 << i
-                        } else {
-                            0
-                        };
-                        let high = self
-                            .output(i as u32)
-                            .unwrap_or(self.pins.input_with_pull(pull_up) & (1 << i) != 0);
+                        let high = self.mux[i] & INPUT_ENABLE != 0
+                            && self
+                                .output(i as u32)
+                                .unwrap_or_else(|| self.external_level(i));
                         all | (u32::from(high) << i)
                     }),
                 ),
                 0x74..=0xc8 => checked_rw(
                     v,
                     &mut self.pin_config[((o - 0x74) / 4) as usize],
-                    4,
-                    "ESP32-C3 GPIO_PIN: прерывания и sleep",
+                    PAD_OPEN_DRAIN,
+                    "GPIO_PIN: синхронизация, прерывания и sleep",
                 ),
+                0x154..=0x350 => {
+                    if v.is_some_and(|value| {
+                        value & MATRIX_IN != 0
+                            && !matches!(value & INPUT_PAD, 0..=21 | INPUT_ONE | INPUT_ZERO)
+                    }) {
+                        return Err(invalid("GPIO Matrix: недоступный источник входа"));
+                    }
+                    checked_rw(
+                        v,
+                        &mut self.inputs[((o - 0x154) / 4) as usize],
+                        MATRIX_IN | INPUT_INVERT | INPUT_PAD,
+                        "GPIO_FUNCy_IN_SEL_CFG",
+                    )
+                }
                 0x554..=0x5a8 => {
-                    if v.is_some_and(|v| !matches!(v & 255, 6 | 9 | 45..=50 | 128)) {
+                    if v.is_some_and(|v| !matches!(v & OUTPUT_SIGNAL, 6 | 9 | 45..=50 | 53..=54 | 63..=73 | 97..=100 | GPIO_OUT)) {
                         return Err(unsupported("выбранный выход GPIO Matrix"));
                     }
                     checked_rw(
                         v,
                         &mut self.routes[((o - 0x554) / 4) as usize],
-                        0x2ff,
-                        "GPIO Matrix инверсия",
+                        ENABLE_INVERT | ENABLE_FROM_GPIO | OUTPUT_INVERT | OUTPUT_SIGNAL,
+                        "GPIO_FUNCx_OUT_SEL_CFG",
                     )
                 }
                 _ => Ok(None),
             },
             0x6000_9000 if (4..=88).contains(&o) => {
                 let pin = (o / 4 - 1) as usize;
-                // MCU_SEL=1 включает матрицу GPIO. Только штатный активный режим.
-                if v.is_some_and(|v| v >> 12 & 7 != 1) {
-                    return Err(unsupported("IO MUX: только GPIO Matrix"));
+                // Функции платы: TRM §5.12, io_mux_reg.h. Нижние биты хранят
+                // конфигурацию сна, которую активирует отдельный домен (Т2.16).
+                if let Some(value) = v {
+                    let function = value >> MUX_FUNC_SHIFT & 7;
+                    let supported = function == GPIO_FUNC
+                        || matches!((function, pin), (0, 0..=3 | 8..=11 | 20 | 21) | (2, 2 | 6 | 7 | 10));
+                    if !supported {
+                        return Err(unsupported("IO MUX: выбранная прямая функция"));
+                    }
+                    if value & (PULL_UP | PULL_DOWN) == (PULL_UP | PULL_DOWN) {
+                        return Err(unsupported("IO MUX: одновременно включены обе подтяжки"));
+                    }
                 }
-                checked_rw(v, &mut self.mux[pin], 0x1f80, "IO MUX")
+                checked_rw(v, &mut self.mux[pin], PAD_ACTIVE_MASK, "IO MUX")
             }
             0x6001_f000 => self.groups[0].access(o, v, now),
             0x6002_0000 => self.groups[1].access(o, v, now),
-            0x6001_3000 => self.buses.access(0, o, v, now),
-            0x6002_4000 => self.buses.access(2, o, v, now),
-            0x600c_2000 => match o {
-                // Espressif interrupts.h: UART0/1=21/22, I2C_EXT0=29, SPI2=19.
-                0x54 | 0x58 | 0x74 | 0x4c => {
-                    let i = match o {
-                        0x54 => 0,
-                        0x58 => 1,
-                        0x74 => 2,
-                        _ => 3,
-                    };
-                    checked_rw(
-                        v,
-                        &mut self.interrupts.serial_bus_map[i],
-                        31,
-                        "INTERRUPT MAP",
-                    )
+            0x6001_3000 | 0x6002_4000 => {
+                let i2c = block == 0x6001_3000;
+                if let Some(boot) = boot {
+                    let gate = if i2c { I2C_GATE } else { SPI_GATE };
+                    // INT_ST читается матрицей IRQ даже при остановленном блоке.
+                    let irq = if i2c { 0x2c } else { 0x40 };
+                    if !boot.enabled(gate) {
+                        return if o == irq && v.is_none() {
+                            ro(v, 0)
+                        } else {
+                            Err(invalid("I²C/SPI: нет тактов SYSREG или активен сброс"))
+                        };
+                    }
+                    // i2c_reg.h I2C_TRANS_START, spi_reg.h SPI_USR.
+                    if let Some(bits) = v {
+                        if i2c && o == 4 && bits & (1 << 5) != 0 {
+                            self.check_i2c_routes()?;
+                        } else if !i2c && o == 0 && bits & (1 << 24) != 0 {
+                            self.check_spi_routes()?;
+                        }
+                    }
                 }
-                0x80..=0x8c => {
-                    let i = ((o - 0x80) / 4) as usize;
-                    rw(v, &mut self.interrupts.map[i / 2][i % 2], 31)
+                let cpu = boot.map_or((PLL80_HZ, 1), |b| b.system.clocks().cpu_hz());
+                if !i2c
+                    && o == 0
+                    && v.is_some_and(|bits| bits & (1 << 24) != 0)
+                    && self.buses.spi_uses_dma()
+                    && boot.is_some_and(|b| !b.enabled(SPI_DMA_GATE))
+                {
+                    return Err(invalid("SPI2: выключен затвор DMA в SYSREG"));
                 }
-                0x104 => rw(v, &mut self.interrupts.enabled, !1),
-                0x108 if v == Some(0) || v.is_none() => Ok(Some(0)),
-                0x110 => ro(v, self.pending()),
-                0x114..=0x190 => rw(
+                self.buses.access(
+                    if i2c { 0 } else { 2 },
+                    o,
                     v,
-                    &mut self.interrupts.priority[((o - 0x114) / 4) as usize],
-                    15,
-                ),
-                0x194 => rw(v, &mut self.interrupts.threshold, 15),
-                _ => Ok(None),
-            },
+                    now,
+                    cpu,
+                    boot.is_none(),
+                    memory.map(|m| (&mut self.dma, m)),
+                )
+            }
             0x6001_9000 => {
+                if boot.is_some_and(|b| !b.enabled(LEDC_GATE)) {
+                    return Err(invalid("LEDC: нет тактов SYSREG или активен сброс"));
+                }
                 if o < 0x78 {
                     let chan = &mut self.channels[(o / 0x14) as usize];
                     return match o % 0x14 {
                         0 => {
                             if let Some(v) = v {
-                                if v & !31 != 0 || v & 8 != 0 {
+                                if v & !31 != 0 {
                                     return Err(unsupported(
                                         "LEDC CONF0: только постоянная скважность",
                                     ));
                                 }
-                                if v & 16 != 0 {
-                                    chan.cfg = v & 7;
+                                chan.shadow = v & 15;
+                                if v & LED_CHANNEL_UPDATE != 0 {
+                                    if boot.is_some() {
+                                        // TRM §32.3.3: сигнал и HPOINT/DUTY обновляются
+                                        // при переполнении выбранного таймера.
+                                        chan.pending = Some((chan.shadow, chan.hpoint, chan.duty));
+                                    } else {
+                                        chan.cfg = chan.shadow;
+                                        chan.active_hpoint = chan.hpoint;
+                                    }
                                 }
                                 Ok(Some(0))
                             } else {
-                                ro(v, chan.cfg)
+                                ro(v, chan.shadow)
                             }
                         }
                         4 => rw(v, &mut chan.hpoint, 0x3fff),
@@ -627,16 +1213,20 @@ impl Esp {
                         }
                         12 => {
                             if let Some(v) = v {
-                                if v & !0xc000_0000 != 0 {
+                                // ledc_ll_set_duty_*: один цикл с DUTY_SCALE=0
+                                // штатно задаёт постоянную скважность.
+                                if v & 0x3ff != 0 || (v >> 20 & 0x3ff) > 1 {
                                     return Err(unsupported("плавное изменение скважности LEDC"));
                                 }
-                                if v >> 31 != 0 {
+                                chan.duty_cfg = v;
+                                if boot.is_none() && v & LED_DUTY_START != 0 {
                                     chan.start = true;
                                     chan.active = chan.duty;
+                                    chan.active_hpoint = chan.hpoint;
                                 }
                                 Ok(Some(0))
                             } else {
-                                ro(v, 1 << 30)
+                                ro(v, chan.duty_cfg)
                             }
                         }
                         _ => ro(v, chan.active),
@@ -649,14 +1239,43 @@ impl Esp {
                             return ro(v, timer.ctr);
                         }
                         if let Some(v) = v {
-                            if v & !0x2ff_ffff != 0 || v & 15 > 14 {
+                            if v & !(LED_TIMER_UPDATE | 0xff_ffff) != 0
+                                || v & 15 > 14
+                                || v & LED_TIMER_TICK_SEL != 0
+                            {
                                 return Err(unsupported("LEDC TIMER CONF"));
                             }
-                            timer.shadow = v & 0xff_ffff;
-                            if v & (1 << 25) != 0 {
-                                timer.cfg = timer.shadow;
+                            let configured = v & 0x00ff_ffff;
+                            let mode = LED_TIMER_RESET | LED_TIMER_PAUSE;
+                            if self.led_clock & 3 == 2 && configured & 15 != 0 {
+                                return Err(unsupported("LEDC: частота RC_FAST не задана"));
                             }
-                            if timer.cfg & (1 << 23) != 0 {
+                            timer.shadow = configured;
+                            // RESET/PAUSE управляют счётчиком сразу. Новый делитель
+                            // работающего таймера защёлкивается на переполнении.
+                            let stopped =
+                                timer.cfg & LED_TIMER_RESET != 0 || timer.params().is_none();
+                            timer.cfg = (timer.cfg & !mode) | (configured & mode);
+                            if let Some(pending) = &mut timer.pending {
+                                *pending = (*pending & !mode) | (configured & mode);
+                            }
+                            if v & LED_TIMER_UPDATE != 0 {
+                                if boot.is_none() {
+                                    timer.cfg = configured;
+                                    if let Some((period, div)) = timer.params() {
+                                        timer.ctr %= period;
+                                        timer.phase %= div as u64;
+                                    }
+                                } else if stopped || configured & LED_TIMER_RESET != 0 {
+                                    timer.cfg = configured;
+                                    timer.pending = None;
+                                    timer.ctr = 0;
+                                    timer.phase = 0;
+                                } else {
+                                    timer.pending = Some(configured);
+                                }
+                            }
+                            if timer.cfg & LED_TIMER_RESET != 0 {
                                 timer.ctr = 0;
                                 timer.phase = 0;
                             }
@@ -666,7 +1285,12 @@ impl Esp {
                         }
                     }
                     0xd0 => {
-                        if v.is_some_and(|v| v & 3 > 1) {
+                        if v.is_some_and(|v| {
+                            let source = v & 3;
+                            boot.is_none() && source > 1
+                                || source == 2
+                                    && self.led_timers.iter().any(|timer| timer.params().is_some())
+                        }) {
                             return Err(unsupported("источник тактов LEDC"));
                         }
                         checked_rw(v, &mut self.led_clock, 0x8000_0003, "LEDC CONF")
@@ -730,6 +1354,47 @@ impl Esp {
             },
             0x6000_0000 | 0x6001_0000 => {
                 let i = usize::from(addr >= 0x6001_0000);
+                if let Some(boot) = boot {
+                    if o == 8
+                        && v.is_none()
+                        && (!boot.enabled(UART_GATE[i] | UART_MEM) || !self.sdk_uart[i].irq())
+                    {
+                        return ro(v, 0);
+                    }
+                    if !boot.enabled(UART_GATE[i] | UART_MEM) {
+                        return Err(invalid("UART: нет тактов SYSREG или активен сброс"));
+                    }
+                    let at = self.uart_time[i];
+                    if o == 0 && v.is_some() {
+                        if !self.output_pad(UART_DATA[i], false) {
+                            return Err(invalid("UART: TX требует активный маршрут без инверсии"));
+                        }
+                    }
+                    let serial = &mut self.sdk_uart[i];
+                    // uart_reg.h: UART_ID.HIGH_SPEED и UART_UPDATE разрешают
+                    // перенос полей CLK_CONF в рабочий домен.
+                    let source = match (o, v) {
+                        (0x78, Some(bits))
+                            if serial.access(0x80, None, at)?.unwrap() & (1 << 30) != 0 =>
+                        {
+                            Some(bits >> 20 & 3)
+                        }
+                        (0x80, Some(bits)) if bits & (3 << 30) != 0 => {
+                            Some(serial.access(0x78, None, at)?.unwrap() >> 20 & 3)
+                        }
+                        _ => None,
+                    };
+                    if source.is_some_and(|next| next != self.uart_source[i])
+                        && serial.access(0x1c, None, at)?.unwrap() & 0x3ff != 0
+                    {
+                        return Err(unsupported("смена источника UART при непустом RX FIFO"));
+                    }
+                    let result = serial.access(o, v, at)?;
+                    if let Some(source) = source {
+                        self.uart_source[i] = source;
+                    }
+                    return Ok(result);
+                }
                 let serial = &mut self.serial[i];
                 let tx = &mut uart.ports[i];
                 if v.is_some() && !serial.wire.is_empty() && matches!(o, 0x14 | 0x20 | 0x78) {
@@ -796,4 +1461,15 @@ impl Esp {
             _ => Ok(None),
         }
     }
+}
+
+impl BootPeripherals {
+    fn enabled(&self, mask: u32) -> bool {
+        self.clk_io & mask == mask && self.rst_io & mask == 0
+    }
+}
+
+fn sdk_uart() -> EspUart {
+    EspUart::new(QUARTERS_PER_SECOND, PLL80_HZ, XTAL_HZ, None)
+        .expect("номиналы TRM §6.2 и целочисленная шкала часов")
 }

@@ -1,0 +1,38 @@
+electrical_format = 1
+catalog = "catalog"
+
+[assemblies.capacitor_stress_unsafe]
+world = "capacitor_stress/unsafe/world.toml"
+
+[assemblies.capacitor_stress_fixed]
+world = "capacitor_stress/fixed/world.toml"
+
+[assemblies.fuse_coordination_unsafe]
+world = "fuse_coordination/unsafe/world.toml"
+
+[assemblies.fuse_coordination_fixed]
+world = "fuse_coordination/fixed/world.toml"
+
+[assemblies.switch_thermal_unsafe]
+world = "switch_thermal/unsafe/world.toml"
+
+[assemblies.switch_thermal_fixed]
+world = "switch_thermal/fixed/world.toml"
+
+[assemblies.deep_discharge_unsafe]
+world = "deep_discharge/unsafe/world.toml"
+
+[assemblies.deep_discharge_fixed]
+world = "deep_discharge/fixed/world.toml"
+
+[assemblies.sleep_drain_unsafe]
+world = "sleep_drain/unsafe/world.toml"
+
+[assemblies.sleep_drain_fixed]
+world = "sleep_drain/fixed/world.toml"
+
+[assemblies.cable_flex_unsafe]
+world = "cable_flex/unsafe/world.toml"
+
+[assemblies.cable_flex_fixed]
+world = "cable_flex/fixed/world.toml"

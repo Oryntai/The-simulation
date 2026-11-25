@@ -1,0 +1,187 @@
+format = 1
+
+[parts.cap_8]
+kind = "capacitor"
+source = "Конденсатор и источник 8 В в одном эквиваленте стенда Т3"
+reference_only = true
+
+[parts.cap_8.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.cap_8.elements.c]
+kind = "capacitor"
+nodes = ["a", "b"]
+parameters = { farad = { measurement = "Синтетическая ёмкость 100 мкФ", range = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { derived = "Синтетическая ёмкость 100 мкФ" } } } }
+
+[parts.cap_8.elements.emf]
+kind = "voltage"
+nodes = ["a", "b"]
+parameters = { volt = { measurement = "Постоянная ЭДС 8 В", range = { min = 8.0, nominal = 8.0, max = 8.0, source = { derived = "Постоянная ЭДС 8 В" } } } }
+
+[parts.cap_10]
+kind = "capacitor"
+source = "Конденсатор и источник 10 В в одном эквиваленте стенда Т3"
+reference_only = true
+
+[parts.cap_10.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.cap_10.elements.c]
+kind = "capacitor"
+nodes = ["a", "b"]
+parameters = { farad = { measurement = "Синтетическая ёмкость 100 мкФ", range = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { derived = "Синтетическая ёмкость 100 мкФ" } } } }
+
+[parts.cap_10.elements.emf]
+kind = "voltage"
+nodes = ["a", "b"]
+parameters = { volt = { measurement = "Постоянная ЭДС 10 В", range = { min = 10.0, nominal = 10.0, max = 10.0, source = { derived = "Постоянная ЭДС 10 В" } } } }
+
+[parts.series_fault]
+kind = "other"
+source = "Последовательный стенд предохранителя, провода и ключа"
+reference_only = true
+
+[parts.series_fault.pins]
+p = { contact = "bare", role = "passive" }
+a = { contact = "bare", role = "passive" }
+d = { contact = "bare", role = "passive" }
+s = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "passive" }
+
+[parts.series_fault.elements.emf]
+kind = "voltage"
+nodes = ["p", "s"]
+parameters = { volt = { measurement = "Восстанавливающаяся ЭДС 12 В", range = { min = 12.0, nominal = 12.0, max = 12.0, source = { derived = "Восстанавливающаяся ЭДС 12 В" } } } }
+
+[parts.series_fault.elements.gate]
+kind = "voltage"
+nodes = ["g", "s"]
+parameters = { volt = { measurement = "Замкнутый ключ при управляющей ЭДС 5 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Замкнутый ключ при управляющей ЭДС 5 В" } } } }
+
+[parts.series_fault.elements.fuse]
+kind = "resistor"
+nodes = ["p", "a"]
+parameters = { ohm = { measurement = "Предохранитель до размыкания 0,1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Предохранитель до размыкания 0,1 Ом" } } } }
+
+[parts.series_fault.elements.wire]
+kind = "resistor"
+nodes = ["a", "d"]
+parameters = { ohm = { measurement = "Сопротивление провода 0,4 Ом", range = { min = 0.4, nominal = 0.4, max = 0.4, source = { derived = "Сопротивление провода 0,4 Ом" } } } }
+
+[parts.series_fault.elements.channel]
+kind = "switch"
+nodes = ["d", "s", "g", "s"]
+parameters = { threshold_v = { measurement = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса" } } }, hysteresis_v = { measurement = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса" } } }, on_ohm = { measurement = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса" } } }, off_ohm = { measurement = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса", range = { min = 100000000.0, nominal = 100000000.0, max = 100000000.0, source = { derived = "Двухпозиционный ключ стенда с порогом 1 В, сопротивления 0,1 Ом и 100 МОм, без гистерезиса" } } } }
+
+[parts.thermal_step]
+kind = "other"
+source = "Резистивный эквивалент линейного режима ключа"
+reference_only = true
+
+[parts.thermal_step.pins]
+p = { contact = "bare", role = "passive" }
+d = { contact = "bare", role = "passive" }
+s = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "passive" }
+
+[parts.thermal_step.elements.emf]
+kind = "voltage"
+nodes = ["p", "s"]
+parameters = { volt = { measurement = "ЭДС во время импульса 6 В", range = { min = 6.0, nominal = 6.0, max = 6.0, source = { derived = "ЭДС во время импульса 6 В" } } } }
+
+[parts.thermal_step.elements.gate]
+kind = "voltage"
+nodes = ["g", "s"]
+parameters = { volt = { measurement = "Управляющая ЭДС во время импульса 2 В", range = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Управляющая ЭДС во время импульса 2 В" } } } }
+
+[parts.thermal_step.elements.load]
+kind = "resistor"
+nodes = ["p", "d"]
+parameters = { ohm = { measurement = "Нагрузка 1 Ом", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Нагрузка 1 Ом" } } } }
+
+[parts.thermal_step.elements.channel]
+kind = "switch"
+nodes = ["d", "s", "g", "s"]
+parameters = { threshold_v = { measurement = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм" } } }, hysteresis_v = { measurement = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм" } } }, on_ohm = { measurement = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм", range = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм" } } }, off_ohm = { measurement = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм", range = { min = 100000000.0, nominal = 100000000.0, max = 100000000.0, source = { derived = "Эквивалент канала 2 Ом при управлении выше 1 В; вне импульса питание снято, сопротивление 100 МОм" } } } }
+
+[parts.source_4]
+kind = "other"
+source = "Условный электрический эквивалент Т3: source_4"
+reference_only = true
+
+[parts.source_4.pins]
+p = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "passive" }
+
+[parts.source_4.elements.emf]
+kind = "voltage"
+nodes = ["p", "g"]
+parameters = { volt = { measurement = "Условный электрический эквивалент Т3: source_4", range = { min = 4.0, nominal = 4.0, max = 4.0, source = { derived = "Условный электрический эквивалент Т3: source_4" } } } }
+
+[parts.cutoff_stand]
+kind = "other"
+source = "Восьмивольтовый эквивалент клемм для сверки тока нагрузки, напряжения ячеек рассчитаны отдельно"
+reference_only = true
+
+[parts.cutoff_stand.pins]
+p = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "passive" }
+
+[parts.cutoff_stand.elements.emf]
+kind = "voltage"
+nodes = ["p", "g"]
+parameters = { volt = { measurement = "Номинальный эквивалент двух ячеек", range = { min = 8.0, nominal = 8.0, max = 8.0, source = { derived = "Стендовый источник 8 В поддерживает режим токовой нагрузки" } } } }
+
+[parts.cutoff_stand.elements.load]
+kind = "current"
+nodes = ["p", "g"]
+parameters = { ampere = { measurement = "Ток до отсечки", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Нагрузка стенда с постоянным током 1 А" } } } }
+
+[parts.cutoff_stand.elements.protection]
+kind = "current"
+nodes = ["p", "g"]
+parameters = { ampere = { measurement = "Ток защиты до отсечки", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "До перехода в остаточный режим ток защиты в модели нулевой" } } } }
+
+[parts.resistor_1]
+kind = "resistor"
+source = "Условный электрический эквивалент Т3: resistor_1"
+reference_only = true
+
+[parts.resistor_1.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.resistor_1.elements.r]
+kind = "resistor"
+nodes = ["a", "b"]
+parameters = { ohm = { measurement = "Условный электрический эквивалент Т3: resistor_1", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условный электрический эквивалент Т3: resistor_1" } } } }
+
+[parts.resistor_160]
+kind = "resistor"
+source = "Условный электрический эквивалент Т3: resistor_160"
+reference_only = true
+
+[parts.resistor_160.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.resistor_160.elements.r]
+kind = "resistor"
+nodes = ["a", "b"]
+parameters = { ohm = { measurement = "Условный электрический эквивалент Т3: resistor_160", range = { min = 160.0, nominal = 160.0, max = 160.0, source = { derived = "Условный электрический эквивалент Т3: resistor_160" } } } }
+
+[parts.resistor_400_over_7]
+kind = "resistor"
+source = "Условный электрический эквивалент Т3: resistor_400_over_7"
+reference_only = true
+
+[parts.resistor_400_over_7.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.resistor_400_over_7.elements.r]
+kind = "resistor"
+nodes = ["a", "b"]
+parameters = { ohm = { measurement = "Условный электрический эквивалент Т3: resistor_400_over_7", range = { min = 57.142857142857146, nominal = 57.142857142857146, max = 57.142857142857146, source = { derived = "Условный электрический эквивалент Т3: resistor_400_over_7" } } } }
