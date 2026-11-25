@@ -1,0 +1,24 @@
+format = 1
+scope = "reference"
+name = "Блок: просадка при пуске"
+nets = ["g", "p"]
+
+[components.block]
+part = "rail_weak"
+nets = { p = "p", g = "g" }
+
+[[bindings]]
+ends = ["block/p", "block/g"]
+target = { kind = "drive_power", drive = "load" }
+
+[[modes.cases]]
+mode = { kind = "main_only" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/p", "block/g"] }, { kind = "current", branch = { kind = "element", component = "block", element = "demand" } }]
+
+[[modes.cases]]
+mode = { kind = "start" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/p", "block/g"] }, { kind = "current", branch = { kind = "element", component = "block", element = "demand" } }]
+window = { step_ns = 250, end_ns = 800000 }
+sources = [{ branch = { kind = "element", component = "block", element = "demand" }, points = [[0, 0.1], [50000, 0.1], [100000, 1.0]], source = { derived = "Линейный фронт и плато по условиям корпуса Э2" } }]

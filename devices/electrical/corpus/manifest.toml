@@ -1,0 +1,15 @@
+format = 1
+# Пути относительно каталога корпуса. Первые три пары взяты из волны 1.
+[pairs]
+assembly_mismatch = ["assembly_mismatch/unsafe.toml", "assembly_mismatch/fixed.toml"]
+missing_ground = ["missing_ground/unsafe.toml", "missing_ground/fixed.toml"]
+reverse_polarity = ["reverse_polarity/unsafe.toml", "reverse_polarity/fixed.toml"]
+pin_overvoltage = ["pin_overvoltage/unsafe.toml", "pin_overvoltage/fixed.toml"]
+ground_switch_backfeed = ["ground_switch_backfeed/unsafe.toml", "ground_switch_backfeed/fixed.toml"]
+source_conflict = ["source_conflict/unsafe.toml", "source_conflict/fixed.toml"]
+rail_sag = ["rail_sag/unsafe.toml", "rail_sag/fixed.toml"]
+startup_actuation = ["startup_actuation/unsafe.toml", "startup_actuation/fixed.toml"]
+inductive_spike = ["inductive_spike/unsafe.toml", "inductive_spike/fixed.toml"]
+switch_underdrive = ["switch_underdrive/unsafe.toml", "switch_underdrive/fixed.toml"]
+connection_overcurrent = ["connection_overcurrent/unsafe.toml", "connection_overcurrent/fixed.toml"]
+regulator_overload = ["regulator_overload/unsafe.toml", "regulator_overload/fixed.toml"]

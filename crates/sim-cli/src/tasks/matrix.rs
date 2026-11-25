@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::{Deserialize, Serialize};
 use sim_signal::{Time, fnv1a};
@@ -9,6 +8,7 @@ use sim_task::{Case, CaseReport, Identity, Outcome};
 
 use super::{Execution, InstalledInputs, Profile, ResolvedWire, mechanism, read, reference};
 use super::control_witness::Observation;
+use super::workers::Workers;
 use crate::Options;
 
 #[derive(Serialize)]
@@ -147,44 +147,17 @@ impl<'a> Plan<'a> {
             .as_deref()
             .map(|path| Checkpoint::open(path, execution, installed))
             .transpose()?;
-        let jobs = options
-            .jobs
-            .or_else(|| std::thread::available_parallelism().ok())
-            .map_or(1, std::num::NonZeroUsize::get)
-            .min(self.runnable.len());
-        let next = AtomicUsize::new(0);
-        let mut rows = std::thread::scope(|scope| {
-            let mut workers = Vec::new();
-            let runnable = &self.runnable;
-            let checkpoint = checkpoint.as_ref();
-            let next = &next;
-            for _ in 0..jobs {
-                workers.push(
-                    std::thread::Builder::new()
-                        .spawn_scoped(scope, move || {
-                            let mut rows = Vec::new();
-                            while let Some(&(index, case)) =
-                                runnable.get(next.fetch_add(1, Ordering::Relaxed))
-                            {
-                                rows.push((index, run_case(execution, checkpoint, index, case)));
-                            }
-                            rows
-                        })
-                        .map_err(|error| format!("не удалось создать поток матрицы: {error}"))?,
-                );
-            }
-            let mut rows = Vec::new();
-            for worker in workers {
-                rows.extend(
-                    worker
-                        .join()
-                        .map_err(|_| "необработанная ошибка потока матрицы")?,
-                );
-            }
-            rows.sort_by_key(|(index, _)| *index);
-            rows.into_iter()
-                .map(|(index, row)| Ok((index, row?)))
-                .collect::<Result<Vec<_>, String>>()
+        let local = Workers::new(options.jobs.unwrap_or_else(Workers::cpu_count));
+        let workers = options.workers.as_deref().unwrap_or(&local);
+        let mut rows = workers.map(self.runnable, options.jobs, |(index, case)| {
+            let row = run_case(
+                execution,
+                checkpoint.as_ref(),
+                index,
+                case,
+                options.campaign_capture.as_ref(),
+            )?;
+            Ok((index, row))
         })?;
 
         let complete = !rows.is_empty() && rows.iter().all(|(_, row)| row.report.completed);
@@ -241,6 +214,7 @@ fn run_case(
     checkpoint: Option<&Checkpoint>,
     index: usize,
     case: &Case,
+    capture: Option<&crate::view::PlaybackCapture>,
 ) -> Result<Row, String> {
     if let Some(row) = checkpoint
         .map(|state| state.load(index, case))
@@ -249,11 +223,17 @@ fn run_case(
     {
         return Ok(row);
     }
-    let (run, comparison, observations) = execution.run_case(case, false, |_| Ok(()))?;
-    let mut report = run.report().clone();
-    if observations.iter().any(|value| value.outcome == Outcome::Fail) {
+    let result = execution.run_case(case, capture.is_some_and(|capture| capture.records_view()), |runtime| {
+        capture.map_or(Ok(()), |capture| capture.save(runtime, Some(case)))
+    })?;
+    let mut report = result.run.report().clone();
+    report.process_metrics = result.process_metrics;
+    if execution.physics.contains_key(&case.mode) && report.process_metrics.is_empty() {
+        report.completed = false;
+    }
+    if result.observations.iter().any(|value| value.outcome == Outcome::Fail) {
         report.outcome = Outcome::Fail;
-    } else if observations.len()
+    } else if result.observations.len()
         != execution.witnesses.iter().filter(|spec| &spec.case == case).count()
     {
         report.outcome = report.outcome.max(Outcome::NotAnalyzed);
@@ -261,7 +241,11 @@ fn run_case(
     if !report.was_executed() && report.outcome != Outcome::Fail {
         report.outcome = Outcome::NotAnalyzed;
     }
-    let row = Row { report, comparison, observations };
+    let row = Row {
+        report,
+        comparison: result.comparison,
+        observations: result.observations,
+    };
     // Положительное доказательство требует свежего исполнения. Незавершённый
     // опыт повторяется при возобновлении, включая ошибки запуска процесса.
     if let Some(checkpoint) = checkpoint
@@ -369,9 +353,11 @@ impl Checkpoint {
 
     pub(super) fn save_row(&self, name: &str, row: &impl Serialize) -> Result<(), String> {
         let path = self.directory.join(format!("{name}.json"));
-        let partial = self
-            .directory
-            .join(format!("{name}.{}.part", std::process::id()));
+        let partial = self.directory.join(format!(
+            "{name}.{}.{:?}.part",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let payload = serde_json::to_string(row).map_err(|error| error.to_string())?;
         let bytes = serde_json::to_vec(&Envelope {
             checksum: fnv1a(payload.bytes()),

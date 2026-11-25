@@ -50,6 +50,8 @@ impl fmt::Display for Group {
 }
 
 mod evidence;
+mod section_reaction;
+mod section_span;
 mod registry;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -65,8 +67,8 @@ use crate::{
 };
 
 pub use crate::interaction::SafetyDecision as Readiness;
-pub use evidence::{CampaignEvidence, Installed, MeasurementSample, SnapshotAudit};
-pub use registry::{ClassSpec, HazardClass, Method, REGISTRY, REGISTRY_VERSION};
+pub use evidence::{CampaignEvidence, ElectricalEvidence, Installed, MeasurementSample, SnapshotAudit};
+pub use registry::{ClassSpec, ELECTRICAL_REGISTRY, HazardClass, Method, REGISTRY, REGISTRY_VERSION};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,6 +127,7 @@ pub enum ComponentKind {
     Protection,
     CriticalMeasurement,
     Program,
+    ThreadedDrive,
 }
 
 #[derive(Clone, Debug)]
@@ -144,11 +147,14 @@ pub enum Level {
 
 #[derive(Clone, Debug)]
 pub enum Verification {
-    /// Изгиб однородного участка в одной плоскости под ограниченным моментом.
+    /// Огибающая напряжения однородного участка под ограниченной нагрузкой.
     Section {
+        /// Индекс из прежнего формата, огибающая охватывает всю геометрию.
         geometry: usize,
+        /// Ось из прежнего формата, огибающая охватывает все применимые оси.
         axis: SectionAxis,
         moment_nm: [f64; 2],
+        live_load: Option<SectionLoad>,
         allowable_pa: [f64; 2],
         load: Source,
         limit: Source,
@@ -172,6 +178,43 @@ pub enum Verification {
     },
     /// Предел и требуемый измерительный канал для данной версии и режима.
     Measurement(Limit),
+    TissueMeasurement { limit: Limit, duration: ContactDuration },
+    EnergyMeasurement { limit: Limit, path: EnergyPath },
+}
+
+/// Область длительности, для которой источник устанавливает предел тканей.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContactDuration {
+    pub ns: [u64; 2],
+    pub source: Source,
+    /// Заверенный двоичный канал контакта. Без него нужны точные нули ряда нагрузки на границах.
+    pub contact: Option<Signal>,
+}
+
+impl Verification {
+    pub fn measurement_limit(&self) -> Option<&Limit> {
+        match self {
+            Self::Measurement(limit) | Self::TissueMeasurement { limit, .. }
+                | Self::EnergyMeasurement { limit, .. } => Some(limit),
+            _ => None,
+        }
+    }
+
+    pub fn accepts_measurement(&self, signal: &Signal) -> bool {
+        self.measurement_limit().is_some_and(|limit| limit.signal() == signal)
+            || matches!(self, Self::TissueMeasurement { duration, .. } if duration.contact.as_ref() == Some(signal))
+    }
+}
+
+/// Связь сечения с обобщённой нагрузкой стенда. Для силы коэффициент имеет
+/// размерность плеча, для момента это безразмерный коэффициент передачи.
+/// Источник проверяется по `Verification::Section::load`, нижняя граница выводится из модели.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SectionLoad {
+    pub effort: String,
+    pub moment_per_effort: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -285,6 +328,18 @@ pub struct Finding {
     pub journal: Option<Fingerprint>,
     /// Отдельное подтверждение для корпуса опасностей.
     pub confirmed_hazard: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub electrical: Option<ElectricalFindingIdentity>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ElectricalFindingIdentity {
+    pub schematic: Fingerprint,
+    pub inputs: Fingerprint,
+    pub build: Fingerprint,
+    pub mode: Option<String>,
+    pub probe: Option<String>,
+    pub witness: Option<String>,
 }
 
 impl Finding {
@@ -309,6 +364,7 @@ impl Finding {
             event_ns: None,
             journal: None,
             confirmed_hazard: false,
+            electrical: None,
         }
     }
 }
@@ -316,11 +372,15 @@ impl Finding {
 #[derive(Clone, Debug, Serialize)]
 pub struct NotApplicable {
     pub class: HazardClass,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object: Option<String>,
     pub reason: String,
     pub sources: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SimulationVerdict {
     Rejected,
     NotProven,
@@ -359,6 +419,7 @@ pub struct RequirementSet {
     derivations: BTreeMap<String, Vec<Source>>,
     compiled_rows: BTreeMap<RunKey, Fingerprint>,
     linked_profiles: BTreeMap<RunKey, Fingerprint>,
+    powered_at_participant: bool,
 }
 
 impl RequirementSet {
@@ -373,6 +434,9 @@ fn derives(
     active: &mut BTreeSet<String>,
     trace: &mut BTreeSet<String>,
 ) -> bool {
+    if source.validate().is_err() {
+        return false;
+    }
     trace.insert(format!("{:?}: {}", source.kind, source.reference));
     match source.kind {
         SourceKind::Estimate => false,
@@ -412,10 +476,7 @@ fn trace(sources: &[Source], graph: &BTreeMap<String, Vec<Source>>) -> (bool, Ve
     let mut refs = BTreeSet::new();
     let proved = sources
         .iter()
-        .map(|s| {
-            let valid = s.validate().is_ok();
-            derives(s, graph, &mut BTreeSet::new(), &mut refs) && valid
-        })
+        .map(|s| derives(s, graph, &mut BTreeSet::new(), &mut refs))
         .fold(!sources.is_empty(), |a, b| a & b);
     (proved, refs.into_iter().collect())
 }
@@ -464,12 +525,20 @@ fn validate_check(check: &Check) -> Result<(), Error> {
     match &check.verification {
         Verification::Section {
             moment_nm,
+            live_load,
             allowable_pa,
             load,
             limit,
             ..
         } if method == Method::Section => {
             checked_pair(*moment_nm)?;
+            if let Some(live) = live_load {
+                crate::task::check_name(&live.effort)?;
+                crate::task::finite(live.moment_per_effort)?;
+                if live.moment_per_effort <= 0.0 {
+                    return Err(invalid("коэффициент передачи нагрузки на сечение должен быть положительным"));
+                }
+            }
             checked_pair(*allowable_pa)?;
             if allowable_pa[0] <= 0.0 {
                 return Err(invalid("предел напряжения должен быть положительным"));
@@ -499,7 +568,23 @@ fn validate_check(check: &Check) -> Result<(), Error> {
             }
             _ => Err(invalid("критерий контура не соответствует классу")),
         },
-        Verification::Measurement(limit) if method == Method::Measurement => validate_limit(limit),
+        Verification::Measurement(limit) if !matches!(check.class, HazardClass::Execution | HazardClass::TaskCriterion | HazardClass::Inventory) => validate_limit(limit),
+        Verification::TissueMeasurement { limit, duration } if check.class == HazardClass::TissueLoad => {
+            if duration.ns[0] > duration.ns[1] || duration.ns[1] == 0
+                || !matches!(limit, Limit::Range { signal, max: Some(max), .. } if matches!(signal.unit.as_str(), "N" | "Pa") && *max > 0.0)
+            {
+                return Err(invalid("недопустимый предел ткани или область длительности"));
+            }
+            duration.source.validate()?;
+            if let Some(signal) = &duration.contact {
+                signal.validate()?;
+                if !matches!(signal.unit.as_str(), "1" | "bool") {
+                    return Err(invalid("канал границ контакта должен быть двоичным"));
+                }
+            }
+            validate_limit(limit)
+        }
+        Verification::EnergyMeasurement { limit, .. } if check.class == HazardClass::StoredEnergy => validate_limit(limit),
         _ => Err(invalid("метод проверки не соответствует классу опасности")),
     }
 }
@@ -545,10 +630,22 @@ pub fn compiled_world_fingerprint(world: &sim_world::CompiledWorld) -> Fingerpri
 pub fn world_components(world: &crate::campaign::WorldInputs) -> Vec<(ComponentKind, String)> {
     let mut components = Vec::new();
     let mut mark = |kind, object: &str| components.push((kind, object.to_owned()));
+    let mut mounts = BTreeMap::new();
+    let mut collision_groups = BTreeSet::new();
+    let mut sharp_bodies = Vec::new();
     for (placement, input) in &world.devices {
         for link in &input.device.links {
             let name = format!("{placement}/{}", link.name);
             mark(ComponentKind::Part, &name);
+            if !link.collision.is_empty() {
+                collision_groups.insert(placement.as_str());
+            }
+            if may_have_sharp_surface(&link.collision, &link.mass) {
+                sharp_bodies.push(name.clone());
+            }
+            for mount in &link.mounts {
+                mounts.insert(format!("{name}/{}", mount.name), mount.kind);
+            }
             if link.joint.kind != JointType::Fixed {
                 let joint = format!(
                     "{placement}/{}",
@@ -557,13 +654,12 @@ pub fn world_components(world: &crate::campaign::WorldInputs) -> Vec<(ComponentK
                 if link.joint.kind == JointType::Free {
                     mark(ComponentKind::FreeSupport, &joint);
                 }
-                if link.joint.limits_deg.is_some()
-                        || link.joint.limits_m.is_some()
-                        || link.joint.ball_limit_deg.is_some()
-                        // Канал усилия задаёт управляемое движение. Без
-                        // проверки нельзя вывести допустимый ход из отсутствия упора.
-                        || (link.joint.kind != JointType::Free && !link.joint.efforts.is_empty())
-                {
+                let has_stop = link.joint.limits_deg.is_some()
+                    || link.joint.limits_m.is_some()
+                    || link.joint.ball_limit_deg.is_some();
+                // Управляемой оси нужна проверка хода и при отсутствии упора.
+                let driven_axis = link.joint.kind != JointType::Free && !link.joint.efforts.is_empty();
+                if has_stop || driven_axis {
                     mark(ComponentKind::MotionLimit, &joint);
                 }
             }
@@ -577,14 +673,34 @@ pub fn world_components(world: &crate::campaign::WorldInputs) -> Vec<(ComponentK
             };
             mark(ComponentKind::Connection, &format!("{placement}/{name}"));
         }
+        for transmission in &input.device.transmissions {
+            use sim_world::Transmission::*;
+            let name = match transmission {
+                Gear { name, .. } | Belt { name, .. } | Screw { name, .. } | Cable { name, .. } => name,
+            };
+            let object = format!("{placement}/{name}");
+            mark(ComponentKind::Connection, &object);
+            if matches!(transmission, Screw { .. }) {
+                mark(ComponentKind::ThreadedDrive, &object);
+            }
+        }
         for drive in &input.device.drives {
-            mark(ComponentKind::Drive, &format!("{placement}/{}", drive.name));
+            let object = format!("{placement}/{}", drive.name);
+            mark(ComponentKind::Drive, &object);
+            mark(ComponentKind::Supply, &object);
+            mark(ComponentKind::HeatPath, &object);
+            mark(ComponentKind::Protection, &object);
+            // Управляемый привод может повторить цикл в пределах своей модели.
+            for link in &input.device.links {
+                if link.joint.efforts.iter().any(|effort| effort.name == drive.effort) {
+                    mark(ComponentKind::CyclicLoad, &format!("{placement}/{}", link.name));
+                }
+            }
         }
         for sensor in &input.device.sensors {
-            mark(
-                ComponentKind::Sensor,
-                &format!("{placement}/{}", sensor.name),
-            );
+            let name = format!("{placement}/{}", sensor.name);
+            mark(ComponentKind::Sensor, &name);
+            mark(ComponentKind::CriticalMeasurement, &name);
         }
     }
     for object in world
@@ -595,28 +711,96 @@ pub fn world_components(world: &crate::campaign::WorldInputs) -> Vec<(ComponentK
     {
         mark(ComponentKind::Part, &object.name);
         mark(ComponentKind::FreeSupport, &object.name);
+        if !object.collision.is_empty() {
+            collision_groups.insert(&object.name);
+        }
+        if may_have_sharp_surface(&object.collision, &object.mass) {
+            sharp_bodies.push(object.name.clone());
+        }
+        for mount in &object.mounts {
+            mounts.insert(format!("{0}/{0}/{1}", object.name, mount.name), mount.kind);
+        }
     }
     for sensor in &world.world.sensors {
         mark(ComponentKind::Sensor, &sensor.name);
+        mark(ComponentKind::CriticalMeasurement, &sensor.name);
     }
+    let mut covered_power = BTreeSet::new();
     for connection in world
         .world
         .attachments
         .iter()
         .chain(&world.contact.added_attachments)
     {
-        mark(ComponentKind::Connection, &connection.name);
-        mark(ComponentKind::Retention, &connection.name);
+        match mounts.get(&connection.first) {
+            Some(sim_world::MountKind::Power) => {
+                mark(ComponentKind::Wire, &connection.name);
+                if connection.mode == sim_world::AttachmentMode::Design {
+                    covered_power.extend([&connection.first, &connection.second]);
+                }
+            }
+            Some(sim_world::MountKind::Signal) => mark(ComponentKind::Communication, &connection.name),
+            _ => {
+                mark(ComponentKind::Connection, &connection.name);
+                mark(ComponentKind::Retention, &connection.name);
+            }
+        }
+    }
+    for (name, kind) in &mounts {
+        if *kind == sim_world::MountKind::Power {
+            mark(ComponentKind::Protection, name);
+            if !covered_power.contains(name) {
+                mark(ComponentKind::ExposedElectricalPath, name);
+            }
+        }
+    }
+    if collision_groups.len() > 1 || !world.world.environment.collision.is_empty() {
+        for name in sharp_bodies {
+            mark(ComponentKind::SharpSurface, &name);
+        }
+    }
+    for object in &collision_groups {
+        if collision_groups.len() > 1 || !world.world.environment.collision.is_empty() {
+            mark(ComponentKind::ImpactPath, object);
+            mark(ComponentKind::PinchPath, object);
+        }
+    }
+    if world.world.environment.density_kg_m3 != 0.0 || world.world.environment.viscosity_pa_s != 0.0 {
+        for placement in world.devices.keys() {
+            mark(ComponentKind::EnvironmentalPath, placement);
+        }
     }
     components
+}
+
+fn may_have_sharp_surface(collision: &[sim_world::Geometry], mass: &sim_world::Mass) -> bool {
+    use sim_world::{Mass, Shape};
+    let volumes = match mass {
+        Mass::Volumes { volumes, .. } => volumes.as_slice(),
+        _ => &[],
+    };
+    collision.is_empty() || collision.iter().chain(volumes).any(|geometry| {
+        matches!(geometry.shape, Shape::Box { .. } | Shape::Cylinder { .. }
+            | Shape::Mesh { .. } | Shape::Triangles { .. })
+    })
 }
 
 pub fn derive_requirements(
     inventory: &ResolvedInventory,
     plan: &CampaignPlan,
 ) -> Result<RequirementSet, Error> {
+    derive_requirements_with_electrical(inventory, plan, &BTreeMap::new())
+}
+
+/// Электрические обязательства присоединяются к тому же вердикту кампании.
+pub fn derive_requirements_with_electrical(
+    inventory: &ResolvedInventory,
+    plan: &CampaignPlan,
+    electrical: &BTreeMap<String, ElectricalEvidence>,
+) -> Result<RequirementSet, Error> {
     let mut builder = Builder::new(inventory, plan);
     builder.inventory()?;
+    builder.electrical(electrical)?;
     builder.rows()?;
     Ok(builder.finish())
 }
@@ -627,8 +811,9 @@ struct Builder<'a> {
     requirements: BTreeMap<RequirementKey, Requirement>,
     applicable: BTreeSet<(HazardClass, String)>,
     absent: Vec<NotApplicable>,
-    excluded: Vec<RunKey>,
     domain_gaps: bool,
+    powered_at_participant: bool,
+    participant_reachable: bool,
 }
 
 impl<'a> Builder<'a> {
@@ -639,8 +824,9 @@ impl<'a> Builder<'a> {
             requirements: BTreeMap::new(),
             applicable: BTreeSet::new(),
             absent: Vec::new(),
-            excluded: Vec::new(),
             domain_gaps: false,
+            powered_at_participant: false,
+            participant_reachable: false,
         }
     }
 
@@ -711,17 +897,22 @@ impl<'a> Builder<'a> {
         }
         for (i, reason) in inv.unresolved_ranges.iter().enumerate() {
             crate::task::check_name(reason)?;
-            self.gap(format!("диапазон/{i}"), reason, Level::Bench);
+            self.gap(format!("диапазон/{i}"), reason, Level::Simulation);
         }
         if let Some(reason) = self.plan.sampling_gap()? {
             self.gap("разброс".into(), reason, Level::Simulation);
         }
-        for axis in self.plan.varying_axes() {
-            self.gap(
-                format!("допуск/{axis}"),
-                "не подтверждена непрерывная огибающая допуска",
-                Level::Bench,
-            );
+        let discrete_envelope = self.plan.has_discrete_envelope(|source| {
+            trace(std::slice::from_ref(source), &inv.derivations).0
+        });
+        if !discrete_envelope {
+            for axis in self.plan.varying_axes() {
+                self.gap(
+                    format!("допуск/{axis}"),
+                    "не подтверждена непрерывная огибающая допуска или дискретные граничные состояния",
+                    Level::Simulation,
+                );
+            }
         }
         for component in &inv.components {
             crate::task::check_name(&component.object)?;
@@ -735,8 +926,60 @@ impl<'a> Builder<'a> {
                 );
             }
         }
-        for (kind, object) in world_components(self.plan.world_inputs()) {
+        let world = self.plan.world_inputs();
+        for (kind, object) in world_components(world) {
             self.mark(kind, &object);
+        }
+        let cyclic = self.plan.cyclic_efforts();
+        for (placement, input) in &world.devices {
+            for link in &input.device.links {
+                let object = format!("{placement}/{}", link.name);
+                if link.joint.efforts.iter().any(|effort| cyclic.contains(format!("{placement}/{}", effort.name).as_str())) {
+                    self.mark(ComponentKind::CyclicLoad, &object);
+                }
+                if !self.plan.participant_candidates().is_empty() && may_have_sharp_surface(&link.collision, &link.mass) {
+                    self.mark(ComponentKind::SharpSurface, &object);
+                }
+            }
+            if input.device.schematic.is_some() {
+                self.gap(
+                    format!("состав/{placement}/схема"),
+                    "физический мир не содержит разрешённых типов источников, защиты и изоляции электрических путей",
+                    Level::Simulation,
+                );
+            }
+            // Тип источника не следует из потребителя или разъёма.
+            if input.device.schematic.is_some() || !input.device.drives.is_empty()
+                || input.device.links.iter().flat_map(|link| &link.mounts)
+                    .any(|mount| mount.kind == sim_world::MountKind::Power)
+            {
+                self.add_open_class(
+                    HazardClass::Battery,
+                    format!("{placement}/источник питания"),
+                    "не установлен тип источника питания, требуется проверка применимости батареи",
+                );
+                if input.device.schematic.is_some() {
+                    self.add_open_class(
+                        HazardClass::ElectricShock,
+                        format!("{placement}/схема"),
+                        "требуется разрешённая схема и проверка доступности её электрических путей",
+                    );
+                    self.add_open_class(
+                        HazardClass::EmergencyStop,
+                        format!("{placement}/схема"),
+                        "требуются разрешённый путь отключения и живая проверка защиты",
+                    );
+                }
+            }
+        }
+        for object in world.world.objects.iter().chain(&world.contact.added_objects) {
+            if object.mounts.iter().any(|mount| mount.kind == sim_world::MountKind::Power) {
+                self.add_open_class(
+                    HazardClass::Battery,
+                    format!("{}/источник питания", object.name),
+                    "не установлен тип источника питания, требуется проверка применимости батареи",
+                );
+            }
         }
         if inv
             .compiled_rows
@@ -759,7 +1002,27 @@ impl<'a> Builder<'a> {
             .applicable
             .iter()
             .any(|(class, _)| *class == HazardClass::TissueLoad);
+        let candidates = self.plan.participant_candidates();
+        self.participant_reachable = contact || !candidates.is_empty()
+            || inv.participant == Some(Reach::Reachable);
+        if inv.participant == Some(Reach::OffParticipant) && !candidates.is_empty() {
+            self.domain_gaps = true;
+            self.gap(
+                "состав/достижимость".into(),
+                format!("заявленная изоляция участника противоречит геометрии и ходу осей: {candidates:?}"),
+                Level::Simulation,
+            );
+        }
+        for body in candidates {
+            self.mark(ComponentKind::ParticipantContact, body);
+        }
+        self.powered_at_participant = self.participant_reachable
+            && (self.applicable.iter().any(|(class, _)| matches!(class,
+                HazardClass::DriveOverload | HazardClass::DangerousMotion))
+                || self.plan.world_inputs().devices.values().any(|input| input.device.links.iter()
+                    .any(|link| !link.joint.efforts.is_empty())));
         let participant_gap = match inv.participant {
+            Some(Reach::OffParticipant) if !candidates.is_empty() => None,
             Some(Reach::Reachable) if contact => None,
             Some(Reach::OffParticipant) if !contact => None,
             Some(Reach::Reachable) => Some("участник достижим, но нет инвентаря контактных пятен"),
@@ -787,7 +1050,7 @@ impl<'a> Builder<'a> {
                 Level::Bench,
             );
         }
-        if inv.participant == Some(Reach::Reachable) {
+        if self.participant_reachable {
             for (placement, input) in &self.plan.world_inputs().devices {
                 for drive in &input.device.drives {
                     self.mark(
@@ -810,15 +1073,51 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
+    fn electrical(&mut self, evidence: &BTreeMap<String, ElectricalEvidence>) -> Result<(), Error> {
+        let world = self.plan.world_inputs();
+        for (placement, observed) in evidence {
+            let input = world.devices.get(placement)
+                .ok_or_else(|| invalid(format!("электрический опыт неизвестного экземпляра «{placement}»")))?;
+            observed.verify(placement, self.inventory.build, &input.path, &input.device)?;
+        }
+        for (placement, input) in &world.devices {
+            let device = &input.device;
+            if let Some(observed) = evidence.get(placement) {
+                self.absent.extend(observed.inapplicable());
+                for finding in observed.findings() {
+                    self.add(finding.key.clone()).fixed = Some(finding.clone());
+                    if self.powered_at_participant && finding.outcome == Outcome::Pass {
+                        let key = RequirementKey { level: Level::Bench, ..finding.key.clone() };
+                        self.add(key.clone()).fixed = Some(Finding::open(
+                            &key, "для приводной сборки у участника нужен заверенный электрический замер",
+                        ));
+                    }
+                }
+            } else if device.schematic.is_some()
+                || !device.drives.is_empty()
+                || !device.sensors.is_empty()
+                || device.links.iter().flat_map(|link| &link.mounts)
+                    .any(|mount| mount.kind == sim_world::MountKind::Power)
+            {
+                let reason = if device.schematic.is_some() {
+                    "нет связанного электрического опыта по схеме экземпляра"
+                } else {
+                    "нет схемы экземпляра с установкой питания, выводов и нагрузки"
+                };
+                for finding in ElectricalEvidence::missing(placement, reason) {
+                    let key = finding.key.clone();
+                    self.add(key).fixed = Some(finding);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn rows(&mut self) -> Result<(), Error> {
         let fault_rows: BTreeSet<_> = self
             .plan
             .rows()
             .iter()
-            .filter(|row| {
-                !matches!(&row.disposition, Disposition::Inapplicable { bases, .. }
-                if trace(bases, &self.inventory.derivations).0)
-            })
             .flat_map(|row| {
                 row.key.faults.iter().map(|fault| {
                     (
@@ -831,13 +1130,6 @@ impl<'a> Builder<'a> {
             })
             .collect();
         for row in self.plan.rows() {
-            let graph = &self.inventory.derivations;
-            if let Disposition::Inapplicable { bases, .. } = &row.disposition {
-                if trace(bases, graph).0 {
-                    self.excluded.push(row.key.clone());
-                    continue;
-                }
-            }
             let mode = self.plan.mode(&row.key);
             let mut active = self.applicable.clone();
             active.extend(
@@ -867,7 +1159,7 @@ impl<'a> Builder<'a> {
                     .cloned()
                     .collect();
                 if class == HazardClass::StoredEnergy
-                    && self.inventory.participant == Some(Reach::Reachable)
+                    && self.participant_reachable
                 {
                     for path in [
                         EnergyPath::Electrical,
@@ -877,6 +1169,7 @@ impl<'a> Builder<'a> {
                         let quantity = format!("{path:?}");
                         let selected: Vec<_> = checks.iter().filter(|check| {
                             matches!(&check.verification, Verification::Interaction { quantity: q, .. } if q == &quantity)
+                                || matches!(&check.verification, Verification::EnergyMeasurement { path: p, .. } if *p == path)
                         }).cloned().collect();
                         let key = RequirementKey {
                             class,
@@ -889,6 +1182,18 @@ impl<'a> Builder<'a> {
                         if selected.is_empty() {
                             self.add(key);
                         } else {
+                            if let Some(mode) = mode {
+                                let mut selected_windows: Vec<_> = selected.iter().map(|check| check.window).collect();
+                                selected_windows.sort_by_key(|window| window.start_ns);
+                                let end = selected_windows.into_iter().fold(0, |end, window| {
+                                    if window.start_ns <= end { end.max(window.end_ns) } else { end }
+                                });
+                                if end < mode.horizon_ns {
+                                    self.add(key.clone()).fixed = Some(Finding::open(
+                                        &key, "путь энергии не проверен на всём горизонте",
+                                    ));
+                                }
+                            }
                             for check in selected {
                                 if mode.is_some_and(|m| check.window.end_ns > m.horizon_ns) {
                                     return Err(invalid(
@@ -917,17 +1222,35 @@ impl<'a> Builder<'a> {
                         level: level(class),
                     });
                 } else {
-                    // Проверка истинного ряда в коротком окне не закрывает
+                    // Проверка истинного или стендового ряда в коротком окне не закрывает
                     // возможность того же нарушения в остальной части режима.
                     if let Some(mode) = mode {
                         let mut covered = BTreeMap::<_, u64>::new();
                         for check in &checks {
-                            if let Verification::Truth(limit) = &check.verification {
+                            if let Some(limit) = match &check.verification {
+                                Verification::Truth(limit) => Some(limit),
+                                other => other.measurement_limit(),
+                            } {
                                 let end = covered.entry(limit.signal()).or_default();
                                 if check.window.start_ns <= *end {
                                     *end = (*end).max(check.window.end_ns);
                                 }
                             }
+                        }
+                        let mut section_end = 0;
+                        for check in &checks {
+                            if matches!(check.verification, Verification::Section { .. } | Verification::Measurement(_))
+                                && check.window.start_ns <= section_end
+                            {
+                                section_end = section_end.max(check.window.end_ns);
+                            }
+                        }
+                        if class == HazardClass::StaticStrength && section_end < mode.horizon_ns {
+                            self.gap(
+                                format!("нагрузка/{object}/{:?}", row.key),
+                                "окно проверки прочности не охватывает режим",
+                                Level::Simulation,
+                            );
                         }
                         for (signal, end) in covered {
                             if end < mode.horizon_ns {
@@ -1041,15 +1364,37 @@ impl<'a> Builder<'a> {
                 }
             }
         }
-        if self.plan.rows().is_empty() || self.excluded.len() == self.plan.rows().len() {
+        if self.plan.rows().is_empty() {
             self.gap(
                 "матрица".into(),
                 "нет применимых строк кампании",
                 Level::Construction,
             );
         }
+        if self.plan.has_linked_stations() {
+            // Полнота деклараций исходного мира не устанавливает применимость
+            // опасностей моделей, которые добавляет адаптер.
+            self.gap(
+                "состав/связанные модели".into(),
+                "для связанных моделей требуется разрешённый состав и соответствующая ему матрица проверок",
+                Level::Simulation,
+            );
+            for class in [
+                HazardClass::Fatigue, HazardClass::Battery, HazardClass::SharpEdge,
+                HazardClass::ElectricShock, HazardClass::EmergencyStop, HazardClass::Measurement,
+            ] {
+                if !self.requirements.keys().any(|key| key.class == class) {
+                    self.add_open_class(
+                        class,
+                        "состав связанной модели".into(),
+                        "применимость нельзя установить без разрешённых данных связанной модели",
+                    );
+                }
+            }
+        }
         if !self.domain_gaps {
-            let observed: BTreeSet<_> = self.requirements.keys().map(|k| k.class).collect();
+            let observed: BTreeSet<_> = self.requirements.keys().map(|k| k.class)
+                .chain(self.absent.iter().map(|item| item.class)).collect();
             let bases: Vec<_> = self
                 .inventory
                 .coverage
@@ -1066,6 +1411,8 @@ impl<'a> Builder<'a> {
                     .filter(|r| !observed.contains(&r.class) && r.class != HazardClass::Inventory)
                     .map(|r| NotApplicable {
                         class: r.class,
+                        code: None,
+                        object: None,
                         reason: "в разрешённом составе и матрице нет применимости".into(),
                         sources: sources.clone(),
                     }),
@@ -1074,13 +1421,26 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
+    fn add_open_class(&mut self, class: HazardClass, object: String, reason: &str) {
+        let key = RequirementKey {
+            class,
+            object,
+            extension: None,
+            run: None,
+            window_ns: None,
+            level: level(class),
+        };
+        self.add(key.clone()).fixed = Some(Finding::open(&key, reason));
+    }
+
     fn finish(self) -> RequirementSet {
         let stamp = Fingerprint::of(
             format!(
-                "{REGISTRY_VERSION}:{:?}:{:?}:{:?}",
+                "{REGISTRY_VERSION}:{:?}:{:?}:{:?}:{:?}",
                 self.plan.fingerprint(),
                 self.inventory,
-                self.requirements
+                self.requirements,
+                self.absent
             )
             .as_bytes(),
         );
@@ -1090,10 +1450,13 @@ impl<'a> Builder<'a> {
             build: self.inventory.build,
             requirements: self.requirements.into_values().collect(),
             inapplicable: self.absent,
-            inapplicable_runs: self.excluded,
+            // Для исключения обязательной строки нужна проверяемая причина,
+            // которой в объявлении FaultSupport пока нет.
+            inapplicable_runs: Vec::new(),
             derivations: self.inventory.derivations.clone(),
             compiled_rows: self.inventory.compiled_rows.clone(),
             linked_profiles: self.inventory.linked_profiles.clone(),
+            powered_at_participant: self.powered_at_participant,
         }
     }
 }
@@ -1104,11 +1467,12 @@ pub fn assess_campaign(
 ) -> Result<VerdictReport, Error> {
     let matched = evidence.stamp == requirements.stamp;
     let mut findings = Vec::new();
+    let mut model_strength_open = Vec::new();
     for requirement in &requirements.requirements {
         if let Some(finding) = &requirement.fixed {
             findings.push(finding.clone());
         } else if matched {
-            evidence.findings(requirements, requirement, &mut findings)?;
+            evidence.findings(requirements, requirement, &mut findings, &mut model_strength_open)?;
         } else {
             findings.push(Finding::open(
                 &requirement.key,
@@ -1116,11 +1480,37 @@ pub fn assess_campaign(
             ));
         }
     }
-    let diagnostics = if matched {
+    let mut diagnostics = if matched {
         evidence.diagnostics(requirements)
     } else {
         Vec::new()
     };
+    let mut measured_strength = BTreeMap::<_, Vec<_>>::new();
+    for finding in &findings {
+        if finding.key.class == HazardClass::StaticStrength && finding.outcome == Outcome::Pass
+            && let (Some(run), Some(window)) = (&finding.key.run, finding.key.window_ns)
+        {
+            measured_strength.entry((run.clone(), finding.key.object.clone())).or_default().push(window);
+        }
+    }
+    for windows in measured_strength.values_mut() {
+        windows.sort_unstable();
+    }
+    for finding in model_strength_open {
+        let covered = finding.key.window_ns.zip(finding.key.run.as_ref()).is_some_and(|([start, end], run)| {
+            let Some(windows) = measured_strength.get(&(run.clone(), finding.key.object.clone())) else {
+                return false;
+            };
+            windows.iter().fold(start, |covered, &[left, right]| {
+                if left <= covered { covered.max(right) } else { covered }
+            }) >= end
+        });
+        if covered {
+            diagnostics.push(finding);
+        } else {
+            findings.push(finding);
+        }
+    }
     findings.extend(
         diagnostics
             .iter()
@@ -1130,7 +1520,12 @@ pub fn assess_campaign(
     let outcome = Outcome::aggregate(
         findings
             .iter()
-            .filter(|f| f.key.level != Level::Bench || f.outcome == Outcome::Fail)
+            .filter(|f| {
+                // Обязательный замер нельзя заменить живым расчётом той же сборки.
+                f.key.level != Level::Bench
+                    || f.key.class == HazardClass::Measurement
+                    || f.outcome == Outcome::Fail
+            })
             .map(|f| f.outcome),
     );
     let simulation = match outcome {
@@ -1138,6 +1533,24 @@ pub fn assess_campaign(
         Outcome::NotAnalyzed => SimulationVerdict::NotProven,
         Outcome::Pass => SimulationVerdict::PassedSimulation,
     };
+    if requirements.powered_at_participant {
+        for requirement in &requirements.requirements {
+            if requirement.key.run.is_some()
+                && !matches!(requirement.key.class, HazardClass::Execution | HazardClass::Inventory | HazardClass::TaskCriterion)
+                && !(matched && evidence.has_measured_pass(requirements, requirement)?)
+            {
+                let key = RequirementKey {
+                    level: Level::Bench,
+                    extension: Some(match &requirement.key.extension {
+                        Some(extension) => format!("замер/{extension}"),
+                        None => "замер".into(),
+                    }),
+                    ..requirement.key.clone()
+                };
+                findings.push(Finding::open(&key, "для приводной сборки у участника нужен заверенный замер обязательной опасности"));
+            }
+        }
+    }
     let readiness = safety_decision(
         findings.iter().map(|f| f.outcome),
         simulation == SimulationVerdict::PassedSimulation,

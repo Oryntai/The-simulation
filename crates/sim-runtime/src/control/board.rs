@@ -29,12 +29,20 @@ pub(super) struct Board {
     pub end_sample: bool,
     pub boot: Option<Box<dyn BoardSim>>,
     pub epoch: Time,
+    pub epoch_cycle: u64,
+    pub electrical: Option<usize>,
+    pub electrical_restart: Option<Time>,
     pub driven_gpio: BTreeMap<u32, bool>,
 }
 
 impl Board {
     fn cycle_at(&self, at: Time) -> Result<u64, String> {
-        time_cycle(Time(at.0 - self.epoch.0), self.sim.capabilities().cpu_hz)
+        self.epoch_cycle
+            .checked_add(time_cycle(
+                Time(at.0 - self.epoch.0),
+                self.sim.capabilities().cpu_hz,
+            )?)
+            .ok_or_else(|| "такт платы вне диапазона".into())
     }
 }
 
@@ -112,6 +120,103 @@ pub(super) struct Delivery {
 }
 
 impl Engine {
+    pub(crate) fn electrical_board_due(&self, at: Time) -> bool {
+        self.boards
+            .iter()
+            .any(|board| board.electrical.is_some() && checked_due(&board.clock) == Ok(Some(at)))
+    }
+
+    pub(crate) fn electrical_advance(
+        &mut self,
+        bus: &ObservationBus,
+        at: Time,
+        circuit: &mut crate::electrical::Electrical,
+    ) -> Result<(), String> {
+        for index in 0..self.boards.len() {
+            let Some(slot) = self.boards[index].electrical else {
+                continue;
+            };
+            let target = self.boards[index].cycle_at(at)?;
+            self.advance_board(at, index, target)?;
+            if let Some(boot) = self.boards[index].electrical_restart.take() {
+                circuit.boards[slot].restart(boot);
+            }
+            if at == Time::ZERO && circuit.boards[slot].initial_reset {
+                self.electrical_reset(at, index, true)?;
+            }
+            let (voltage_v, current_a, edge) = circuit.read_board(at, slot)?;
+            self.push(
+                at,
+                EventKind::ElectricalRail {
+                    board: self.boards[index].name.clone(),
+                    voltage_v,
+                    current_a,
+                    phase: circuit.boards[slot].phase,
+                },
+            );
+            if let Some(asserted) = edge {
+                self.electrical_reset(at, index, asserted)?;
+                if !asserted {
+                    self.board_inputs(bus, at, index)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn electrical_reset(&mut self, at: Time, index: usize, asserted: bool) -> Result<(), String> {
+        let board = &mut self.boards[index];
+        // После асинхронного фронта первое целое деление такта отсчитывается заново.
+        board.epoch = at;
+        board.epoch_cycle = board.sim.cycles();
+        for wire in &mut board.wires {
+            wire.last = None;
+        }
+        self.apply_board(at, index, BoardInput::Brownout { asserted })?;
+        self.board_events(at, index)?;
+        self.push(
+            at,
+            EventKind::ElectricalReset {
+                board: self.boards[index].name.clone(),
+                asserted,
+            },
+        );
+        if asserted {
+            for output in self.boards[index].outputs.clone() {
+                self.invalidate(at, output, Rejection::Disconnected);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn electrical_latch(
+        &mut self,
+        at: Time,
+        circuit: &mut crate::electrical::Electrical,
+    ) -> Result<(), String> {
+        circuit.latch_sources(at)?;
+        for board in &mut self.boards {
+            let Some(slot) = board.electrical else {
+                continue;
+            };
+            if let Some(boot) = board.electrical_restart.take() {
+                circuit.boards[slot].restart(boot);
+            }
+            let changed = circuit.latch(at, slot, |pin| board.sim.gpio_mode(pin))?;
+            for (pin, state) in changed {
+                Rc::make_mut(&mut self.events).push(super::Event {
+                    at,
+                    kind: EventKind::ElectricalPin {
+                        board: board.name.clone(),
+                        pin,
+                        state,
+                    },
+                });
+            }
+        }
+        circuit.schedule(at, self.identity.phase_horizon)
+    }
+
     pub(super) fn request_board_action(&mut self, at: Time, id: usize) {
         let action = &self.board_actions[id];
         let board = &mut self.boards[action.board];
@@ -148,6 +253,7 @@ impl Engine {
                             .expect("начальный образ сохранён")
                             .clone();
                         device.epoch = at;
+                        device.epoch_cycle = 0;
                         for wire in &mut device.wires {
                             wire.last = None;
                         }
@@ -200,7 +306,10 @@ impl Engine {
         let target_cycles = self.boards[index].cycle_at(at)?;
         self.advance_board(at, index, target_cycles)?;
         let fault = self.use_fault(at, &format!("board:{name}"));
-        if fault != Some(FaultAction::PowerOff) && !self.boards[index].sim.powered() {
+        if self.boards[index].electrical.is_none()
+            && fault != Some(FaultAction::PowerOff)
+            && !self.boards[index].sim.powered()
+        {
             self.apply_board(at, index, BoardInput::Power { on: true })?;
             for wire in &mut self.boards[index].wires {
                 wire.last = None;
@@ -210,7 +319,7 @@ impl Engine {
             self.apply_board(at, index, BoardInput::Power { on: false })?;
             self.board_events(at, index)?;
         }
-        if fault != Some(FaultAction::PowerOff) {
+        if self.boards[index].sim.powered() {
             self.apply_board(
                 at,
                 index,
@@ -389,7 +498,23 @@ impl Engine {
         let hz = self.boards[index].sim.capabilities().cpu_hz;
         let name = self.boards[index].name.clone();
         for event in self.boards[index].sim.take_events() {
-            let produced_at = add(self.boards[index].epoch, cycle_time(event.cycle, hz)?.0)?;
+            let cycle = event
+                .cycle
+                .checked_sub(self.boards[index].epoch_cycle)
+                .ok_or("событие платы относится к прошлой эпохе")?;
+            let produced_at = add(self.boards[index].epoch, cycle_time(cycle, hz)?.0)?;
+            if self.boards[index].electrical.is_some()
+                && matches!(
+                    event.output,
+                    BoardOutput::Reset(
+                        sim_boards::ResetCause::Watchdog
+                            | sim_boards::ResetCause::Software
+                            | sim_boards::ResetCause::Host
+                    )
+                )
+            {
+                self.boards[index].electrical_restart = Some(produced_at);
+            }
             self.push(
                 at,
                 EventKind::BoardOutput {

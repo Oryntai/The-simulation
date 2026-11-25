@@ -1,0 +1,33 @@
+format = 1
+# Дискретный макрошаг шины из стендового контроля в control.toml.
+# Привод добавляет собственные границы на сетке физики.
+step_ns = 200000
+source = "Пара опыта задаёт сильную и слабую полки питания. События в 2 и 4 мс кратны обмену платы 200 мкс из control.toml. Токи и детектор перенесены из синтетического блока рантайма."
+control = "electrical-control.toml"
+measurements = "tasks/profile.toml"
+
+[circuits."нажиматель"]
+diagnostic_connections = { parameters = "../../catalog/electrical/diagnostics/nominal.toml", ohm = 0.1, source = "0,1 Ом на стык из эталонной цепи Э1 для численного опыта. Сопротивления монтажного жгута требуют замера." }
+drives = { "мотор" = "servo/drive" }
+# Идеальный открытый мост работает при любом положительном напряжении.
+# Отключение физической сервы при пониженном напряжении не аттестовано.
+reference_drive_min_v = { "мотор" = 0.0 }
+# Просадка до половины номинала (или исправный источник) на том же интервале.
+steps = [
+  { branch = "regulator/emf", at_ns = 2000000, value = 2.4 },
+  { branch = "regulator/emf", at_ns = 4000000, value = 4.8 },
+]
+[circuits."нажиматель".boards."плата"]
+rail = "vdd"
+branch = "board/board"
+currents_a = [0.0, 0.05, 0.15, 0.20]
+# После отпускания сброса эмулятор начинает исполнять существующий образ с точки восстановления.
+boot_ns = 0
+initially_in_reset = false
+live_pins = [4]
+reference_reset = { falling_v = 2.0, rising_v = 2.8, assert_ns = 10000, release_ns = 15000, source = "Внешний синтетический детектор блока sim-runtime/tests/electrical_runtime.rs. Порог и задержки реального ESP32-C3 остаются неизвестными." }
+[circuits."нажиматель".probes]
+"VDD" = { kind = "voltage", ends = ["board/p", "board/g"] }
+"ток платы" = { kind = "current", branch = "board/board" }
+"ток ключа" = { kind = "current", branch = "key/key" }
+"вывод" = { kind = "voltage", ends = ["board/gpio4", "board/g"] }

@@ -1,0 +1,70 @@
+format = 1
+scope = "reference"
+name = "Блок: предел защитного диода"
+nets = ["g", "logic", "out", "pad"]
+
+[components.sender]
+part = "signal_5"
+nets = { p = "out", g = "g" }
+
+[components.board]
+part = "input_pad"
+nets = { io = "pad", p = "logic", g = "g" }
+
+[components.top]
+part = "divider_top"
+nets = { a = "out", b = "pad" }
+
+[components.bottom]
+part = "divider_bottom"
+nets = { a = "pad", b = "g" }
+
+[connections.return]
+kind = "solder"
+ends = ["sender/g", "board/g"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.top_in]
+kind = "solder"
+ends = ["sender/p", "top/a"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.top_out]
+kind = "solder"
+ends = ["top/b", "board/io"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.bottom_in]
+kind = "solder"
+ends = ["board/io", "bottom/a"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.bottom_out]
+kind = "solder"
+ends = ["bottom/b", "board/g"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[[bindings]]
+ends = ["board/p", "board/g"]
+target = { kind = "board_power", board = "fixture", rail = "io" }
+
+[[bindings]]
+ends = ["board/io"]
+target = { kind = "board_pin", board = "fixture", pin = "p0", function = "gpio_input" }
+
+[[modes.cases]]
+mode = { kind = "main_only" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["board/io", "board/g"] }]
+
+[[modes.cases.pins]]
+board = "fixture"
+pin = "p0"
+rail = "io"
+phase = { kind = "working", pin = { state = "input", source = { derived = "Электрическое состояние задано стендом Э2" } } }
+model = { input_ohm = { measurement = "Условие стенда: входное сопротивление 1 МОм", range = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { derived = "Условие стенда: входное сопротивление 1 МОм" } } }, lower_clamp = { kind = "absent", source = { derived = "В эквиваленте стенда эта защитная ветвь отсутствует" } }, upper_clamp = { kind = "diode", saturation_a = { measurement = "Условие стенда: Is защитного перехода 1 пА", range = { min = 1e-12, nominal = 1e-12, max = 1e-12, source = { derived = "Условие стенда: Is защитного перехода 1 пА" } } }, ideality = { measurement = "Условие стенда: n = 1", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: n = 1" } } }, series_ohm = { measurement = "Условие стенда: Rs = 0 Ом", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: Rs = 0 Ом" } } }, injection_limit_a = { measurement = "Паспорт синтетического стенда Э2: допускается инжекция до 1 мА", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { datasheet = "Паспорт синтетического стенда Э2: допускается инжекция до 1 мА" } } } } }

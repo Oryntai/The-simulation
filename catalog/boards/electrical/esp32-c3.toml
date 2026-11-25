@@ -1,0 +1,24 @@
+format = 1
+board = "esp32-c3"
+
+# Таблица 2-1 задаёт состояние на сбросе, таблица 2-2 отдельно описывает
+# типовые импульсы при включении. Применимость зависит от конкретного GPIO.
+[reset.falling_v]
+measurement = "установить настройку детектора и измерить порог спада VDD с тем же образом"
+
+[reset.rising_v]
+measurement = "установить свойство детектора и измерить порог восстановления VDD с тем же образом"
+
+[reset.assert_delay_s]
+measurement = "измерить минимальную длительность просадки с контролем VDD, CHIP_EN и исполнения образа"
+
+[reset.release_delay_s]
+measurement = "измерить выдержку восстановления на конкретной плате с её цепью CHIP_EN"
+
+[[reset_pins]]
+pins = [2, 3, 8]
+state = { state = "input", source = { datasheet = "Espressif ESP32-C3 Series Datasheet v2.5, Table 2-1, At Reset IE, https://documentation.espressif.com/esp32-c3_datasheet_en.pdf" } }
+
+[[reset_pins]]
+pins = [9]
+state = { state = "pull_up", source = { datasheet = "Espressif ESP32-C3 Series Datasheet v2.5, Table 2-1, At Reset IE/WPU, https://documentation.espressif.com/esp32-c3_datasheet_en.pdf" } }

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use sim_task::interaction::{
-    PowerInventory, PowerSource, Reach, ReferenceDiscrepancy, assess_power_inventory,
+    CriterionKind, PowerInventory, PowerSource, Reach, ReferenceDiscrepancy, assess_power_inventory,
 };
 use sim_world::Provenance;
 
@@ -38,6 +38,19 @@ pub(super) fn outcome(outcome: sim_task::Outcome) -> Outcome {
         sim_task::Outcome::Pass => Outcome::Pass,
         sim_task::Outcome::NotAnalyzed => Outcome::NotAnalyzed,
         sim_task::Outcome::Fail => Outcome::Fail,
+    }
+}
+
+fn interaction_outcome(kind: CriterionKind, result: sim_task::Outcome) -> (Group, Outcome) {
+    match (kind, result) {
+        // Модельный отсев ткани не подтверждает пригодность без стендового ряда.
+        (CriterionKind::TissueScreen, sim_task::Outcome::Pass) => {
+            (Group::Human, Outcome::NotAnalyzed)
+        }
+        (CriterionKind::Exposure | CriterionKind::TissueScreen, result) => {
+            (Group::Human, outcome(result))
+        }
+        (CriterionKind::Design, result) => (Group::Contact, outcome(result)),
     }
 }
 
@@ -167,10 +180,7 @@ pub(super) fn append(
         );
     }
     for finding in evidence.findings() {
-        let group = match finding.kind {
-            sim_task::interaction::CriterionKind::Exposure => Group::Human,
-            sim_task::interaction::CriterionKind::Design => Group::Contact,
-        };
+        let (group, result) = interaction_outcome(finding.kind, finding.outcome);
         let detail = format!(
             "Вариант «{}», участок «{}», пятно «{}», окно {:?} нс. {:?} против {:?} {}. {}. {}",
             finding.variant,
@@ -186,7 +196,7 @@ pub(super) fn append(
         if let Some(([lower, upper], [allow_low, allow_high])) =
             finding.measurement.zip(finding.limit)
         {
-            let (value, limit) = if finding.outcome == sim_task::Outcome::Fail {
+            let (value, limit) = if result == Outcome::Fail {
                 (lower, allow_high)
             } else {
                 (upper, allow_low)
@@ -196,7 +206,7 @@ pub(super) fn append(
                 "interaction_exposure",
                 None,
                 "Воздействие связанного прогона",
-                outcome(finding.outcome),
+                result,
                 value,
                 limit,
                 finding.unit,
@@ -208,7 +218,7 @@ pub(super) fn append(
                 "interaction_exposure",
                 None,
                 "Воздействие связанного прогона",
-                outcome(finding.outcome),
+                result,
                 detail,
             );
         }
@@ -251,6 +261,41 @@ mod tests {
                 })
                 .collect(),
             ..DeviceReport::default()
+        }
+    }
+
+    #[test]
+    fn модельный_отсев_ткани_сохраняет_нарушение_и_не_даёт_допуск() {
+        for (input, expected, build) in [
+            (
+                sim_task::Outcome::Pass,
+                Outcome::NotAnalyzed,
+                BuildVerdict::NotProven,
+            ),
+            (
+                sim_task::Outcome::NotAnalyzed,
+                Outcome::NotAnalyzed,
+                BuildVerdict::NotProven,
+            ),
+            (
+                sim_task::Outcome::Fail,
+                Outcome::Fail,
+                BuildVerdict::Rejected,
+            ),
+        ] {
+            let (group, result) = interaction_outcome(CriterionKind::TissueScreen, input);
+            assert_eq!(group, Group::Human);
+            assert_eq!(result, expected);
+            let mut report = green();
+            report.finding(
+                group,
+                "interaction_exposure",
+                None,
+                "Нагрузка",
+                result,
+                "Модельный отсев",
+            );
+            assert_eq!(report.verdict(), build);
         }
     }
 

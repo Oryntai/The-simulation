@@ -1,3 +1,7 @@
+use std::collections::BTreeMap;
+
+use sim_cli::view::CampaignBinding;
+
 use super::json::{self, Value};
 
 /// Формулировки окна сохраняют область применения результата штатного отчёта.
@@ -32,6 +36,7 @@ impl Verdict {
 pub struct Report {
     root: Value,
     pub raw: String,
+    bindings: BTreeMap<String, CampaignBinding>,
 }
 
 pub fn text<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
@@ -76,7 +81,12 @@ impl Report {
                 }
             }
         }
-        Ok(Self { root, raw })
+        let bindings = if root.get("assemblies").is_some() {
+            sim_cli::view::campaign_bindings(&raw)?
+        } else {
+            BTreeMap::new()
+        };
+        Ok(Self { root, raw, bindings })
     }
 
     pub fn outcome(&self) -> Option<&str> {
@@ -114,20 +124,12 @@ impl Report {
         text(&self.root, "repeat")
     }
 
-    pub(crate) fn playback(&self, key: &str) -> Option<(u64, u64, &str, Option<u64>)> {
-        let assembly = key.split_once('/')?.0;
-        let row = self.root.get("assemblies")?.get(assembly)?.get("runs")?.get(key)?;
-        if text(row, "status") != Some("completed") {
-            return None;
-        }
-        let detail = row.get("detail")?;
-        let mode = text(detail.get("summary")?.get("key")?, "mode")?;
-        Some((
-            row.get("input")?.u64()?,
-            detail.get("journal")?.u64()?,
-            mode,
-            detail.get("event_ns").and_then(Value::u64),
-        ))
+    pub fn playback(&self, key: &str) -> Option<&CampaignBinding> {
+        self.bindings.get(key)
+    }
+
+    pub fn view_unavailable(&self) -> Option<&str> {
+        text(&self.root, "view_unavailable")
     }
 
     pub fn worst(&self, assembly: Option<&str>) -> Option<&str> {
@@ -136,12 +138,13 @@ impl Report {
             None => text(&self.root, "worst_run_key").or_else(|| text(&self.root, "worst_variant")),
         }
     }
+    /// Метка воспроизведения выбранной худшей строки или задачи.
     pub fn worst_time(&self, assembly: Option<&str>) -> Option<u64> {
-        let record = match assembly {
-            Some(id) => self.root.get("assemblies")?.get(id)?,
-            None => &self.root,
-        };
-        record.get("worst_time_ns")?.u64()
+        if self.root.get("assemblies").is_some() {
+            return self.playback(self.worst(assembly)?)?.playback.event.as_ref()
+                .map(|event| event.at_ns);
+        }
+        self.root.get("worst_time_ns")?.u64()
     }
 
     pub(crate) fn worst_variant(&self) -> Option<&str> {

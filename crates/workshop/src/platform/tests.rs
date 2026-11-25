@@ -27,7 +27,11 @@ fn report_does_not_turn_incomplete_evidence_into_approval() {
         );
     }
     assert!(Report::parse(json.replacen("completed", "failed", 1)).is_err());
-    assert!(Report::parse(json.replace("\"executed\":1", "\"executed\":0")).is_err());
+    for field in ["open", "omitted"] {
+        assert!(Report::parse(json.replace(&format!("\"{field}\":0"), &format!("\"{field}\":1"))).is_err());
+    }
+    assert!(Report::parse(json.replacen("\"executed\":1", "\"executed\":0", 1)).is_err());
+    assert!(Report::parse(json.replace("\"executed\":1}}", "\"executed\":0}}")).is_err());
     assert!(Report::parse(json.replace("\"outcome\":\"pass\"", "\"outcome\":\"fail\"")).is_err());
     let task = |status, outcome| {
         Report::parse(format!(r#"{{"status":"{status}","outcome":"{outcome}"}}"#))
@@ -67,6 +71,7 @@ fn campaign_keeps_pipeline_verdicts_and_repeats_reported_row() {
         run(&Input::Campaign {
             manifest: manifest.clone(),
             repeat,
+            measurements: None,
         })
         .unwrap()
     };
@@ -76,7 +81,7 @@ fn campaign_keeps_pipeline_verdicts_and_repeats_reported_row() {
     for (id, expected, verdict) in [
         ("exceeded", "Rejected", Verdict::Rejected),
         ("estimated", "NotProven", Verdict::NotProven),
-        ("bounded", "PassedSimulation", Verdict::ProvenInSimulation),
+        ("bounded", "NotProven", Verdict::NotProven),
     ] {
         assert_eq!(
             report::text(assemblies.get(id).unwrap(), "verdict"),
@@ -84,10 +89,21 @@ fn campaign_keeps_pipeline_verdicts_and_repeats_reported_row() {
         );
         assert_eq!(output.report.verdict(Some(id)), verdict);
     }
-    assert_eq!(output.report.readiness("bounded"), Some("BenchOnly"));
+    assert_eq!(output.report.readiness("bounded"), Some("NeedsWork"));
+    let bounded = assemblies.get("bounded").unwrap().get("runs").unwrap().object().unwrap();
+    assert_eq!(bounded.len(), 2); // Две посадки проставки из acceptance/bounded.toml.
+    for row in bounded.values() {
+        assert!(row.get("findings").unwrap().array().unwrap().iter().any(|finding| {
+            report::text(finding.get("key").unwrap(), "class") == Some("static_strength")
+                && report::text(finding, "outcome") == Some("not_analyzed")
+                && report::text(finding, "reason").is_some_and(|reason| {
+                    reason.contains("расчётная прочность не закрывает опасность без стендового замера")
+                })
+        }));
+    }
     let key = output.report.worst(Some("exceeded")).unwrap();
     assert_eq!(output.report.worst(None), Some(key));
-    assert!(output.report.worst_time(Some("exceeded")).is_none());
+    assert_eq!(output.report.worst_time(Some("exceeded")), Some(4_000_000));
     let repeat = execute(Some(key.into()));
     assert_eq!(repeat.report.repeat_key(), Some(key));
     assert_eq!(repeat.report.worst(None), Some(key));
@@ -109,8 +125,15 @@ fn campaign_keeps_pipeline_verdicts_and_repeats_reported_row() {
             .unwrap()
     };
     assert_eq!(row(&raw), row(&json::parse(&repeat.report.raw).unwrap()));
-    assert_eq!(output.report.playback(key), repeat.report.playback(key));
-    let (_, stamp, _, event) = output.report.playback(key).unwrap();
+    let original = output.report.playback(key).unwrap();
+    let repeated = repeat.report.playback(key).unwrap();
+    assert_eq!(original.input, repeated.input);
+    assert_eq!(original.playback, repeated.playback);
+    assert_eq!(original.coverage.executed, original.coverage.required);
+    assert_eq!(repeated.coverage.executed, 1);
+    let playback = &output.report.playback(key).unwrap().playback;
+    let stamp = playback.journal;
+    let event = playback.event.as_ref().map(|event| event.at_ns);
     assert_eq!(log.fingerprint(), stamp);
     let id = log.header().truth.iter().position(|s| s.name == "qpos[0]").unwrap();
     // Предел оснастки из over-travel-install.toml. Момент сверяется по исходному ряду.
@@ -127,7 +150,7 @@ fn campaign_keeps_pipeline_verdicts_and_repeats_reported_row() {
     let rendered = scene.render(&camera, None, &[], 0.0).unwrap();
     assert!(rendered.ids.iter().any(Option::is_some));
     println!(
-        "Кампания · Rejected, NotProven, PassedSimulation/BenchOnly; повтор {key}, нарушение {} нс, журнал {stamp:016x}",
+        "Кампания без замеров · Rejected, NotProven, bounded NotProven/NeedsWork. Повтор {key}, нарушение {} нс, журнал {stamp:016x}",
         first.at.0
     );
 }
@@ -248,10 +271,43 @@ fn independent_projection(camera: &Camera, p: Point) -> [f64; 2] {
 }
 
 #[test]
+fn звенья_без_поверхностей_видны_по_кинематике() {
+    // Два точечных тела на расстоянии 1 м, жёстко связанные. Ось вращения Z.
+    let mjcf = r#"<mujoco><worldbody>
+      <body name="стержень">
+        <joint type="hinge" axis="0 0 1"/>
+        <inertial pos="0.5 0 0" mass="1" diaginertia="0.1 0.1 0.1"/>
+        <body name="блок" pos="1 0 0">
+          <inertial pos="0 0 0" mass="1" diaginertia="0.1 0.1 0.1"/>
+        </body>
+      </body>
+    </worldbody></mujoco>"#;
+    let mut scene = Scene::build("стержень".into(), 0, Vec::new(), mjcf).unwrap();
+    assert!(scene.uses_kinematics());
+    assert_eq!(scene.sim.ngeom(), 0);
+    scene.sim.qpos_mut()[0] = std::f64::consts::FRAC_PI_2;
+    scene.sim.forward();
+    let camera = scene.camera(View::OVERVIEW, [480, 360]).unwrap();
+    let frame = scene.render(&camera, None, &[], 0.0).unwrap();
+    assert!(frame.ids.iter().all(Option::is_none));
+    assert!(frame.rgb.contains(&render::KINEMATICS_COLOR));
+    // Поворот на 90° переносит родительский отрезок с +X на +Y.
+    let [a, b] = [Point::origin(), Point::new(0.0, 1.0, 0.0)]
+        .map(|point| independent_projection(&camera, point));
+    assert!(frame.projected_kinematics.iter().any(|[from, to]| {
+        [from[0] - a[0], from[1] - a[1], to[0] - b[0], to[1] - b[1]]
+            .iter().all(|v| v.abs() < 1e-10)
+    }));
+}
+
+#[test]
 fn audit_reacts_to_measured_values_and_ignores_text_that_looks_like_records() {
     let valid = "ProcessTick { evidence: \"ProcessMeasurement { привет\", measurements: [ProcessMeasurement { at: Time(3), signal: SignalSpec { name: \"опора\", unit: \"N\" }, result: Analyzed { value: 2.5, scope: \"модель\" } }] }";
     let audit = audit::Audit::read(&[(Time(3), valid.into())]).unwrap();
-    assert_eq!(audit.forces["опора"][0].value, 2.5);
+    assert_eq!(audit.measurements[&("опора".into(), "N".into())][0].value, 2.5);
+    let voltage = valid.replace("unit: \"N\"", "unit: \"V\"");
+    let audit = audit::Audit::read(&[(Time(3), voltage)]).unwrap();
+    assert_eq!(audit.measurements[&("опора".into(), "V".into())][0].value, 2.5);
     assert!(audit::Audit::read(&[(Time(2), valid.into())]).is_err());
     assert!(audit::Audit::read(&[(Time(3), valid.replace("2.5", "NaN"))]).is_err());
     let contact = r#"ProcessTick { at: Time(3), completed: Some(PhysicsFrame { interval: Interval { start: Time(1), end: Time(3) }, engine_step: ContactStep { contacts: [ContactWrench { geometries: ["блок", "стержень"], point_m: [0, 1, 0], frame: [], force_n: [0, 0, 2.5], torque_nm: [0, 0, 0] }] } }) }"#;
@@ -362,7 +418,7 @@ fn check_entry(
             log.entries().iter().filter(|e| e.kind == LogKind::Truth && e.id as usize == id && e.valid)
                 .map(|e| (e.at, e.value.abs())).collect::<Vec<_>>()
         } else {
-            audit::Audit::read(log.process_entries())?.forces.remove(name)
+            audit::Audit::read(log.process_entries())?.measurements.remove(&(name.into(), "N".into()))
                 .ok_or("не найден исходный ряд экстремума")?
                 .iter().filter(|p| p.valid).map(|p| (p.at, p.value.abs())).collect()
         };
@@ -578,6 +634,47 @@ fn check_entry(
         }
     }
     let replay = slot.replay.as_ref().unwrap();
+    let mut scalar_views = BTreeMap::new();
+    for name in replay.sensor_names() {
+        for series in replay.sensor_series(name).filter(|s| s.kind == SignalKind::Observation) {
+            if scalar_views.insert((&series.name, &series.unit), series).is_some() {
+                return Err(format!("канал «{}» повторяется в видах датчиков", series.name));
+            }
+        }
+    }
+    let scalar_sources: Vec<_> = log.header().observations.iter().map(|spec| {
+        if spec.name.ends_with("/image") && spec.unit == "RGB8"
+            || spec.name.ends_with("/depth") && spec.unit == "mm"
+        {
+            return Ok(None);
+        }
+        scalar_views.remove(&(&spec.name, &spec.unit)).map(Some)
+            .ok_or_else(|| format!("у канала «{}» нет вида с единицей {}", spec.name, spec.unit))
+    }).collect::<Result<_, _>>()?;
+    if !scalar_views.is_empty() {
+        return Err("видами показаны отсутствующие в SIMLOG каналы наблюдения".into());
+    }
+    let mut positions = vec![0; scalar_sources.len()];
+    for entry in log.entries().iter().filter(|e| e.kind == LogKind::Observation) {
+        let id = entry.id as usize;
+        if let Some(series) = scalar_sources[id] {
+            let point = series.points.get(positions[id]).ok_or_else(|| {
+                format!("во виде «{}» пропущен отсчёт", series.name)
+            })?;
+            if point.at != entry.at || point.valid != entry.valid
+                || point.value.to_bits() != entry.value.to_bits()
+            {
+                return Err(format!("вид «{}» расходится с отсчётом SIMLOG", series.name));
+            }
+            positions[id] += 1;
+        }
+    }
+    let scalar_channels = scalar_sources.iter().flatten().count();
+    if scalar_sources.iter().zip(positions).any(|(series, count)| {
+        series.is_some_and(|series| series.points.len() != count)
+    }) {
+        return Err("вид датчика содержит лишние отсчёты".into());
+    }
     let fit = match (fit, &entry.participant) {
         (Some(fit), Some(_)) => check_fit(slot.scene.as_mut().unwrap(), replay, &log, fit)?,
         (None, None) => String::new(),
@@ -585,7 +682,7 @@ fn check_entry(
     };
     Ok(format!(
         "{} нс, худшее {} нс: кадры {:?}, пиксели цели {:?}, векторы {arrows}, полосы {bars}, \
-         точный мир {exact_world}, датчики {:?}, крепления {}, вердикт {:?}, исход {:?}, журнал {:016x} побитово{fit}",
+         точный мир {exact_world}, {scalar_channels} скалярных каналов, кадры датчиков {:?}, крепления {}, вердикт {:?}, исход {:?}, журнал {:016x} побитово{fit}",
         replay.end.0,
         cursor.0,
         checked_times,

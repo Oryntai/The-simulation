@@ -1,0 +1,7 @@
+version = 1
+source = "Парный опыт прижима, меняется только закон площади оснастки."
+base = "setup.toml"
+
+[[cases]]
+id = "tissue-load-pair"
+overlay = "wide.toml"

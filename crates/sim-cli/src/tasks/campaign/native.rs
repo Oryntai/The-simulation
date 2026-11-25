@@ -1,5 +1,6 @@
 //! Разрешение установки для общего сценария и отчёт оценщика.
 
+use crate::view::PlaybackFormat;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -7,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sim_runtime::Runtime;
 use sim_signal::Time;
 use sim_task::campaign::{
-    Binding, Campaign, Disposition, FaultSupport, Grid, PlanRow, ReferenceKind, RequiredPath,
+    Binding, Campaign, Disposition, FaultSupport, Grid, PlanRow, ReferenceKind, RequiredPath, RunKey,
     ResolvedInputs, ResolvedReference, SampledInputs, Target, Window, WorldInputs,
 };
 use sim_task::metrics::{
@@ -16,9 +17,9 @@ use sim_task::metrics::{
 };
 use sim_task::sampling::{AppliedValue, ModelSettings, Parameter, SampleKey};
 use sim_task::verdict::{
-    CampaignEvidence, Check, Component, ComponentKind, Coverage, Domain, Installed, REGISTRY,
-    Readiness, ResolvedInventory, RunSelector, SimulationVerdict, Verification, assess_campaign,
-    derive_requirements,
+    CampaignEvidence, Check, Component, ComponentKind, ContactDuration, Coverage, Domain, Installed, REGISTRY,
+    Readiness, ResolvedInventory, RunSelector, SectionLoad, SimulationVerdict, Verification, assess_campaign,
+    derive_requirements_with_electrical,
 };
 use sim_task::{Case, Fault, Fingerprint, Limit, Outcome, Signal, Source};
 use sim_world::{CompiledWorld, SectionAxis};
@@ -34,11 +35,19 @@ struct Spec {
     version: u32,
     paths: Vec<PathSpec>,
     snapshot_ns: Option<u64>,
+    electrical: Option<ElectricalExperiment>,
     measurement_build: Option<sim_reality::BuildId>,
     #[serde(default)]
     checks: Vec<CheckSpec>,
     #[serde(default)]
     inventory: InventorySpec,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ElectricalExperiment {
+    profile: std::path::PathBuf,
+    horizon_ns: u64,
 }
 
 #[derive(Default, Deserialize)]
@@ -140,7 +149,11 @@ struct CheckSpec {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum CheckKind {
-    Measurement { limit: Limit },
+    Measurement {
+        limit: Limit,
+        contact_duration: Option<ContactDuration>,
+        energy_path: Option<sim_task::interaction::EnergyPath>,
+    },
     Truth {
         limit: Limit,
     },
@@ -148,6 +161,7 @@ enum CheckKind {
         geometry: usize,
         axis: Axis,
         moment_nm: [f64; 2],
+        live_load: Option<SectionLoad>,
         allowable_pa: [f64; 2],
         load: Source,
         limit: Source,
@@ -171,17 +185,24 @@ impl CheckSpec {
             .class;
         let verification = match self.verification {
             CheckKind::Truth { limit } => Verification::Truth(limit),
-            CheckKind::Measurement { limit } => Verification::Measurement(limit),
+            CheckKind::Measurement { limit, contact_duration, energy_path } => match (contact_duration, energy_path) {
+                (None, None) => Verification::Measurement(limit),
+                (Some(duration), None) => Verification::TissueMeasurement { limit, duration },
+                (None, Some(path)) => Verification::EnergyMeasurement { limit, path },
+                (Some(_), Some(_)) => return Err("укажите область длительности или путь энергии".into()),
+            },
             CheckKind::Section {
                 geometry,
                 axis,
                 moment_nm,
+                live_load,
                 allowable_pa,
                 load,
                 limit,
             } => Verification::Section {
                 geometry,
                 moment_nm,
+                live_load,
                 allowable_pa,
                 load,
                 limit,
@@ -225,6 +246,13 @@ struct Saved {
     run_key: String,
     summary: RunSummary,
     report: RowReport,
+}
+
+enum RowExecution {
+    Report(RowReport),
+    Saved(Saved),
+    Linked(RowReport, Option<Vec<u8>>),
+    Live(CampaignEvidence, Option<Vec<u8>>),
 }
 
 pub(super) fn run(
@@ -358,11 +386,38 @@ pub(super) fn run(
             initial_velocity: true,
         })
         .map_err(|e| e.to_string())?;
-    let build = Fingerprint::of(&encode((
-        plan.fingerprint(),
-        files.fingerprints(),
-        header.world_hash,
-    ))?);
+    let electrical_spec = spec.electrical.as_ref().map(|spec| {
+        let base = installation.parent().unwrap_or_else(|| Path::new("."));
+        (base.join(&spec.profile), Time(spec.horizon_ns))
+    });
+    let mut electrical = crate::electrical::report::Installation::load(
+        campaign.world_path(),
+        campaign.catalog_path(),
+        electrical_spec.as_ref().map(|(profile, _)| profile.as_path()),
+    )?;
+    let electrical_files = (!electrical.is_empty()).then(|| electrical.fingerprints());
+    let build = match &electrical_files {
+        Some(electrical) => Fingerprint::of(&encode((
+            plan.fingerprint(), files.fingerprints(), header.world_hash, electrical,
+        ))?),
+        None => Fingerprint::of(&encode((plan.fingerprint(), files.fingerprints(), header.world_hash))?),
+    };
+    let electrical_result = if let Some((profile, end)) = electrical_spec {
+        if end == Time::ZERO {
+            return Err("нулевой горизонт электрического опыта кампании".into());
+        }
+        let mut run = crate::electrical::LiveExperiment::load(
+            campaign.world_path(), &profile, campaign.catalog_path(), None, end,
+            crate::electrical::LivePath::Full,
+        )?;
+        electrical.bind_live(&run.runtime, end)?;
+        run.run_until(end)?;
+        Some(electrical.evaluate(build, Some(&run.runtime), Some(end))?)
+    } else if electrical_files.is_some() {
+        Some(electrical.evaluate(build, None, None)?)
+    } else {
+        None
+    };
     let checks = spec.checks.into_iter().map(CheckSpec::resolve).collect::<Result<Vec<_>, _>>()?;
     let bench: Vec<_> = bench.iter().filter(|record| record.experiment == prefix).collect();
     for record in &bench {
@@ -371,7 +426,7 @@ pub(super) fn run(
         }
         if plan.row(&record.run).is_none_or(|r| !matches!(r.disposition, Disposition::Ready))
             || !checks.iter().any(|check| {
-                matches!(&check.verification, Verification::Measurement(Limit::Range { signal, .. } | Limit::Forbidden { signal, .. }) if signal == &record.signal)
+                check.verification.accepts_measurement(&record.signal)
                     && check.selector.station.as_ref().is_none_or(|s| s == &record.run.station)
                     && check.selector.mode.as_ref().is_none_or(|m| m == &record.run.mode)
                     && check.selector.path.as_ref().is_none_or(|p| p == &record.run.path)
@@ -381,7 +436,10 @@ pub(super) fn run(
         }
     }
     let inventory = spec.inventory.resolve(build, checks);
-    let requirements = derive_requirements(&inventory, &plan).map_err(|e| e.to_string())?;
+    let empty = BTreeMap::new();
+    let requirements = derive_requirements_with_electrical(
+        &inventory, &plan, electrical_result.as_ref().map_or(&empty, |result| &result.evidence),
+    ).map_err(|e| e.to_string())?;
     let mut evidence = CampaignEvidence::new(&requirements);
     let mut rows = BTreeMap::new();
     let mut cli_keys = BTreeMap::new();
@@ -392,61 +450,55 @@ pub(super) fn run(
     let mut linked_definitions = BTreeMap::new();
     let mut resumed = 0;
     let mut view = None;
-    for row in plan.rows() {
+    drop(probe);
+    let workers = options
+        .workers
+        .as_deref()
+        .ok_or("не задан лимит исполнителей кампании")?;
+    let completed = workers.map(plan.rows().iter().collect(), None, |row| {
         let key = &row.key;
         let sampled = plan.materialize(key).map_err(|e| e.to_string())?;
-        if sampled
+        let is_linked = sampled
             .experiment
             .as_ref()
-            .is_some_and(|experiment| experiment.kind.is_some())
-        {
-            linked_rows.insert(key.clone());
-            if let Some(mode) = &sampled.mode {
-                if !mode.criteria.is_empty() || !mode.metrics.is_empty() {
-                    linked_criteria.insert(key.clone());
-                }
-                linked_definitions
-                    .entry(sim_task::campaign::RunKey {
-                        sample: SampleKey::Nominal,
-                        ..key.clone()
+            .is_some_and(|experiment| experiment.kind.is_some());
+        let linked_mode = sampled.mode.as_ref().filter(|_| is_linked);
+        let linked = is_linked.then(|| {
+            let has_criteria = linked_mode
+                .is_some_and(|mode| !mode.criteria.is_empty() || !mode.metrics.is_empty());
+            let metrics = linked_mode.map(|mode| {
+                mode.metrics
+                    .iter()
+                    .map(|metric| {
+                        (
+                            metric.id.clone(),
+                            LinkedMetric {
+                                unit: metric.unit().into(),
+                                worse: metric.worse,
+                                absolute_error: matches!(
+                                    metric.operation,
+                                    Operation::Absolute { .. }
+                                ),
+                            },
+                        )
                     })
-                    .or_insert_with(|| {
-                        mode.metrics
-                            .iter()
-                            .map(|metric| {
-                                (
-                                    metric.id.clone(),
-                                    LinkedMetric {
-                                        unit: metric.unit().into(),
-                                        worse: metric.worse,
-                                        absolute_error: matches!(
-                                            metric.operation,
-                                            Operation::Absolute { .. }
-                                        ),
-                                    },
-                                )
-                            })
-                            .collect::<BTreeMap<_, _>>()
-                    });
-            }
-        }
+                    .collect::<BTreeMap<_, _>>()
+            });
+            (has_criteria, metrics)
+        });
         let input = Fingerprint::of(&encode((build, sampled.fingerprint))?);
         // Адрес повтора связывает логический ключ с фактическими входами.
         // Иначе старый ключ с новым зерном молча запускает другой опыт.
         let run_key = format!("{prefix}/{:016x}", sim_signal::fnv1a(encode((key, input))?));
-        cli_keys.insert(key.clone(), run_key.clone());
-        if rows.contains_key(&run_key) || live.contains_key(key) {
-            return Err("коллизия ключа строки".into());
-        }
-        let wants_linked = linked_rows.contains(key)
+        let wants_linked = is_linked
             && options.repeat.as_deref().is_some_and(|wanted| {
                 wanted
                     .strip_prefix(&run_key)
                     .is_some_and(|suffix| suffix.starts_with('@'))
             });
+        let finish = |result| Ok((key, run_key.clone(), input, linked, result));
         if !selected(options, &run_key) && !wants_linked {
-            rows.insert(run_key, RowReport::omitted(input));
-            continue;
+            return finish(RowExecution::Report(RowReport::omitted(input)));
         }
         let measurements: Vec<_> = bench.iter().filter(|record| &record.run == key).collect();
         let checkpoint = checkpoint.filter(|_| measurements.is_empty());
@@ -467,56 +519,35 @@ pub(super) fn run(
                         "контрольная точка не соответствует строке «{run_key}»"
                     ));
                 }
-                summaries.push(saved.summary);
-                rows.insert(run_key, saved.report);
-                resumed += 1;
-                continue;
+                return finish(RowExecution::Saved(saved));
             }
         }
         if !matches!(&row.disposition, Disposition::Ready) {
-            rows.insert(
-                run_key,
-                RowReport {
-                    input,
-                    status: RunStatus::Open,
-                    detail: value(&row.disposition)?,
-                    ..RowReport::omitted(input)
-                },
-            );
-            continue;
+            return finish(RowExecution::Report(RowReport {
+                input,
+                status: RunStatus::Open,
+                detail: value(&row.disposition)?,
+                ..RowReport::omitted(input)
+            }));
         }
-        if sampled
-            .experiment
-            .as_ref()
-            .is_some_and(|e| e.kind.is_some())
-        {
+        if is_linked {
             if !measurements.is_empty() {
                 return Err("для заверенного ряда нужна живая строка штатного оценщика".into());
             }
-            let mut result =
-                linked_row(&campaign, &sampled, row, input, &run_key, spec.snapshot_ns)?;
-            let reason =
-                "обязательства установки требуют отдельной привязки критериев ссылочного профиля";
-            evidence
-                .record_unavailable(&requirements, key, reason.into())
-                .map_err(|e| e.to_string())?;
-            result.findings.push(value(sim_task::verdict::Finding::open(
-                &super::requirement(key, sim_task::verdict::HazardClass::Inventory, &key.station),
-                reason,
-            ))?);
-            let run_key = if result.status == RunStatus::Completed {
-                format!(
-                    "{run_key}@{:016x}",
-                    sim_signal::fnv1a(encode(result.input)?)
-                )
-            } else {
-                run_key
-            };
-            cli_keys.insert(key.clone(), run_key.clone());
-            rows.insert(run_key, result);
-            continue;
+            let (result, archive) = linked_row(
+                &campaign,
+                &sampled,
+                row,
+                input,
+                &run_key,
+                spec.snapshot_ns,
+                PlaybackFormat::for_options(options)
+                    .filter(|_| selected(options, &run_key) || wants_linked),
+                options,
+            )?;
+            return finish(RowExecution::Linked(result, archive));
         }
-        let record_view = options.view.is_some() && selected(options, &run_key);
+        let output = PlaybackFormat::for_options(options).filter(|_| selected(options, &run_key));
         let install = |runtime: &mut Runtime, sampled: &SampledInputs| {
             let compiled = sampled.world.compile().map_err(|e| e.to_string())?;
             setup(runtime, &compiled, models.as_ref())?;
@@ -528,7 +559,7 @@ pub(super) fn run(
                 &settings,
                 runtime,
             )?;
-            if record_view {
+            if output == Some(PlaybackFormat::View) {
                 runtime.record_view()?;
             }
             Ok(Installed {
@@ -543,29 +574,108 @@ pub(super) fn run(
                 operations: Vec::new(),
             })
         };
-        let result = evidence.execute_scenario_observed(
-            &requirements, &plan, key, spec.snapshot_ns.map(Time), install,
+        let mut row_evidence = CampaignEvidence::new(&requirements);
+        let mut archive = None;
+        let result = row_evidence.execute_scenario_observed(
+            &requirements,
+            &plan,
+            key,
+            spec.snapshot_ns.map(Time),
+            install,
             |runtime| {
-                if record_view {
-                    let mut bytes = Vec::new();
-                    crate::view::write_run_view(runtime, Some(&key.mode), None, None, &mut bytes)?;
-                    view = Some(bytes);
+                if let Some(format) = output {
+                    archive = Some(format.collect(runtime, &key.mode, None)?);
                 }
                 Ok(())
             },
         );
         result.map_err(|e| format!("{run_key}: {e}"))?;
         for record in measurements {
-            let (summary, _, _, _) = evidence.scenario_report(key).ok_or("нет живого ряда оценки")?;
+            let (summary, _, _, _) = row_evidence
+                .scenario_report(key)
+                .ok_or("нет живого ряда оценки")?;
             if !summary.completed || summary.observed_through_ns != record.horizon_ns {
-                return Err(format!("«{run_key}»: горизонт замера и исполненного прогона расходятся"));
+                return Err(format!(
+                    "«{run_key}»: горизонт замера и исполненного прогона расходятся"
+                ));
             }
-            evidence.record_measurement(
-                &requirements, key, record.build, record.signal.clone(),
-                record.source.clone(), record.uncertainty, &record.samples,
-            ).map_err(|e| format!("«{run_key}»: {e}"))?;
+            row_evidence
+                .record_measurement(
+                    &requirements,
+                    key,
+                    record.build,
+                    record.signal.clone(),
+                    record.source.clone(),
+                    record.uncertainty,
+                    &record.samples,
+                )
+                .map_err(|e| format!("«{run_key}»: {e}"))?;
         }
-        live.insert(key.clone(), (run_key, input));
+        finish(RowExecution::Live(row_evidence, archive))
+    })?;
+    let mut addresses = BTreeSet::new();
+    for (key, mut run_key, input, linked, result) in completed {
+        if !addresses.insert(run_key.clone()) {
+            return Err("коллизия ключа строки".into());
+        }
+        if let Some((has_criteria, metrics)) = linked {
+            linked_rows.insert(key.clone());
+            if has_criteria {
+                linked_criteria.insert(key.clone());
+            }
+            if let Some(metrics) = metrics {
+                linked_definitions
+                    .entry(RunKey {
+                        sample: SampleKey::Nominal,
+                        ..key.clone()
+                    })
+                    .or_insert(metrics);
+            }
+        }
+        let report = match result {
+            RowExecution::Report(report) => Some(report),
+            RowExecution::Saved(saved) => {
+                summaries.push(saved.summary);
+                resumed += 1;
+                Some(saved.report)
+            }
+            RowExecution::Linked(mut report, archive) => {
+                if let Some(archive) = archive {
+                    view = Some(archive);
+                }
+                let reason = "обязательства установки требуют отдельной привязки критериев ссылочного профиля";
+                evidence
+                    .record_unavailable(&requirements, key, reason.into())
+                    .map_err(|e| e.to_string())?;
+                report.findings.push(value(sim_task::verdict::Finding::open(
+                    &super::requirement(
+                        key,
+                        sim_task::verdict::HazardClass::Inventory,
+                        &key.station,
+                    ),
+                    reason,
+                ))?);
+                if report.status == RunStatus::Completed {
+                    run_key = format!(
+                        "{run_key}@{:016x}",
+                        sim_signal::fnv1a(encode(report.input)?)
+                    );
+                }
+                Some(report)
+            }
+            RowExecution::Live(row_evidence, archive) => {
+                if let Some(archive) = archive {
+                    view = Some(archive);
+                }
+                evidence.merge(row_evidence).map_err(|e| e.to_string())?;
+                live.insert(key.clone(), (run_key.clone(), input));
+                None
+            }
+        };
+        cli_keys.insert(key.clone(), run_key.clone());
+        if let Some(report) = report {
+            rows.insert(run_key, report);
+        }
     }
     let verdict = assess_campaign(&requirements, &evidence).map_err(|e| e.to_string())?;
     let global = verdict
@@ -578,6 +688,9 @@ pub(super) fn run(
             row.status == RunStatus::Open
                 || (linked_rows.contains(key) && row.status != RunStatus::Omitted)
         }) {
+            if let Some(electrical) = &electrical_result {
+                row.outcome = row.outcome.max(electrical.report.outcome());
+            }
             row.findings.extend(
                 verdict
                     .findings
@@ -606,10 +719,21 @@ pub(super) fn run(
         } else {
             Outcome::NotAnalyzed
         };
-        let event_ns = findings.iter()
-            .filter(|f| f.outcome == Outcome::Fail && f.journal == Some(Fingerprint::from_fnv1a(journal)))
-            .filter_map(|f| f.event_ns)
-            .min();
+        let playback = summary.installation.as_ref().filter(|_| summary.completed)
+            .and_then(|installed| {
+                super::playback::select(
+                    &key, installed.run_seed,
+                    [super::playback::Grid {
+                        variant: None,
+                        hz: installed.physics_hz,
+                        journal,
+                        end_ns: summary.observed_through_ns,
+                    }],
+                    &findings,
+                )
+            });
+        let event_ns = playback.as_ref().and_then(|p| p.event.as_ref())
+            .filter(|event| event.violation).map(|event| event.at_ns);
         let row = RowReport {
             input,
             outcome,
@@ -621,6 +745,7 @@ pub(super) fn run(
             },
             executed: usize::from(summary.completed),
             findings: findings.into_iter().map(value).collect::<Result<_, _>>()?,
+            playback,
             detail: value(ScenarioReport {
                 summary,
                 journal,
@@ -654,6 +779,19 @@ pub(super) fn run(
         }
         summaries.push(summary.clone());
     }
+    if let Some(electrical) = &electrical_result
+        && let Some(row) = rows.values_mut().find(|row| row.status != RunStatus::Omitted)
+    {
+        let detail = std::mem::take(&mut row.detail);
+        row.detail = match detail {
+            serde_json::Value::Object(mut fields) => {
+                fields.insert("electrical".into(), value(&electrical.report)?);
+                serde_json::Value::Object(fields)
+            }
+            other => serde_json::json!({ "scenario": other, "electrical": value(&electrical.report)? }),
+        };
+    }
+    electrical.verify()?;
     files.verify()?;
     let mut statistics = summarize(&plan, &summaries).map_err(|e| e.to_string())?;
     if !linked_rows.is_empty() {
@@ -744,7 +882,9 @@ fn linked_row(
     input: Fingerprint,
     run_key: &str,
     snapshot_ns: Option<u64>,
-) -> Result<RowReport, String> {
+    format: Option<PlaybackFormat>,
+    campaign_options: &Options,
+) -> Result<(RowReport, Option<Vec<u8>>), String> {
     let experiment = sampled.experiment.as_ref().ok_or("нет ссылочного опыта")?;
     let kind = experiment.kind.ok_or("нет типа ссылочного опыта")?;
     let task = experiment
@@ -752,12 +892,12 @@ fn linked_row(
         .as_deref()
         .ok_or("нет файла ссылочного задания")?;
     let mode = sampled.mode.as_ref().ok_or("нет режима ссылочного опыта")?;
-    let open = |reason: &str| -> Result<RowReport, String> {
-        Ok(RowReport {
+    let open = |reason: &str| -> Result<(RowReport, Option<Vec<u8>>), String> {
+        Ok((RowReport {
             status: RunStatus::Open,
             detail: value(reason)?,
             ..RowReport::omitted(input)
-        })
+        }, None))
     };
     if !mode.initial.is_empty() || !mode.poses.is_empty() || !mode.steps.is_empty() {
         return open(
@@ -802,6 +942,7 @@ fn linked_row(
             fault: row.key.faults.first().cloned(),
         }),
         linked_grid_hz: Some(row.grid.hz),
+        workers: campaign_options.workers.clone(),
         seed: Some(sampled.sample.seeds.run),
         catalog: campaign
             .catalog_path()
@@ -809,7 +950,7 @@ fn linked_row(
             .then(|| campaign.catalog_path().to_owned()),
         ..Options::default()
     };
-    let (mut result, _) = linked(
+    let (mut result, _, view) = linked(
         input,
         campaign.world_path(),
         task,
@@ -822,9 +963,10 @@ fn linked_row(
         }),
         Some("ссылочный профиль подтверждает результат своего испытания"),
         None,
+        format,
     )?;
     if result.status == RunStatus::Open {
-        return Ok(result);
+        return Ok((result, None));
     }
     let mut children: Vec<Child> =
         serde_json::from_value(result.detail["children"].clone()).map_err(|e| e.to_string())?;
@@ -847,11 +989,11 @@ fn linked_row(
         || stamp.reached_ns != Some(mode.horizon_ns)
         || !schedule_matches
     {
-        let mut unconfirmed = open(
+        let (mut unconfirmed, _) = open(
             "нет подтверждённого горизонта, сетки, зерна или применения отказа ссылочной строки",
         )?;
         unconfirmed.detail = value((unconfirmed.detail, result.detail))?;
-        return Ok(unconfirmed);
+        return Ok((unconfirmed, None));
     }
     let old_key = value(&child.key)?;
     child.key = row.key.clone();
@@ -861,8 +1003,11 @@ fn linked_row(
             finding["key"]["run"] = actual_key.clone();
         }
     }
+    if let Some(playback) = &mut result.playback {
+        playback.child = child.key.clone();
+    }
     result.detail["children"] = value(children)?;
-    Ok(result)
+    Ok((result, view))
 }
 
 #[derive(Serialize)]

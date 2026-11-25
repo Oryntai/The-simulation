@@ -72,6 +72,111 @@ fn transmitted(events: &[OutputEvent]) -> Vec<(u64, u8)> {
         .collect()
 }
 
+#[test]
+fn просадка_снимает_выходы_и_перезапускает_тот_же_образ() {
+    use sim_boards::GpioMode;
+
+    let mut board = new_board(BoardId::Virtual);
+    board.load(VMCU).unwrap();
+    // Образ начинает с UART, затем GPIO3 копирует вход GPIO0 и запускается PWM0.
+    let mut config = vec![b'S', 0, 0, 0];
+    config.extend(1000_u32.to_le_bytes());
+    board.write_config(&config).unwrap();
+    input(&mut *board, BoardInput::Gpio { pin: 0, high: true }).unwrap();
+    input(
+        &mut *board,
+        BoardInput::Adc {
+            channel: 0,
+            volts: 1.65,
+        },
+    )
+    .unwrap();
+    let first = run_to(&mut *board, 1600);
+    assert_eq!(board.gpio_mode(3), Some(GpioMode::Output(true)));
+    assert!(board.pwm(0).is_some());
+    assert_eq!(
+        transmitted(&first).iter().map(|x| x.1).collect::<Vec<_>>(),
+        b"S"
+    );
+
+    input(&mut *board, BoardInput::Brownout { asserted: true }).unwrap();
+    assert_eq!(board.reset_cause(), Some(ResetCause::Brownout));
+    assert_eq!(board.gpio_mode(3), None);
+    assert_eq!(board.pwm(0), None);
+    assert!(matches!(
+        input(&mut *board, BoardInput::Power { on: true }),
+        Err(BoardFault::Unpowered)
+    ));
+    let mut held = board.clone();
+    let during = run_to(&mut *board, 3200);
+    assert_eq!(during, run_to(&mut *held, 3200));
+    assert!(transmitted(&during).is_empty());
+    assert!(during.iter().any(
+        |event| event.cycle == 1600 && event.output == BoardOutput::Reset(ResetCause::Brownout)
+    ));
+
+    input(&mut *board, BoardInput::Brownout { asserted: false }).unwrap();
+    assert_eq!(board.gpio_mode(3), Some(GpioMode::Input));
+    assert_eq!(board.pwm(0), None);
+    let restarted = transmitted(&run_to(&mut *board, 4800));
+    assert_eq!(
+        restarted,
+        transmitted(&first)
+            .into_iter()
+            .map(|(cycle, byte)| (cycle + 3200, byte))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(board.gpio_mode(3), Some(GpioMode::Output(true)));
+    assert!(board.pwm(0).is_some());
+    assert!(run_to(&mut *held, 4800).is_empty());
+    assert!(!held.powered());
+}
+
+#[test]
+fn просадка_аппаратной_платы_отменяет_запрос_и_загружает_образ_снова() {
+    let (mut board, request_at, request) = start_bus(false);
+    let at = board.cycles();
+    input(&mut *board, BoardInput::Brownout { asserted: true }).unwrap();
+    let events = board.take_events();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.cycle == at
+                && event.output == BoardOutput::Reset(ResetCause::Brownout))
+    );
+    assert!(events.iter().any(|event| {
+        matches!(event.output, BoardOutput::I2cDone { id, status: TransferStatus::Cancelled, .. } if id == request.id)
+    }));
+    assert!(matches!(
+        input(&mut *board, i2c_response(&request, b"x")),
+        Err(BoardFault::Unpowered)
+    ));
+    // Промежуток без питания длиной как до первого запроса образа.
+    assert!(run_to(&mut *board, at * 2).is_empty());
+    input(&mut *board, BoardInput::Brownout { asserted: false }).unwrap();
+    let result = board.run_cycles(at * 2).unwrap();
+    assert!(result.bus_request_pending);
+    assert_eq!(result.cycle, at * 3);
+    let events = board.take_events();
+    assert!(
+        events.iter().any(|event| event.cycle == at * 2
+            && event.output == BoardOutput::Reset(ResetCause::PowerOn))
+    );
+    let (second_at, next) = events
+        .iter()
+        .find_map(|event| match &event.output {
+            BoardOutput::I2c(value) => Some((event.cycle, value)),
+            _ => None,
+        })
+        .unwrap();
+    assert_ne!(next.id, request.id);
+    assert_eq!(second_at, at * 2 + request_at);
+    assert_eq!(
+        (&next.write, next.read_len, next.address),
+        (&request.write, request.read_len, request.address)
+    );
+}
+
 fn spi_request(board: &mut dyn BoardSim) -> (Vec<OutputEvent>, u64, SpiRequest) {
     let result = board.run_cycles(100_000).unwrap();
     assert!(result.bus_request_pending);

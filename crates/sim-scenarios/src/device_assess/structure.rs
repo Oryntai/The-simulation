@@ -101,7 +101,7 @@ fn part_code(k: mat::FindingKind) -> &'static str {
     }
 }
 
-fn check_part(d: &Device, l: &LinkSpec, load: &LinkLoad, r: &mut DeviceReport) {
+fn check_part(d: &Device, l: &LinkSpec, load: &LinkLoad, rotational_gap: bool, r: &mut DeviceReport) {
     let i = Some(load.link);
     let Some(material) = crate::device_catalog::material(&l.material) else {
         r.finding(
@@ -251,17 +251,33 @@ fn check_part(d: &Device, l: &LinkSpec, load: &LinkLoad, r: &mut DeviceReport) {
     };
     let findings = mat::assess_part(&p, &case);
     let total = mat::overall(&findings);
+    if rotational_gap {
+        r.finding(
+            Group::Parts,
+            "rotational_inertia",
+            i,
+            &l.name,
+            Outcome::NotAnalyzed,
+            "В старом расчёте прочности нет инерционных сил при вращении звеньев и реакций на них",
+        );
+    }
     for f in findings {
+        use mat::FindingKind::{Buckling, Creep, Fasteners, Fatigue, Static};
+        let hole_gap = l.hole_mm > 0.0 && (hole_orientation.is_none() || s.hole_centered.is_none())
+            && f.kind == Fatigue;
+        let inertia_gap = rotational_gap && matches!(f.kind, Fatigue | Buckling | Creep | Fasteners);
+        let needs_bench = f.kind == Static && f.outcome != mat::Outcome::Fail;
+        let detail = if needs_bench {
+            format!("{}. {}", f.detail, sim_world::STRENGTH_REQUIRES_BENCH)
+        } else {
+            f.detail
+        };
         r.numeric(
             Group::Parts,
             part_code(f.kind),
             i,
             format!("{} — {}", l.name, f.kind.title()),
-            if l.hole_mm > 0.0
-                && (hole_orientation.is_none() || s.hole_centered.is_none())
-                && f.outcome == mat::Outcome::Pass
-                && matches!(f.kind, mat::FindingKind::Static | mat::FindingKind::Fatigue)
-            {
+            if needs_bench || (f.outcome == mat::Outcome::Pass && (hole_gap || inertia_gap)) {
                 Outcome::NotAnalyzed
             } else {
                 f.outcome.into()
@@ -269,7 +285,7 @@ fn check_part(d: &Device, l: &LinkSpec, load: &LinkLoad, r: &mut DeviceReport) {
             f.value,
             f.limit,
             f.unit,
-            f.detail,
+            detail,
         );
     }
     if total == mat::Outcome::Fail
@@ -314,11 +330,11 @@ fn check_part(d: &Device, l: &LinkSpec, load: &LinkLoad, r: &mut DeviceReport) {
         "bending_stress",
         i,
         format!("{} — номинальное напряжение изгиба", l.name),
-        Outcome::Pass,
+        Outcome::NotAnalyzed,
         nominal / mat::catalog::MPA,
         nominal / mat::catalog::MPA,
         "МПа",
-        "M/W по слабой оси, проверка запаса приведена в деталях",
+        format!("M/W по слабой оси. {}", sim_world::STRENGTH_REQUIRES_BENCH),
     );
     let e = if m.is_printed() {
         p.print.and_then(|pp| {
@@ -372,8 +388,21 @@ pub(super) fn evaluate(d: &Device, a: &Analysis, r: &mut DeviceReport) {
             "Нужна ведомость масс батареи, платы, корпуса и креплений с размещением на звеньях",
         );
     }
+    let mut rotational_gap = vec![false; d.links.len()];
+    for joint in &a.joints {
+        // Шарнир перемещает своё поддерево. Реакции от него передаются
+        // по цепочке к неподвижному основанию, включая закреплённые звенья.
+        for link in d.subtree(joint.link) {
+            rotational_gap[link] = true;
+        }
+        let mut parent = d.links[joint.link].parent;
+        while let Some(link) = parent {
+            rotational_gap[link] = true;
+            parent = d.links[link].parent;
+        }
+    }
     for load in &a.links {
-        check_part(d, &d.links[load.link], load, r);
+        check_part(d, &d.links[load.link], load, rotational_gap[load.link], r);
     }
     for j in &a.joints {
         let link = &d.links[j.link];

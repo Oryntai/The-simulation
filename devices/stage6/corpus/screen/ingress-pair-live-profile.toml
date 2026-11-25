@@ -1,0 +1,4 @@
+version = 1
+source = "Проверка связности оболочки при стационарном уровне воды."
+[cases]
+ingress-pair = { file = "enclosure.toml", overlay = "enclosure-pair.toml" }

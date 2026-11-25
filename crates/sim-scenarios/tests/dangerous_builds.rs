@@ -26,6 +26,10 @@ fn reference_build_has_no_false_alarms_but_is_not_proven() {
         println!("{:?} {}: {:.2} / {:.2} {} ({})", f.outcome, f.hazard, f.value, f.limit, f.unit, f.detail);
     }
     assert!(failed(&r).is_empty(), "ложная тревога: {:?}", failed(&r));
+    let strength = r.iter().find(|f| f.hazard == H_STRUCT).unwrap();
+    assert_eq!(strength.outcome, Outcome::NotAnalyzed);
+    assert!(strength.value >= strength.limit);
+    assert!(strength.detail.contains(sim_world::STRENGTH_REQUIRES_BENCH));
     for h in [H_FUNCTION, H_IMPACT, H_CLAMP, H_JAM] {
         let f = r.iter().find(|f| f.hazard == h).unwrap();
         assert_eq!(f.outcome, Outcome::Pass, "{h} должна быть реально проверена: {}", f.detail);

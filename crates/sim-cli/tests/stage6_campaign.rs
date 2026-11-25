@@ -21,6 +21,19 @@ struct Acceptance {
     named_failure: Vec<NamedFailure>,
     independent: Independent,
     restored_fault: Vec<RestoredFault>,
+    matrix_physics: Vec<MatrixPhysics>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatrixPhysics {
+    run: String,
+    mode: String,
+    rows: usize,
+    horizon_ns: u64,
+    criterion: String,
+    nominal_above: f64,
+    max_packet_lag_ns: u64,
 }
 
 #[derive(Deserialize)]
@@ -130,7 +143,12 @@ struct Gap {
 }
 
 fn data() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../devices")
+    // При параллельной правке входов приёмка может использовать фиксированную
+    // копию дерева данных с теми же относительными ссылками.
+    std::env::var_os("SIM_STAGE6_TEST_DATA").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../devices"),
+        PathBuf::from,
+    )
 }
 
 fn acceptance() -> Acceptance {
@@ -300,23 +318,24 @@ fn verify_witness(report: &Value, proof: &Witness) -> Result<(), String> {
             && f["key"]["run"]["mode"] == proof.mode
     };
     let numerical = |f: &Value| {
-        let Some(bounds) = f["measurement"].as_array() else {
+        let Some(bounds @ [lower, upper]) = f["measurement"].as_array().map(Vec::as_slice) else {
+            return false;
+        };
+        let Some((lo, hi)) = lower.as_f64().zip(upper.as_f64()) else {
             return false;
         };
         let Some(event) = f["event_ns"].as_u64() else {
             return false;
         };
-        if !f["key"]["window_ns"]
-            .as_array()
-            .is_some_and(|w| w[0].as_u64().unwrap() <= event && event <= w[1].as_u64().unwrap())
+        let window = f["key"]["window_ns"].as_array().map(Vec::as_slice);
+        if !matches!(window, Some([start, end]) if start.as_u64().zip(end.as_u64())
+            .is_some_and(|(start, end)| (start..=end).contains(&event)))
             || !f["journal"].as_u64().is_some_and(|stamp| stamp != 0)
             || rows(&f["limit_sources"]).is_empty()
             || rows(&f["measurement_sources"]).is_empty()
         {
             return false;
         }
-        let lo = bounds[0].as_f64().unwrap();
-        let hi = bounds[1].as_f64().unwrap();
         if !lo.is_finite()
             || !hi.is_finite()
             || lo > hi
@@ -533,6 +552,44 @@ impl Drop for Temp {
 }
 
 #[test]
+fn огибающая_этапа_6_сохраняет_свидетели_и_вердикты() {
+    let expected = acceptance();
+    let corpus = cli(&data().join("stage6/corpus.toml"), &[], 0);
+    assert_eq!(corpus["status"], "completed");
+    // Класс следует из установленной модели ячейки, независимо от
+    // проверки напряжения, которую объявил автор профиля.
+    for id in ["battery-depleted", "battery-charged"] {
+        assert!(map(&corpus["assemblies"][id]["runs"]).values().any(|row| {
+            rows(&row["detail"]["inventory"]["контур"]["components"])
+                .contains(&serde_json::json!(["battery", "стенд/источник"]))
+        }), "{id}: батарея отсутствует в составе модели");
+    }
+    let supported = check_corpus(&corpus, &expected.witnesses, &expected.corpus.open).unwrap();
+    assert_eq!(supported, required().len());
+    println!(
+        "Классы с численными свидетелями: {supported}/{}",
+        required().len()
+    );
+    let report = cli(&data().join("stage6.toml"), &[], 0);
+    assert_eq!(report["status"], "completed");
+    let assemblies = map(&report["assemblies"]);
+    assert_eq!(
+        assemblies.keys().collect::<Vec<_>>(),
+        expected.assemblies.keys().collect::<Vec<_>>()
+    );
+    for (id, spec) in &expected.assemblies {
+        let assembly = &assemblies[id];
+        assert_eq!(
+            assembly["verdict"], spec.verdict,
+            "{id}: {}",
+            assembly["coverage"]
+        );
+        assert_eq!(assembly["coverage"]["executed"], spec.executed, "{id}");
+        println!("{id}: {}", assembly["verdict"]);
+    }
+}
+
+#[test]
 fn корпус_и_воспроизведение() {
     let expected = acceptance();
     assert_eq!(
@@ -569,11 +626,11 @@ fn корпус_и_воспроизведение() {
     assert_eq!(first["resumed"], 0);
     assert_eq!(
         first["assemblies"]["under-travel"]["verdict"],
-        "PassedSimulation"
+        "NotProven"
     );
     assert_eq!(
         first["assemblies"]["under-travel"]["readiness"],
-        "BenchOnly"
+        "NeedsWork"
     );
     let second = run(&["--checkpoint", checkpoint_arg], 0);
     assert!(second["resumed"].as_u64().unwrap() > 0);
@@ -632,6 +689,27 @@ fn корпус_и_воспроизведение() {
         serde_json::json!(end[1].1)
     );
 
+    // Живые максимумы 4 и 1 Н приложены через плечо 1 м. Заявленные
+    // границы 4 и 2 Н·м. У заявленной нагрузки нет метки живого события.
+    let section = 0.04 * 0.02_f64.powi(2) / 6.0;
+    for (id, moment, at) in [("over-travel", 4.0, Some(2_000_000)), ("under-travel", 2.0, None)] {
+        let stress: Vec<_> = all_findings(&first["assemblies"][id])
+            .filter(|f| f["key"]["class"] == "static_strength").collect();
+        assert_eq!(stress.len(), 2);
+        for f in stress {
+            assert_eq!(f["event_ns"].as_u64(), at);
+            assert!((f["measurement"][1].as_f64().unwrap() - moment / section).abs() < 1e-8);
+        }
+    }
+
+    // Последний такт 0,5 мс даёт 5 мкм от F/m = 20 м/с² плюс смещение 1 мкм.
+    let overload = &first["assemblies"]["over-strength"];
+    assert!(all_findings(overload).filter(|f| f["key"]["class"] == "travel_jam")
+        .all(|f| f["outcome"] == "pass"));
+    let travel = all_findings(overload).filter(|f| f["key"]["class"] == "travel_jam")
+        .map(|f| f["measurement"][1].as_f64().unwrap()).max_by(f64::total_cmp).unwrap();
+    assert!((travel - 6e-6).abs() < 1e-14);
+
     let supported = check_corpus(&first, &expected.witnesses, &expected.corpus.open).unwrap();
     assert_eq!(supported, required().len());
     let imported: BTreeSet<_> = expected.witnesses.iter().filter_map(|w| {
@@ -642,7 +720,7 @@ fn корпус_и_воспроизведение() {
                 })
         }).then_some(w.class.as_str())
     }).collect();
-    assert_eq!(imported, BTreeSet::from(["tissue_load", "ingress"]));
+    assert!(imported.is_empty(), "импортированный ряд в живом корпусе: {imported:?}");
     println!(
         "Корпус: требуется {}, численных пар {}, из них {} по синтетическому входному ряду: {:?}",
         required().len(),
@@ -696,6 +774,45 @@ fn корпус_и_воспроизведение() {
     verify_disabled_screens(&expected.witnesses, &binary, &temp.0);
     verify_dc_limits(&first, &expected.witnesses, &binary, &temp.0);
     verify_measured_results(&first, &expected.witnesses, &binary, &temp.0);
+    verify_contact_area(&first, &binary, &temp.0);
+}
+
+fn verify_contact_area(report: &Value, binary: &Path, temp: &Path) {
+    let tissue = data().join("stage6/corpus/tissue");
+    for (id, area) in [("tissue-load", 5e-5), ("tissue-load-pair", 12e-5)] {
+        // Площади 5 × 10 и 10 × 12 мм взяты из чертежа оснастки.
+        let case = &report["assemblies"][id]["runs"][format!("{id}/test")]
+            ["detail"]["profile"]["cases"][0];
+        assert_eq!(rows(&case["checks"]).len(), 3);
+        assert_eq!(rows(&case["evidence"]["grids"]).len(), 3);
+        for (grid, check) in rows(&case["evidence"]["grids"]).iter().zip(rows(&case["checks"])) {
+            let patch = &grid["patches"]["опора"];
+            assert!(check["samples"].as_u64().unwrap() >= 16);
+            assert_eq!(check["outcome"], "pass", "расхождение с законом F = kx");
+            let pressure = patch["peak_mean_pressure_pa"][0].as_f64().unwrap();
+            let force = patch["peak_normal_n"].as_f64().unwrap();
+            assert!((pressure * area - force).abs() < 1e-12);
+        }
+    }
+    let write = |file: &str, contents: &str| std::fs::write(temp.join(file), contents).unwrap();
+    write("без-площади.toml", "[pads.\"опора\"]\narea_curve = []\n");
+    write("профиль-площади.toml", &format!(
+        "version = 1\nsource = 'Контроль отсутствия площади'\nbase = {:?}\n[[cases]]\nid = 'опыт'\noverlay = 'без-площади.toml'\n",
+        tissue.join("setup.toml").to_str().unwrap()
+    ));
+    write("задача-площади.toml", "version = 1\ninteraction_profile = 'профиль-площади.toml'\n");
+    write("матрица-площади.toml", &format!(
+        "version = 1\n[assemblies.block]\nscope = 'Проверка площадки'\n[assemblies.block.experiments.test]\nkind = 'task'\nworld = {:?}\ntask = 'задача-площади.toml'\n",
+        tissue.join("world.toml").to_str().unwrap()
+    ));
+    let report = cli_at(binary, &temp.join("матрица-площади.toml"), &[], 0);
+    let assembly = &report["assemblies"]["block"];
+    assert_eq!(assembly["coverage"]["executed"], 1);
+    assert_eq!(assembly["verdict"], "NotProven");
+    let findings: Vec<_> = all_findings(assembly)
+        .filter(|f| f["key"]["class"] == "tissue_load").collect();
+    assert_eq!(findings.len(), 2);
+    assert!(findings.iter().all(|f| f["outcome"] == "not_analyzed"));
 }
 
 fn verify_disabled_screens(witnesses: &[Witness], binary: &Path, temp: &Path) {
@@ -990,30 +1107,34 @@ fn verify_measured_results(first: &Value, witnesses: &[Witness], binary: &Path, 
     let mut manifest = "version = 1\n".to_string();
     let mut measured = Vec::new();
     let mut borders = Vec::new();
+    let mut originals = Vec::new();
     for (class, secondary, value, event) in [
         ("tissue_load", "пик контактной силы", 6.0, 2_000_000),
         ("ingress", "отказ изоляции", 1.0, 4_000_000),
     ] {
         let proof = witnesses.iter().find(|w| w.class == class).unwrap();
-        let assembly = &first["assemblies"][&proof.assembly];
-        let secondary = all_findings(assembly)
-            .find(|f| f["code"] == secondary)
-            .unwrap();
-        assert_eq!(secondary["measurement"], serde_json::json!([value, value]));
-        assert_eq!(secondary["confirmed_hazard"], class == "ingress");
-        assert!(all_findings(assembly).any(|f| {
-            f["key"]["class"] == class
-                && f["outcome"] == "fail"
-                && f["event_ns"] == event
-                && rows(&f["measurement_sources"])
-                    .iter()
-                    .any(|s| s.as_str().unwrap().starts_with("Синтетический ряд:"))
-        }));
+        let original_id = format!("{}-synthetic", proof.assembly);
+        let row = fixtures.join(format!("{}-row.toml", proof.assembly));
+        let mut original = case.clone();
+        original.as_table_mut().unwrap().insert(
+            "measured_result".into(),
+            row.to_str().unwrap().into(),
+        );
+        add_process_specimen(temp, &mut manifest, &original_id, &proof.mode, &original);
+        originals.push((original_id, class, secondary, value, event));
         let id = format!("{}-disabled", proof.assembly);
         add_process_specimen(temp, &mut manifest, &id, &proof.mode, &case);
         measured.push((id, proof));
 
         let mut border = proof.clone();
+        border.reason_contains = Some(if class == "tissue_load" {
+            border.object = "пятно блока".into();
+            "ряд карты давления превышает локальный предел"
+        } else {
+            "ряд подтверждает проникновение в зоне «узел изоляции»"
+        }.into());
+        border.tolerance = 0.0; // Два точно представленных синтетических показания.
+        border.paired_finding.as_mut().unwrap().reason_contains = "ряд".into();
         for outside in [true, false] {
             let label = if outside { "outside" } else { "inside" };
             let id = format!("{}-{label}", proof.assembly);
@@ -1060,6 +1181,20 @@ fn verify_measured_results(first: &Value, witnesses: &[Witness], binary: &Path, 
     let file = temp.join("measured-disabled.toml");
     std::fs::write(&file, manifest).unwrap();
     let report = cli_at(binary, &file, &[], 0);
+    for (id, class, secondary, value, event) in originals {
+        let assembly = &report["assemblies"][&id];
+        let secondary = all_findings(assembly).find(|f| f["code"] == secondary).unwrap();
+        assert_eq!(secondary["measurement"], serde_json::json!([value, value]));
+        assert_eq!(secondary["confirmed_hazard"], class == "ingress");
+        assert!(all_findings(assembly).any(|f| {
+            f["key"]["class"] == class
+                && f["outcome"] == "fail"
+                && f["event_ns"] == event
+                && rows(&f["measurement_sources"])
+                    .iter()
+                    .any(|s| s.as_str().unwrap().starts_with("Синтетический ряд:"))
+        }));
+    }
     for proof in &borders {
         verify_witness(&report, proof).unwrap_or_else(|e| panic!("{e}"));
         println!("{}: {:?} / {:?}", proof.class, proof.expected, proof.pair_expected);
@@ -1429,14 +1564,15 @@ installation = "install.toml"
     assert_eq!(changed["resumed"], 0);
     assert_eq!(
         changed["assemblies"]["block"]["verdict"],
-        "PassedSimulation"
+        "NotProven"
     );
-    assert_eq!(changed["assemblies"]["block"]["readiness"], "BenchOnly");
+    assert_eq!(changed["assemblies"]["block"]["readiness"], "NeedsWork");
     let stress = all_findings(&changed["assemblies"]["block"])
         .find(|f| f["key"]["class"] == "static_strength")
         .unwrap();
-    let section = 0.02 * 0.05_f64.powi(2) / 6.0;
-    assert!((stress["measurement"][1].as_f64().unwrap() - 20.0 / section).abs() < 1e-8);
+    // Заявленные 2 Н·м сильнее живого максимума 1,4002 Н·м.
+    let section = 0.05 * 0.02_f64.powi(2) / 6.0;
+    assert!((stress["measurement"][1].as_f64().unwrap() - 2.0 / section).abs() < 1e-8);
     assert_eq!(cli(&manifest, &["--repeat", old_key], 2)["status"], "error");
 
     let main = safe.split_once("[stations.stand]").unwrap();
@@ -1479,7 +1615,7 @@ run = [{ batch = "only", specimen = "only", law = { source = { kind = "datasheet
     };
     let before = selected(&same);
     assert_eq!(before.len(), 2);
-    assert_eq!(same["assemblies"]["block"]["verdict"], "PassedSimulation");
+    assert_eq!(same["assemblies"]["block"]["verdict"], "NotProven");
 
     // У редкой партии положительный вес 1/1000 по протоколу этого опыта.
     // При зерне 7 обе партии попадают в проверенную ветвь, однако допуск
@@ -1774,6 +1910,10 @@ fn verify_children(run: &Value, key: &str) {
     for child in children {
         let address = &child["key"];
         let mode = address["mode"].as_str().unwrap();
+        if child["executed"] != true {
+            assert!(matches!(child["outcome"].as_str(), Some("not_analyzed" | "fail")),
+                "{key} / {address}: открытая строка дала положительный исход");
+        }
         if !profile["evidence"].is_null() {
             let cases = rows(&profile["evidence"]["cases"]);
             let case = cases
@@ -2043,9 +2183,13 @@ grids = [{ id = "base", hz = 1000, source = { kind = "datasheet", reference = "�
 fn семь_сборок_через_cli() {
     let expected = acceptance();
     let manifest = data().join("stage6.toml");
-    let binary = Path::new(env!("CARGO_BIN_EXE_sim-run"));
-    let first = cli_output(binary, &manifest, &[], 0);
-    let second = cli_output(binary, &manifest, &[], 0);
+    let temp = Temp(std::env::temp_dir().join(format!("campaign-assemblies-{}", std::process::id())));
+    std::fs::create_dir(&temp.0).unwrap();
+    // Оба свежих прогона используют один образ, даже если Cargo обновит штатный путь.
+    let binary = temp.0.join("sim-run");
+    std::fs::copy(env!("CARGO_BIN_EXE_sim-run"), &binary).unwrap();
+    let first = cli_output(&binary, &manifest, &[], 0);
+    let second = cli_output(&binary, &manifest, &[], 0);
     assert!(first == second, "полные живые отчёты отличаются побайтно");
     println!(
         "Два полных живых отчёта: {} байт, FNV-1a {:016x}",
@@ -2062,9 +2206,20 @@ fn семь_сборок_через_cli() {
         assemblies.keys().collect::<Vec<_>>(),
         expected.assemblies.keys().collect::<Vec<_>>()
     );
+    let mut count = [0_u64; 3];
     for (id, a) in assemblies {
         let spec = &expected.assemblies[id];
         assert_eq!(a["verdict"], spec.verdict, "{id}: {}", a["coverage"]);
+        let [required, executed, open] = ["required", "executed", "open"].map(|field| {
+            a["coverage"][field].as_u64().unwrap()
+        });
+        assert_eq!(required, executed + open, "{id}");
+        if open > 0 {
+            assert_ne!(a["verdict"], "PassedSimulation", "{id}");
+        }
+        count[0] += required;
+        count[1] += executed;
+        count[2] += open;
         let runs = map(&a["runs"]);
         assert_eq!(
             runs.keys()
@@ -2072,6 +2227,15 @@ fn семь_сборок_через_cli() {
                 .collect::<BTreeSet<_>>(),
             spec.experiments.keys().cloned().collect::<BTreeSet<_>>()
         );
+        if a["coverage"]["executed"] != spec.executed {
+            for (key, run) in runs {
+                for item in run["detail"]["profile"]["evidence"]["cases"].as_array().into_iter().flatten() {
+                    if item["completed"] != true || item["case"]["fault"] != Value::Null && item["applied_ns"].is_null() {
+                        eprintln!("{key} {} {}", item["case"], item["runtime_error"].as_str().unwrap_or_else(|| item["missing"][0].as_str().unwrap_or("")));
+                    }
+                }
+            }
+        }
         assert_eq!(a["coverage"]["executed"], spec.executed, "{id}");
         for (key, run) in runs {
             assert_eq!(
@@ -2095,7 +2259,32 @@ fn семь_сборок_через_cli() {
         }
         println!("{id} {:?} {}", a["verdict"], a["coverage"]);
     }
+    println!("Матрица · {} исполнено из {}, {} открыты", count[1], count[0], count[2]);
     let run = |key: &str| &assemblies[key.split_once('/').unwrap().0]["runs"][key];
+    for proof in &expected.matrix_physics {
+        let cases = rows(&run(&proof.run)["detail"]["profile"]["evidence"]["cases"]);
+        let cases = cases.iter().filter(|case| case["case"]["mode"] == proof.mode).collect::<Vec<_>>();
+        assert_eq!(cases.len(), proof.rows, "{} / {}", proof.run, proof.mode);
+        for case in cases {
+            assert_eq!(case["completed"], true, "{case}");
+            assert_eq!(case["reached_ns"], proof.horizon_ns, "{case}");
+            let bounds = rows(&case["process_metrics"][&proof.criterion]);
+            assert_eq!(bounds.len(), 2);
+            let [lo, hi] = [bounds[0].as_f64().unwrap(), bounds[1].as_f64().unwrap()];
+            assert!(lo.is_finite() && hi.is_finite() && lo <= hi, "{case}");
+            if case["case"]["fault"].is_null() {
+                assert!(lo > proof.nominal_above, "{case}");
+            } else {
+                let requested = case["requested_ns"].as_u64().unwrap();
+                let applied = case["applied_ns"].as_u64().unwrap();
+                if case["case"]["fault"]["kind"] == "packet_delay" {
+                    assert!((requested..=requested + proof.max_packet_lag_ns).contains(&applied), "{case}");
+                } else {
+                    assert_eq!(applied, requested, "{case}");
+                }
+            }
+        }
+    }
     for proof in &expected.restored_fault {
         let cases = rows(&run(&proof.run)["detail"]["profile"]["evidence"]["cases"]);
         let fault = serde_json::to_value(&proof.fault).unwrap();

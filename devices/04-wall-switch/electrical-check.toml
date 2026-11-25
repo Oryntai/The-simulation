@@ -1,0 +1,28 @@
+# Для каждого плато есть 200 мкс внутренних тактов контура после фронта.
+world = "world.toml"
+horizon_ns = 6000000
+profile = "electrical-profile.toml"
+phase_ns = 1999999
+fixed = "electrical-fixed.toml"
+
+[drive]
+voltage_of_completed_interval = true
+id = "нажиматель/мотор"
+rail = "нажиматель/скважность-bus-v/напряжение цепи"
+minimum_peak_a = 0.10
+
+[board]
+vdd = "нажиматель/VDD"
+pin = "нажиматель/вывод"
+key = "нажиматель/ток ключа"
+command = "нажиматель/скважность"
+falling_v = 2.0
+rising_v = 2.8
+assert_ns = 10000
+release_ns = 15000
+drop = [2000000, 4000000]
+# В полке просадки после сброса: 2.4 В − 1.5 В − (0.05 А)·(0.25 + 5·0.1) Ом.
+plateau_v = 0.8625
+# Espressif ESP32-C3 Series Datasheet v2.5, табл. 5-2, рабочее окно VDD.
+# https://documentation.espressif.com/esp32-c3_datasheet_en.pdf
+working_v = [3.0, 3.6]

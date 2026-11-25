@@ -1,0 +1,31 @@
+electrical_format = 1
+catalog = "../../catalog"
+
+# assembly-*.json содержат schematic, proof_scope и sheet по экземплярам из отчёта кампании.
+# Горизонты трёх живых опытов взяты из electrical-check.toml этих сборок.
+[assemblies."01"]
+world = "../01-elbow-assist/closed-world.toml"
+profile = "../01-elbow-assist/electrical-profile.toml"
+horizon_ns = 30000000
+
+[assemblies."02"]
+world = "../02-cable-assist/world.toml"
+
+[assemblies."03"]
+world = "../03-wearable-sensors/world.toml"
+profile = "../03-wearable-sensors/electrical-profile.toml"
+horizon_ns = 6000000
+
+[assemblies."04"]
+world = "../04-wall-switch/world.toml"
+profile = "../04-wall-switch/electrical-profile.toml"
+horizon_ns = 6000000
+
+[assemblies."05"]
+world = "../05-camera-tracker/stage6-world.toml"
+
+[assemblies."06"]
+world = "../06-xyz/world.toml"
+
+[assemblies."07"]
+world = "../07-balance-cart/stage6-world.toml"

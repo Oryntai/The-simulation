@@ -1,0 +1,391 @@
+# Точные эквиваленты синтетического корпуса. Паспортные пределы регуляторов указаны отдельно.
+format = 1
+
+[parts.supply_5]
+kind = "bench_supply"
+source = "Условие стенда: ЭДС 5 В и последовательное сопротивление 1 Ом"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.supply_5.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.supply_5.elements]
+emf = { kind = "voltage", nodes = ["emf", "g"], parameters = { volt = { measurement = "Условие стенда: ЭДС 5 В и последовательное сопротивление 1 Ом", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: ЭДС 5 В и последовательное сопротивление 1 Ом" } } } } }
+series = { kind = "resistor", nodes = ["emf", "p"], parameters = { ohm = { measurement = "Условие стенда: ЭДС 5 В и последовательное сопротивление 1 Ом", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: ЭДС 5 В и последовательное сопротивление 1 Ом" } } } } }
+
+[parts.usb_4]
+kind = "usb_source"
+source = "Условие стенда: ЭДС 4 В и последовательное сопротивление 1 Ом"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.usb_4.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.usb_4.elements]
+emf = { kind = "voltage", nodes = ["emf", "g"], parameters = { volt = { measurement = "Условие стенда: ЭДС 4 В и последовательное сопротивление 1 Ом", range = { min = 4.0, nominal = 4.0, max = 4.0, source = { derived = "Условие стенда: ЭДС 4 В и последовательное сопротивление 1 Ом" } } } } }
+series = { kind = "resistor", nodes = ["emf", "p"], parameters = { ohm = { measurement = "Условие стенда: ЭДС 4 В и последовательное сопротивление 1 Ом", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: ЭДС 4 В и последовательное сопротивление 1 Ом" } } } } }
+
+[parts.load_2]
+kind = "resistor"
+source = "Условие стенда: двухполюсник 2 Ом"
+reference_only = true
+
+[parts.load_2.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.load_2.elements]
+load = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Условие стенда: двухполюсник 2 Ом", range = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Условие стенда: двухполюсник 2 Ом" } } } } }
+
+[parts.load_3]
+kind = "resistor"
+source = "Условие стенда: двухполюсник 3 Ом"
+reference_only = true
+
+[parts.load_3.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.load_3.elements]
+load = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Условие стенда: двухполюсник 3 Ом", range = { min = 3.0, nominal = 3.0, max = 3.0, source = { derived = "Условие стенда: двухполюсник 3 Ом" } } } } }
+
+[parts.divider_top]
+kind = "resistor"
+source = "Условие стенда: двухполюсник 1000 Ом"
+reference_only = true
+
+[parts.divider_top.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.divider_top.elements]
+load = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Условие стенда: двухполюсник 1000 Ом", range = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { derived = "Условие стенда: двухполюсник 1000 Ом" } } } } }
+
+[parts.divider_bottom]
+kind = "resistor"
+source = "Условие стенда: двухполюсник 1800 Ом"
+reference_only = true
+
+[parts.divider_bottom.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.divider_bottom.elements]
+load = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Условие стенда: двухполюсник 1800 Ом", range = { min = 1800.0, nominal = 1800.0, max = 1800.0, source = { derived = "Условие стенда: двухполюсник 1800 Ом" } } } } }
+
+[parts.pull_down]
+kind = "resistor"
+source = "Условие стенда: двухполюсник 1000 Ом"
+reference_only = true
+
+[parts.pull_down.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.pull_down.elements]
+load = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Условие стенда: двухполюсник 1000 Ом", range = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { derived = "Условие стенда: двухполюсник 1000 Ом" } } } } }
+
+[parts.signal_5]
+kind = "bench_supply"
+source = "Условие стенда: идеальный высокий уровень 5 В"
+reference_only = true
+
+[parts.signal_5.pins]
+p = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+
+[parts.signal_5.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: идеальный высокий уровень 5 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: идеальный высокий уровень 5 В" } } } } }
+
+[parts.input_pad]
+kind = "other"
+source = "Условие стенда: идеальная локальная шина 3,3 В"
+reference_only = true
+
+[parts.input_pad.pins]
+io = { contact = "bare", role = { signal_in = "g" } }
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.input_pad.elements]
+rail = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: идеальная локальная шина 3,3 В", range = { min = 3.3, nominal = 3.3, max = 3.3, source = { derived = "Условие стенда: идеальная локальная шина 3,3 В" } } } } }
+
+[parts.output_pad]
+kind = "other"
+source = "Условие стенда: идеальная локальная шина 3,3 В"
+reference_only = true
+
+[parts.output_pad.pins]
+io = { contact = "bare", role = { signal_out = "g" } }
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.output_pad.elements]
+rail = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: идеальная локальная шина 3,3 В", range = { min = 3.3, nominal = 3.3, max = 3.3, source = { derived = "Условие стенда: идеальная локальная шина 3,3 В" } } } } }
+
+[parts.load_gate]
+kind = "switch_module"
+source = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм"
+reference_only = true
+
+[parts.load_gate.pins]
+gate = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+sense = { contact = "bare", role = "passive" }
+supply = { contact = "bare", role = "passive" }
+
+[parts.load_gate.elements]
+emf = { kind = "voltage", nodes = ["supply", "g"], parameters = { volt = { measurement = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм" } } } } }
+load = { kind = "resistor", nodes = ["supply", "sense"], parameters = { ohm = { measurement = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм", range = { min = 10.0, nominal = 10.0, max = 10.0, source = { derived = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм" } } } } }
+switch = { kind = "switch", nodes = ["sense", "g", "gate", "g"], parameters = { on_ohm = { measurement = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм" } } }, off_ohm = { measurement = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм", range = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { derived = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм" } } }, threshold_v = { measurement = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм", range = { min = 1.65, nominal = 1.65, max = 1.65, source = { derived = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм" } } }, hysteresis_v = { measurement = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: 5 В, нагрузка 10 Ом, порог ключа 1,65 В, Rвкл 1 Ом, Rвыкл 1 МОм" } } } } }
+
+[parts.signal_sink]
+kind = "other"
+source = "Условие стенда: активный низкий выход с нулевой ЭДС; жила задана отдельно"
+reference_only = true
+
+[parts.signal_sink.pins]
+pad = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+
+[parts.signal_sink.elements]
+zero = { kind = "voltage", nodes = ["pad", "g"], parameters = { volt = { measurement = "Условие стенда: активный низкий выход с нулевой ЭДС; жила задана отдельно", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: активный низкий выход с нулевой ЭДС; жила задана отдельно" } } } } }
+
+[parts.backfeed_low]
+kind = "bench_supply"
+source = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом"
+reference_only = true
+
+[parts.backfeed_low.pins]
+s = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+ret = { contact = "bare", role = "passive" }
+p = { contact = "bare", role = "power" }
+
+[parts.backfeed_low.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+signal_path = { kind = "resistor", nodes = ["ret", "s"], parameters = { ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 100.0, nominal = 100.0, max = 100.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+load = { kind = "resistor", nodes = ["p", "ret"], parameters = { ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 10.0, nominal = 10.0, max = 10.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+switch = { kind = "switch", nodes = ["ret", "g", "g", "g"], parameters = { on_ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } }, off_ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } }, threshold_v = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 1.65, nominal = 1.65, max = 1.65, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } }, hysteresis_v = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+
+[parts.rail_weak]
+kind = "bench_supply"
+source = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.rail_weak.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.rail_weak.elements]
+emf = { kind = "voltage", nodes = ["emf", "g"], parameters = { volt = { measurement = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+series = { kind = "resistor", nodes = ["emf", "p"], parameters = { ohm = { measurement = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+demand = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+cap = { kind = "capacitor", nodes = ["p", "g"], parameters = { farad = { measurement = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 1e-05, nominal = 1e-05, max = 1e-05, source = { derived = "Условие стенда: 5 В, R = 2 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+
+[parts.coil_open]
+kind = "other"
+source = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0"
+reference_only = true
+
+[parts.coil_open.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.coil_open.elements]
+supply = { kind = "current", nodes = ["g", "p"], parameters = { ampere = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+parasitic = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 20.0, nominal = 20.0, max = 20.0, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+coil = { kind = "inductor", nodes = ["p", "g"], parameters = { henry = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+
+[parts.gate_logic]
+kind = "nmos"
+source = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В"
+reference_only = true
+
+[parts.gate_logic.pins]
+gate = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+drain = { contact = "bare", role = "passive" }
+p = { contact = "bare", role = "power" }
+
+[parts.gate_logic.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } } } }
+drive = { kind = "voltage", nodes = ["gate", "g"], parameters = { volt = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 3.3, nominal = 3.3, max = 3.3, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } } } }
+load = { kind = "resistor", nodes = ["p", "drain"], parameters = { ohm = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } } } }
+channel = { kind = "nmos", nodes = ["drain", "gate", "g", "g"], parameters = { threshold_v = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } }, kp_a_per_v2 = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } }, lambda_per_v = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } }, is_a = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 1e-14, nominal = 1e-14, max = 1e-14, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } }, width_m = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 1e-06, nominal = 1e-06, max = 1e-06, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } }, length_m = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В", range = { min = 1e-06, nominal = 1e-06, max = 1e-06, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 3.3 В" } } } } }
+
+[parts.backfeed_high]
+kind = "bench_supply"
+source = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом"
+reference_only = true
+internal_nodes = ["switched"]
+
+[parts.backfeed_high.pins]
+s = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+ret = { contact = "bare", role = "passive" }
+p = { contact = "bare", role = "power" }
+
+[parts.backfeed_high.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+signal_path = { kind = "resistor", nodes = ["ret", "s"], parameters = { ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 100.0, nominal = 100.0, max = 100.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+load = { kind = "resistor", nodes = ["switched", "ret"], parameters = { ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 10.0, nominal = 10.0, max = 10.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+common = { kind = "resistor", nodes = ["ret", "g"], parameters = { ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+switch = { kind = "switch", nodes = ["p", "switched", "g", "g"], parameters = { on_ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } }, off_ohm = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } }, threshold_v = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 1.65, nominal = 1.65, max = 1.65, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } }, hysteresis_v = { measurement = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: нагрузка 10 Ом; путь возврата через сигнальную часть 100 Ом; отсечка 1 МОм; в верхнем ключе общий провод 0,1 Ом" } } } } }
+
+[parts.rail_strong]
+kind = "bench_supply"
+source = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.rail_strong.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.rail_strong.elements]
+emf = { kind = "voltage", nodes = ["emf", "g"], parameters = { volt = { measurement = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+series = { kind = "resistor", nodes = ["emf", "p"], parameters = { ohm = { measurement = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 0.4, nominal = 0.4, max = 0.4, source = { derived = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+demand = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+cap = { kind = "capacitor", nodes = ["p", "g"], parameters = { farad = { measurement = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А", range = { min = 1e-05, nominal = 1e-05, max = 1e-05, source = { derived = "Условие стенда: 5 В, R = 0.4 Ом, C = 10 мкФ, начальная нагрузка 0,1 А" } } } } }
+
+[parts.coil_clamped]
+kind = "other"
+source = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0"
+reference_only = true
+
+[parts.coil_clamped.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.coil_clamped.elements]
+supply = { kind = "current", nodes = ["g", "p"], parameters = { ampere = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+parasitic = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 20.0, nominal = 20.0, max = 20.0, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+coil = { kind = "inductor", nodes = ["p", "g"], parameters = { henry = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+flyback = { kind = "diode", nodes = ["g", "p"], parameters = { is_a = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 1e-09, nominal = 1e-09, max = 1e-09, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } }, ideality = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } }, series_ohm = { measurement = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: 1 мГн, ток до отключения 1 А, аварийный путь 20 Ом, для защитного диода Is = 1 нА, n = 1, Rs = 0" } } } } }
+
+[parts.gate_driver]
+kind = "nmos"
+source = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В"
+reference_only = true
+
+[parts.gate_driver.pins]
+gate = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "return" }
+drain = { contact = "bare", role = "passive" }
+p = { contact = "bare", role = "power" }
+
+[parts.gate_driver.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } } } }
+drive = { kind = "voltage", nodes = ["gate", "g"], parameters = { volt = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } } } }
+load = { kind = "resistor", nodes = ["p", "drain"], parameters = { ohm = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } } } }
+channel = { kind = "nmos", nodes = ["drain", "gate", "g", "g"], parameters = { threshold_v = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } }, kp_a_per_v2 = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } }, lambda_per_v = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } }, is_a = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 1e-14, nominal = 1e-14, max = 1e-14, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } }, width_m = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 1e-06, nominal = 1e-06, max = 1e-06, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } }, length_m = { measurement = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В", range = { min = 1e-06, nominal = 1e-06, max = 1e-06, source = { derived = "Условие стенда: Level 1, W/L = 1, Vt = 2 В, β = 1 А/В², λ = 0, Is = 10 фА; питание 5 В, нагрузка 5 Ом, Vgs = 5 В" } } } } }
+
+[parts.regulator_a]
+kind = "linear_regulator"
+source = "Условие корпуса: идеальный выход 5 В для оценки требуемого тока нагрузки; вход 10 В и Tj 25 °C заданы как условия применимости"
+reference_only = true
+
+[parts.regulator_a.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.regulator_a.elements]
+regulation = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие корпуса: идеальный выход 5 В для оценки требуемого тока нагрузки; вход 10 В и Tj 25 °C заданы как условия применимости", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие корпуса: идеальный выход 5 В для оценки требуемого тока нагрузки; вход 10 В и Tj 25 °C заданы как условия применимости" } } } } }
+
+[parts.regulator_a.ratings.output_domain]
+quantity = "current_a"
+nodes = ["p", "g"]
+limit = { measurement = "Texas Instruments LM7805 §6.6 https://www.ti.com/lit/ds/symlink/lm7800.pdf", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { datasheet = "Texas Instruments LM7805 §6.6 https://www.ti.com/lit/ds/symlink/lm7800.pdf" } } }
+conditions = "Vin 10 В, Tj 25 °C, область гарантии выходного напряжения"
+
+[parts.regulator_b]
+kind = "switching_regulator"
+source = "Условие корпуса: идеальный выход 5 В для оценки требуемого тока нагрузки; вход 10 В и Tj 25 °C заданы как условия применимости"
+reference_only = true
+
+[parts.regulator_b.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.regulator_b.elements]
+regulation = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "Условие корпуса: идеальный выход 5 В для оценки требуемого тока нагрузки; вход 10 В и Tj 25 °C заданы как условия применимости", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Условие корпуса: идеальный выход 5 В для оценки требуемого тока нагрузки; вход 10 В и Tj 25 °C заданы как условия применимости" } } } } }
+
+[parts.regulator_b.ratings.output_domain]
+quantity = "current_a"
+nodes = ["p", "g"]
+limit = { measurement = "Texas Instruments LM2596-5.0 §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf", range = { min = 3.0, nominal = 3.0, max = 3.0, source = { datasheet = "Texas Instruments LM2596-5.0 §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf" } } }
+conditions = "Vin 10 В, Tj 25 °C, схема рис. 9-13; область гарантии выходного напряжения"
+
+
+# Пределы исходного паспорта численного стенда. У каждой пары своя физическая ветвь.
+[parts.backfeed_low.ratings.off_signal_current]
+quantity = "current_a"
+nodes = ["ret", "s"]
+conditions = "Ток сигнальной ветви при выключенном ключе и подключённом питании"
+limit = { measurement = "Ток сигнальной ветви при выключенном ключе и подключённом питании", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { datasheet = "Исходная спецификация стенда Э2: Ток сигнальной ветви при выключенном ключе и подключённом питании, 1 мА" } } }
+
+[parts.backfeed_high.ratings.off_signal_current]
+quantity = "current_a"
+nodes = ["ret", "s"]
+conditions = "Ток сигнальной ветви при выключенном ключе и подключённом питании"
+limit = { measurement = "Ток сигнальной ветви при выключенном ключе и подключённом питании", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { datasheet = "Исходная спецификация стенда Э2: Ток сигнальной ветви при выключенном ключе и подключённом питании, 1 мА" } } }
+
+[parts.rail_weak.ratings.minimum_supply_voltage]
+quantity = "voltage_v"
+nodes = ["p", "g"]
+conditions = "Нижняя граница шины при пуске нагрузки, порог сброса стендового детектора"
+limit = { measurement = "Нижняя граница шины при пуске нагрузки, порог сброса стендового детектора", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Исходная спецификация стенда Э2: Нижняя граница шины при пуске нагрузки, порог сброса стендового детектора, 3,6 В" } } }
+
+[parts.rail_strong.ratings.minimum_supply_voltage]
+quantity = "voltage_v"
+nodes = ["p", "g"]
+conditions = "Нижняя граница шины при пуске нагрузки, порог сброса стендового детектора"
+limit = { measurement = "Нижняя граница шины при пуске нагрузки, порог сброса стендового детектора", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Исходная спецификация стенда Э2: Нижняя граница шины при пуске нагрузки, порог сброса стендового детектора, 3,6 В" } } }
+
+[parts.load_gate.ratings.uncommanded_load_current]
+quantity = "current_a"
+nodes = ["supply", "sense"]
+conditions = "Ток на нагрузке при сбросе и в фазах загрузки"
+limit = { measurement = "Ток на нагрузке при сбросе и в фазах загрузки", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { datasheet = "Исходная спецификация стенда Э2: Ток на нагрузке при сбросе и в фазах загрузки, 1 мА" } } }
+
+[parts.coil_open.ratings.turnoff_voltage]
+quantity = "voltage_v"
+nodes = ["g", "p"]
+conditions = "Импульсный предел на клеммах индуктивной ветви при снятии тока"
+limit = { measurement = "Импульсный предел на клеммах индуктивной ветви при снятии тока", range = { min = 8.0, nominal = 8.0, max = 8.0, source = { datasheet = "Исходная спецификация стенда Э2: Импульсный предел на клеммах индуктивной ветви при снятии тока, 8 В" } } }
+
+[parts.coil_clamped.ratings.turnoff_voltage]
+quantity = "voltage_v"
+nodes = ["g", "p"]
+conditions = "Импульсный предел на клеммах индуктивной ветви при снятии тока"
+limit = { measurement = "Импульсный предел на клеммах индуктивной ветви при снятии тока", range = { min = 8.0, nominal = 8.0, max = 8.0, source = { datasheet = "Исходная спецификация стенда Э2: Импульсный предел на клеммах индуктивной ветви при снятии тока, 8 В" } } }
+
+[parts.gate_logic.ratings.channel_loss]
+quantity = "power_w"
+nodes = ["drain", "g"]
+conditions = "Предел потерь канала при напряжении управления испытания"
+limit = { measurement = "Предел потерь канала при напряжении управления испытания", range = { min = 0.5, nominal = 0.5, max = 0.5, source = { datasheet = "Исходная спецификация стенда Э2: Предел потерь канала при напряжении управления испытания, 0,5 Вт" } } }
+
+[parts.gate_driver.ratings.channel_loss]
+quantity = "power_w"
+nodes = ["drain", "g"]
+conditions = "Предел потерь канала при напряжении управления испытания"
+limit = { measurement = "Предел потерь канала при напряжении управления испытания", range = { min = 0.5, nominal = 0.5, max = 0.5, source = { datasheet = "Исходная спецификация стенда Э2: Предел потерь канала при напряжении управления испытания, 0,5 Вт" } } }
+
+[parts.supply_5.ratings.reverse_output_current]
+quantity = "current_a"
+nodes = ["p", "g"]
+conditions = "Ток в положительный вывод при совместном подключении источников"
+limit = { measurement = "Ток в положительный вывод при совместном подключении источников", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { datasheet = "Исходная спецификация стенда Э2: Ток в положительный вывод при совместном подключении источников, 1 мА" } } }
+
+[parts.usb_4.ratings.reverse_output_current]
+quantity = "current_a"
+nodes = ["p", "g"]
+conditions = "Ток в положительный вывод при совместном подключении источников"
+limit = { measurement = "Ток в положительный вывод при совместном подключении источников", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { datasheet = "Исходная спецификация стенда Э2: Ток в положительный вывод при совместном подключении источников, 1 мА" } } }

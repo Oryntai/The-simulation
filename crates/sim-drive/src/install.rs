@@ -1,13 +1,14 @@
 use std::collections::BTreeSet;
 
-use sim_runtime::{Forces, Runtime, Truth, TruthId};
-use sim_signal::{ChannelId, Command, Time};
+use sim_runtime::{Forces, Object, Runtime, Truth, TruthId};
+use sim_signal::{ChannelId, Clock, Command, Rng, Time};
 use sim_world::{CompiledDrive, CompiledJointKind, CompiledWorld, Simplification};
 
 use crate::catalog::{DriveCatalog, DriveKind};
 use crate::config::{Config, Features, Mode, resolve};
-use crate::electric::Bridge;
+use crate::electric::{Bridge, bus_interval};
 use crate::input::{BridgeCommand, PulseInputs, PulseReceiver};
+use crate::mass::MassProbe;
 use crate::model::{Model, Motion};
 use crate::solve::DriveGroup;
 use crate::step_size::DriveLimit;
@@ -21,7 +22,7 @@ pub struct DriveHandle {
     pub command: ChannelId,
     /// При наличии подаётся 0 (питание снято) или 1 (питание подано).
     pub power: Option<ChannelId>,
-    /// Вольты в пределах voltage_min_v и voltage_max_v, до первой записи — supply_v.
+    /// Вход вольт. Для привода со схемой обязателен с нулевого такта.
     pub bus_voltage: Option<ChannelId>,
     pub bridge_mode: Option<ChannelId>,
     pub pulse: Option<PulseInputs>,
@@ -59,6 +60,11 @@ pub struct DriveTelemetry {
     pub bus_voltage_v: TruthId,
     pub bridge_mode: TruthId,
     pub bus_power_w: TruthId,
+    /// Знаковый заряд с начала прогона, положительный при потреблении.
+    pub bus_charge_c: Option<TruthId>,
+    /// Средний знаковый ток со стороны шины на предстоящем интервале физики.
+    /// Зарегистрирован при подключении схемы, включая нулевой такт.
+    pub next_bus_current_a: Option<TruthId>,
     /// Для жёсткой передачи: усилие от тока в конце последнего подшага
     /// при расчётной скорости этого подшага. Основной канал усилия хранит
     /// удерживаемое среднее, которое фактически получает мир.
@@ -146,8 +152,15 @@ impl DriveObject {
             };
         }
         self.model.bus_voltage = self.id.bus_voltage.and_then(input);
+        if self.model.circuit && self.model.bus_voltage.is_none() {
+            return Err("к такту привода не поступило напряжение из схемы".into());
+        }
         if let Some(value) = self.model.bus_voltage {
-            let [min, max] = self.model.config.bus_range.expect("границы шины проверены");
+            let [mut min, max] = self.model.config.bus_range.expect("границы шины проверены");
+            if self.model.circuit {
+                // Шина может просесть ниже рабочего диапазона вплоть до нуля.
+                min = 0.0;
+            }
             if !value.is_finite() || !(min..=max).contains(&value) {
                 return Err(format!(
                     "напряжение шины {value} В вне диапазона [{min}, {max}] В"
@@ -247,6 +260,9 @@ impl DriveObject {
                     out.publish(id, duty);
                 }
             }
+            if let Some(id) = t.bus_charge_c {
+                out.publish(id, m.work.bus_charge_c);
+            }
             for (id, value) in [
                 (t.command_present, f64::from(m.control.accepted.is_some())),
                 (t.resistance_ohm, m.resistance()?),
@@ -261,6 +277,69 @@ impl DriveObject {
             ] {
                 out.publish(id, value);
             }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct CircuitDriveGroup {
+    group: DriveGroup,
+    probe: MassProbe,
+    clock: Clock,
+    held_charge: Vec<f64>,
+}
+
+impl Object for CircuitDriveGroup {
+    fn update(
+        &mut self,
+        truth: &Truth<'_>,
+        command: &Command,
+        rng: &mut Rng,
+        out: &mut Forces,
+    ) -> Result<(), String> {
+        let seconds = bus_interval(&mut self.clock, truth.time())?;
+        self.group.update(truth, command, rng, out)?;
+
+        // Повторяем только пробный шаг с уже найденными усилиями группы.
+        // Нужны те же скорости, что в неявном расчёте ЭДС общего привода.
+        let sim = truth.engine();
+        let joints = sim.joints();
+        let mut dofs = vec![0; self.group.inertia.len()];
+        let mut efforts = vec![0.0; dofs.len()];
+        for drive in &self.group.drives {
+            let joint = joints
+                .iter()
+                .find(|joint| joint.name == drive.joint)
+                .ok_or("нет оси электрической нагрузки")?;
+            dofs[drive.limit.axis] = joint.dof_adr + drive.limit.dof;
+            efforts[drive.limit.axis] += drive.model.effort;
+        }
+        self.probe.measure(sim, &dofs, &mut self.group.inertia)?;
+        let free = self.probe.free_velocity(sim, &dofs)?;
+        let end = self.probe.respond(sim, &dofs, &free, &efforts)?;
+        for (drive, held) in self.group.drives.iter().zip(&mut self.held_charge) {
+            let Some((_, current)) = drive.id.circuit_port() else {
+                continue;
+            };
+            let dt = sim.timestep();
+            if let Some(interval) = drive.model.interval {
+                let actual = interval.bus_charge_c;
+                let scale = held
+                    .abs()
+                    .max(actual.abs())
+                    .max(dt * drive.model.config.electrical.limit);
+                // Повторное вычисление заряда из принятого кадра допускает
+                // округление в пробе MuJoCo, R–L и сумме фаз/подшагов.
+                if (actual - *held).abs() > 256.0 * f64::EPSILON * scale {
+                    return Err(format!(
+                        "привод «{}»: заряд на шине за завершённый интервал {actual:e} Кл отличается от переданного в цепь {held:e} Кл",
+                        drive.id.name
+                    ));
+                }
+            }
+            *held = drive.model.forecast_charge(dt, end[drive.limit.axis])?;
+            out.publish(current, *held / seconds);
         }
         Ok(())
     }
@@ -304,6 +383,7 @@ struct Prepared<'a> {
     dof: usize,
     linear: bool,
     config: Config,
+    circuit: bool,
     notes: Vec<String>,
 }
 
@@ -314,6 +394,36 @@ pub fn install(
     runtime: &mut Runtime,
     world: &CompiledWorld,
     catalog: &DriveCatalog,
+) -> Result<Vec<DriveHandle>, String> {
+    DriveHandle::install_with_circuit(runtime, world, catalog, &[])
+}
+
+impl DriveHandle {
+    /// Канал напряжения и канал знакового тока для следующего интервала.
+    /// Компоновщик должен владеть входом напряжения и направить ток между
+    /// теми же клеммами схемы от плюса к минусу.
+    pub fn circuit_port(&self) -> Option<(ChannelId, TruthId)> {
+        self.bus_voltage
+            .zip(self.telemetry.as_ref()?.next_bus_current_a)
+    }
+
+    /// Установить все общие приводы мира. У перечисленных приводов шина
+    /// должна поступать из схемы через объявленный вход `<effort>-bus-v`.
+    pub fn install_with_circuit(
+        runtime: &mut Runtime,
+        world: &CompiledWorld,
+        catalog: &DriveCatalog,
+        circuit_drives: &[&str],
+    ) -> Result<Vec<Self>, String> {
+        install_drives(runtime, world, catalog, circuit_drives)
+    }
+}
+
+fn install_drives(
+    runtime: &mut Runtime,
+    world: &CompiledWorld,
+    catalog: &DriveCatalog,
+    circuit_drives: &[&str],
 ) -> Result<Vec<DriveHandle>, String> {
     if runtime.physics_rate() != world.physics
         || runtime.seed() != world.seed
@@ -328,11 +438,16 @@ pub fn install(
     {
         return Err("Runtime загружен с другой конфигурацией мира".into());
     }
+    let mut circuit_names = circuit_drives.iter().copied().collect::<BTreeSet<_>>();
+    if circuit_names.len() != circuit_drives.len() {
+        return Err("привод повторно связан со схемой".into());
+    }
     let mut names = BTreeSet::new();
     let mut commands = BTreeSet::new();
     let mut prepared = Vec::with_capacity(world.drives.len());
     for drive in &world.drives {
-        let item = prepare(runtime, world, catalog, drive)
+        let circuit = circuit_names.remove(drive.name.as_str());
+        let item = prepare(runtime, world, catalog, drive, circuit)
             .map_err(|err| format!("привод «{}», позиция «{}»: {err}", drive.name, drive.part))?;
         if !names.insert(&drive.name) || item.inputs.channels().any(|id| !commands.insert(id)) {
             return Err(format!(
@@ -341,6 +456,9 @@ pub fn install(
             ));
         }
         prepared.push(item);
+    }
+    if let Some(name) = circuit_names.first() {
+        return Err(format!("в мире нет общего привода «{name}» для схемы"));
     }
     if prepared.is_empty() {
         return Ok(Vec::new());
@@ -361,12 +479,22 @@ pub fn install(
             objects.push(object);
         }
         let handles = objects.iter().map(|object| object.id.clone()).collect();
-        runtime.register_object(
-            &group_name,
-            world.physics,
-            &claimed,
-            DriveGroup::new(objects),
-        )?;
+        let group = DriveGroup::new(objects);
+        if circuit_drives.is_empty() {
+            runtime.register_object(&group_name, world.physics, &claimed, group)?;
+        } else {
+            runtime.register_object(
+                &group_name,
+                world.physics,
+                &claimed,
+                CircuitDriveGroup {
+                    held_charge: vec![0.0; group.drives.len()],
+                    group,
+                    probe: MassProbe::default(),
+                    clock: Clock::new(world.physics),
+                },
+            )?;
+        }
         Ok::<_, String>(handles)
     })();
     let handles = match result {
@@ -395,6 +523,7 @@ fn prepare<'a>(
     world: &CompiledWorld,
     catalog: &DriveCatalog,
     drive: &'a CompiledDrive,
+    circuit: bool,
 ) -> Result<Prepared<'a>, String> {
     let entry = catalog
         .get(&drive.part)
@@ -452,6 +581,9 @@ fn prepare<'a>(
                 ),
             },
         };
+    if circuit && inputs.bus_voltage.is_none() {
+        return Err(format!("для схемы нужен вход «{}-bus-v»", drive.effort));
+    }
     let joint = world
         .joints
         .iter()
@@ -479,6 +611,9 @@ fn prepare<'a>(
         pulse: inputs.pulse.is_some(),
     };
     let (config, mut notes) = resolve(entry, &drive.params, world.physics, armature, features)?;
+    if circuit {
+        notes.push("схема и привод обмениваются удержанными значениями на границах физики. Ниже нижнего рабочего напряжения или при снятии разрешения моделируется выбег через идеальные диоды. Порог выключения реального моста и выбросы при коммутации требуют сверки".into());
+    }
     if features.pulse {
         notes.push("импульсная команда декодируется по двум точкам и принимается на сетке физики; нелинейность, разброс и реакция после потери сигнала требуют стендовой сверки".into());
     }
@@ -498,6 +633,7 @@ fn prepare<'a>(
         dof,
         linear,
         config,
+        circuit,
         notes,
     })
 }
@@ -509,6 +645,7 @@ fn register(runtime: &mut Runtime, item: &Prepared<'_>) -> Result<DriveObject, S
         axis,
         linear,
         config,
+        circuit,
         ..
     } = *item;
     let mut signal =
@@ -582,6 +719,8 @@ fn register(runtime: &mut Runtime, item: &Prepared<'_>) -> Result<DriveObject, S
             bus_voltage_v: signal("bus_voltage_v", "V")?,
             bridge_mode: signal("bridge_mode", "1")?,
             bus_power_w: signal("bus_power_w", "W")?,
+            bus_charge_c: optional(circuit, &mut signal, "bus_charge_c", "C")?,
+            next_bus_current_a: optional(circuit, &mut signal, "next_bus_current_a", "A")?,
             end_effort: if coupling {
                 None
             } else if linear {
@@ -602,11 +741,13 @@ fn register(runtime: &mut Runtime, item: &Prepared<'_>) -> Result<DriveObject, S
             stored_energy_j: signal("stored_energy_j", "J")?,
         });
     }
+    let mut model = Model::new(config);
+    model.circuit = circuit;
     Ok(DriveObject {
         joint: drive.joint.clone(),
         axis,
         angular_motion: None,
-        model: Model::new(config),
+        model,
         id: handle,
         limit: DriveLimit::new(item.dof, config)?,
         pulse: config.pulse.map(PulseReceiver::new),

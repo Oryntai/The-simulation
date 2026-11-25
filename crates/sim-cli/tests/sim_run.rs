@@ -725,7 +725,8 @@ sampling = { kind = "periodic", first_ns = 0, period_ns = 1000000 }
     };
     let before = run(false, 0);
     let assembly = &before["assemblies"]["block"];
-    assert_eq!(assembly["readiness"], "BenchOnly");
+    assert_eq!(assembly["verdict"], "NotProven", "обязательный замер отсутствует");
+    assert_eq!(assembly["readiness"], "NeedsWork");
     let rows = assembly["runs"].as_object().unwrap();
     let (run_key, row) = rows.iter().find(|(_, row)| {
         row["detail"]["summary"]["key"]["sample"]["kind"] == "nominal"
@@ -767,8 +768,23 @@ scope = "Изолированная ось на полном окне 4 мс"
             .iter().find(|f| f["key"]["class"] == "measurement").unwrap().clone()
     };
     assert_eq!(finding(&before)["outcome"], "not_analyzed");
+    let install_path = fixture.path("install.toml");
+    let original_install = fs::read_to_string(&install_path).unwrap();
+    let (without_check, _) = original_install.split_once("[[checks]]\nclass = \"measurement\"").unwrap();
+    fs::write(&install_path, without_check).unwrap();
+    let unchecked = run(false, 0);
+    assert_eq!(unchecked["assemblies"]["block"]["verdict"], "NotProven");
+    // Ключ строки включает отпечаток установки и меняется при удалении проверки.
+    assert!(unchecked["assemblies"]["block"]["runs"].as_object().unwrap().values().all(|row| {
+        row["findings"].as_array().unwrap().iter().any(|f| {
+            f["key"]["class"] == "measurement" && f["outcome"] == "not_analyzed"
+        })
+    }));
+    fs::write(&install_path, original_install).unwrap();
     register("recorded", "r1", "r1", build, "0.000010");
-    let accepted = finding(&run(true, 0));
+    let partial = run(true, 0);
+    assert_eq!(partial["assemblies"]["block"]["verdict"], "NotProven");
+    let accepted = finding(&partial);
     assert_eq!(accepted["outcome"], "pass");
     assert_eq!(accepted["measurement"], serde_json::json!([0.0, 1e-5]));
     assert!(accepted["measurement_sources"].as_array().unwrap().iter().any(|s| {
@@ -796,9 +812,9 @@ scope = "Изолированная ось на полном окне 4 мс"
     records.push(boundary);
     fs::write(&path, toml::to_string(&both).unwrap()).unwrap();
     let both_accepted = run(true, 0);
-    assert_eq!(both_accepted["assemblies"]["block"]["verdict"], "PassedSimulation");
+    assert_eq!(both_accepted["assemblies"]["block"]["verdict"], "NotProven");
     // Измерены две точки допуска. Непрерывная огибающая остаётся открытой.
-    assert_eq!(both_accepted["assemblies"]["block"]["readiness"], "BenchOnly");
+    assert_eq!(both_accepted["assemblies"]["block"]["readiness"], "NeedsWork");
     assert_eq!(both_accepted["assemblies"]["block"]["coverage"]["executed"], 2);
     assert!(both_accepted["assemblies"]["block"]["runs"].as_object().unwrap().values().all(|row| {
         row["findings"].as_array().unwrap().iter().any(|f| {
@@ -811,7 +827,8 @@ scope = "Изолированная ось на полном окне 4 мс"
     let uncertain = run(true, 0);
     let open = finding(&uncertain);
     assert_eq!(open["outcome"], "not_analyzed");
-    assert_eq!(uncertain["assemblies"]["block"]["readiness"], "BenchOnly");
+    assert_eq!(uncertain["assemblies"]["block"]["verdict"], "NotProven");
+    assert_eq!(uncertain["assemblies"]["block"]["readiness"], "NeedsWork");
     assert!((open["measurement"][1].as_f64().unwrap() - 0.000013).abs() < 1e-15);
     fs::write(&path, exact.replace("uncertainty = 0.0\n", "")).unwrap();
     assert_eq!(finding(&run(true, 0))["outcome"], "not_analyzed");
@@ -836,11 +853,136 @@ scope = "Изолированная ось на полном окне 4 мс"
         assert!(result["detail"].as_str().unwrap().contains(reason), "{result}");
         assert!(result.get("assemblies").is_none());
     }
+    let profile_path = fixture.path("profile.toml");
+    let profile = fs::read_to_string(&profile_path).unwrap();
+    fs::write(&profile_path, profile.replace("r1", "r2")).unwrap();
+    register("recorded", "r2", "r2", build, "0.000010");
+    let foreign = run(true, 2);
+    assert_eq!(foreign["proof_status"], "not_analyzed");
+    assert!(foreign["detail"].as_str().unwrap().contains("другой сборке или ревизии"));
+    assert!(foreign.get("assemblies").is_none());
+    fs::write(&profile_path, profile).unwrap();
+
     register("recorded", "r1", "r1", build, "0.000010");
     let path = fixture.path("records.toml");
     let record = fs::read_to_string(&path).unwrap();
-    fs::write(&path, record.replace("\n[records.receipt]", "\n[records.absent]")).unwrap();
-    assert_eq!(run(true, 2)["proof_status"], "not_analyzed");
+    let (unattested, _) = record.split_once("\n[records.receipt]").unwrap();
+    fs::write(&path, unattested).unwrap();
+    let denied = run(true, 2);
+    assert_eq!(denied["proof_status"], "not_analyzed");
+    assert!(denied.get("assemblies").is_none());
+
+    let capture_path = fixture.path("bench.csv");
+    let raw = fs::read_to_string(&capture_path).unwrap();
+    let hash = |csv: &str| format!("{:016x}", sim_signal::fnv1a(csv.bytes()));
+    // Четыре отсчёта до 3 мс образуют корректный, но слишком короткий замер.
+    let short = raw.replace(",r1,4000000\n", ",r1,3000000\n")
+        .replace("4000000,ход,m,4,0.000010,1\nend,5", "end,4");
+    fs::write(&capture_path, &short).unwrap();
+    fs::write(&path, record.replace(&hash(&raw), &hash(&short))).unwrap();
+    let denied = run(true, 2);
+    assert!(denied["detail"].as_str().unwrap().contains("горизонт замера"));
+    assert!(denied.get("assemblies").is_none());
+
+    let incomplete = raw.replace("2000000,ход,m,2,0.000003,1", "2000000,ход,m,2,0,0");
+    fs::write(capture_path, &incomplete).unwrap();
+    fs::write(path, record.replace(&hash(&raw), &hash(&incomplete))).unwrap();
+    let denied = run(true, 2);
+    assert_eq!(denied["proof_status"], "not_analyzed");
+    assert!(denied["detail"].as_str().unwrap().contains("пропуск"));
+    assert!(denied.get("assemblies").is_none());
+}
+
+#[test]
+fn прочность_принимает_только_заверенный_стенд_своей_ревизии() {
+    let fixture = Fixture::new("strength-attestation");
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../devices/stage6/corpus");
+    let installation = fs::read_to_string(corpus.join("under-travel-install.toml")).unwrap();
+    let installation = installation.replacen("version = 1", r#"
+version = 1
+measurement_build = { design = "стержень", revision = "r1" }
+"#, 1);
+    fs::write(fixture.path("install.toml"), format!(r#"{installation}
+
+[[checks]]
+class = "static_strength"
+object = "каретка/стержень"
+window = {{ start_ns = 0, end_ns = 4000000, max_gap_ns = 1000000 }}
+scope = "Полное стендовое окно изгиба"
+applicability = {{ kind = "datasheet", reference = "Постановка испытания стержня на изгиб." }}
+inputs = []
+verification = {{ kind = "measurement", limit = {{ kind = "range", signal = {{ name = "напряжение", unit = "Pa" }}, max = 5000000.0, source = {{ kind = "datasheet", reference = "Предел стенда 5 МПа из установки парного опыта." }} }} }}
+"#)).unwrap();
+    let campaign = toml::Value::String(corpus.join("under-travel.toml").to_str().unwrap().into());
+    fs::write(fixture.path("campaign.toml"), format!(r#"
+version = 1
+[assemblies.block]
+scope = "Стержень"
+[assemblies.block.experiments.test]
+kind = "scenario"
+campaign = {campaign}
+installation = "install.toml"
+"#)).unwrap();
+    fs::write(fixture.path("profile.toml"), r#"
+build = { design = "стержень", revision = "r1" }
+models = ["изгиб"]
+[[channels]]
+name = "напряжение"
+unit = "Pa"
+role = "observation"
+sampling = { kind = "periodic", first_ns = 0, period_ns = 1000000 }
+"#).unwrap();
+    let before = json(&fixture.run("--campaign", &["campaign.toml", "--json"], b""), 0);
+    let (key, row) = before["assemblies"]["block"]["runs"].as_object().unwrap().iter()
+        .find(|(_, row)| row["detail"]["summary"]["key"]["sample"]["kind"] == "nominal").unwrap();
+    let strength = |report: &Value| report["assemblies"]["block"]["runs"][key]["findings"]
+        .as_array().unwrap().iter().filter(|f| f["key"]["class"] == "static_strength")
+        .cloned().collect::<Vec<_>>();
+    assert!(!strength(&before).is_empty());
+    assert!(strength(&before).iter().all(|f| f["outcome"] == "not_analyzed"));
+    let run: sim_task::campaign::RunKey = serde_json::from_value(row["detail"]["summary"]["key"].clone()).unwrap();
+    let run = toml::Value::try_from(run).unwrap();
+    let build = row["detail"]["build_fingerprint"].as_str().unwrap();
+    for (origin, revision, status) in [("recorded", "r1", 0), ("synthetic", "r1", 2), ("recorded", "r2", 2)] {
+        let mut capture = format!("sim-reality,1,{origin}\nbuild,стержень,{revision},4000000\ntime_ns,signal,unit,seq,value,valid\n");
+        // Ряд протокольного теста. Ручная формула для 2 Н·м и сечения 40×20 мм
+        // даёт 6·2/(0,04·0,02²) = 750 кПа.
+        for tick in 0..=4 {
+            capture.push_str(&format!("{},напряжение,Pa,{tick},750000,1\n", tick * 1_000_000));
+        }
+        capture.push_str("end,5\n");
+        let stamp = sim_signal::fnv1a(capture.bytes());
+        fs::write(fixture.path("strength.csv"), &capture).unwrap();
+        fs::write(fixture.path("records.toml"), format!(r#"
+version = 1
+[[records]]
+experiment = "block/test"
+run = {run}
+build_fingerprint = "{build}"
+signal = {{ name = "напряжение", unit = "Pa" }}
+uncertainty = 0.0
+profile = "profile.toml"
+capture = "strength.csv"
+[records.receipt]
+build = {{ design = "стержень", revision = "{revision}" }}
+log_fingerprint = "{stamp:016x}"
+capture_id = "Проверка переноса записи владельца"
+calibration = "Точная шкала протокольного теста"
+scope = "Изгиб по всему окну стенда"
+"#)).unwrap();
+        let report = json(&fixture.run("--campaign",
+            &["campaign.toml", "--json", "--measurements", "records.toml"], b""), status);
+        if status == 0 {
+            let findings = strength(&report);
+            assert_eq!(findings.len(), 1);
+            assert_eq!(findings[0]["outcome"], "pass");
+            assert_eq!(findings[0]["measurement"], serde_json::json!([750000.0, 750000.0]));
+        } else {
+            assert_eq!(report["proof_status"], "not_analyzed");
+            let reason = if origin == "synthetic" { "синтетический" } else { "ревизии" };
+            assert!(report["detail"].as_str().unwrap().contains(reason), "{report}");
+        }
+    }
 }
 
 #[test]

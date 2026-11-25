@@ -42,9 +42,20 @@ pub struct PortSample {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResetCause {
     PowerOn,
+    Brownout,
     Watchdog,
     Software,
     Host,
+}
+
+/// Состояние буферов и подтяжки физического контакта в рабочей периферии.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpioMode {
+    Output(bool),
+    Input,
+    PullUp,
+    PullDown,
+    HighImpedance,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +156,10 @@ pub enum BoardInput {
     },
     Power {
         on: bool,
+    },
+    /// Срабатывание детектора питания. На отпускании вновь стартует загруженный образ.
+    Brownout {
+        asserted: bool,
     },
     /// При остановленном ядре аппаратное время и watchdog продолжаются.
     Execution {

@@ -18,7 +18,7 @@ pub struct Wrench {
 #[derive(Default)]
 pub(crate) struct Audit {
     pub wrenches: BTreeMap<Time, Vec<Wrench>>,
-    pub forces: BTreeMap<String, Vec<PointSample>>,
+    pub measurements: BTreeMap<(String, String), Vec<PointSample>>,
 }
 
 impl Audit {
@@ -98,11 +98,14 @@ impl Audit {
                     return Err("время измерения отличается от времени строки".into());
                 }
                 let (raw_name, rest) = string_token(body).ok_or("неверное имя измерения")?;
-                let Some(result) = rest.strip_prefix(", unit: \"N\" }, result: ") else {
-                    continue;
-                };
+                let (raw_unit, result) = rest.strip_prefix(", unit: ")
+                    .and_then(string_token)
+                    .and_then(|(unit, rest)| Some((unit, rest.strip_prefix(" }, result: ")?)))
+                    .ok_or("неверная единица измерения")?;
                 let name = json::parse(raw_name)?;
-                let name = name.str().ok_or("неверное имя силы")?;
+                let unit = json::parse(raw_unit)?;
+                let name = name.str().ok_or("неверное имя измерения")?;
+                let unit = unit.str().ok_or("неверная единица измерения")?;
                 let value = if let Some((raw_value, _)) = result
                     .strip_prefix("Analyzed { value: ")
                     .and_then(|r| r.split_once(", scope: "))
@@ -110,16 +113,16 @@ impl Audit {
                     Some(
                         json::parse(raw_value)?
                             .f64()
-                            .ok_or("неверное значение силы")?,
+                            .ok_or("неверное числовое значение измерения")?,
                     )
                 } else if result.starts_with("NotAnalyzed { reason: ") {
                     None
                 } else {
-                    return Err("неверный статус измерения силы".into());
+                    return Err("неверный статус измерения".into());
                 };
                 audit
-                    .forces
-                    .entry(name.into())
+                    .measurements
+                    .entry((name.into(), unit.into()))
                     .or_default()
                     .push(PointSample {
                         at: *at,

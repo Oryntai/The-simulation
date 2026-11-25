@@ -4,6 +4,7 @@
 
 mod components;
 pub mod control;
+pub mod electrical;
 mod log;
 pub mod process;
 mod view;
@@ -236,6 +237,7 @@ struct State {
     view: Option<ViewRecording>,
     replay: Option<Replay>,
     control: Option<control::Engine>,
+    electrical: Option<electrical::Electrical>,
     work: process::Processes,
     failure: Option<String>,
     sealed: bool,
@@ -430,6 +432,7 @@ impl Runtime {
             view: None,
             replay: None,
             control: None,
+            electrical: None,
             work: process::Processes::default(),
             failure: None,
             sealed: false,
@@ -1143,6 +1146,39 @@ impl Runtime {
             .filter(|_| self.status() == Status::Running)
     }
 
+    /// Установить цепь до сборки живого контура или его воспроизведения.
+    /// `identity` связывает запись с байтами схемы, каталога и настройками решателя.
+    pub fn install_electrical(
+        &mut self,
+        setup: electrical::ElectricalSetup,
+        identity: &[u8],
+        circuit: impl electrical::CircuitModel + Clone,
+    ) -> Result<(), String> {
+        self.ensure_configurable()?;
+        if self.state.electrical.is_some() || self.state.control.is_some() {
+            return Err("цепь устанавливается один раз до сборки управления".into());
+        }
+        let probes = setup.probes.clone();
+        let mut electrical = electrical::Electrical::new(setup, identity, circuit)?;
+        let previous = self.state.clone();
+        for (name, probe) in probes {
+            match self.register_truth(&name, probe.unit()) {
+                Ok(id) => electrical.probes.push((id, probe)),
+                Err(reason) => {
+                    self.state = previous;
+                    return Err(reason);
+                }
+            }
+        }
+        self.add_simplification(Simplification {
+            subject: "электрическая связь платы".into(),
+            text: "Сброс и GPIO рассчитаны на сетке обмена; непрерывная огибающая и поведение физической сборки требуют сверки".into(),
+            blocks_proof: true,
+        })?;
+        self.state.electrical = Some(electrical);
+        Ok(())
+    }
+
     /// Ближайший момент, когда есть работа, включая внешние команды воспроизведения.
     pub fn next_event_time(&self) -> Option<Time> {
         if self.status() != Status::Running {
@@ -1159,6 +1195,12 @@ impl Runtime {
             .into_iter()
             .chain(self.state.queue.peek().map(|e| e.0.0))
             .chain(self.state.bus.next_delivery())
+            .chain(
+                self.state
+                    .electrical
+                    .as_ref()
+                    .and_then(|circuit| circuit.due),
+            )
             .chain(
                 (self.process_recording_enabled() && self.process_journal().is_empty())
                     .then_some(Time::ZERO),
@@ -1186,6 +1228,9 @@ impl Runtime {
 
     /// Дойти до абсолютного момента, выполнив все события вплоть до него.
     pub fn run_until(&mut self, until: Time) -> Result<Status, String> {
+        if self.state.electrical.is_some() && self.state.control.is_none() {
+            return Err("к электрической цепи не установлен контур с платами".into());
+        }
         if until < self.time() {
             return Err("задан момент в прошлом: используйте restore".into());
         }
@@ -1220,6 +1265,18 @@ impl Runtime {
         self.state.log.set_process_ticks(None);
         while let Some(at) = self.next_event_time().filter(|&at| at <= until) {
             self.state.log.end.time = at;
+            let electrical_boundary = self.state.electrical.as_ref().is_some_and(|circuit| {
+                circuit.due == Some(at)
+                    || self
+                        .state
+                        .control
+                        .as_ref()
+                        .is_some_and(|control| control.electrical_board_due(at))
+            });
+            if electrical_boundary && let Err(reason) = self.close_electrical(at) {
+                self.stop(Status::ComponentFailure, reason);
+                break;
+            }
             let physics_boundary = self.state.next_physics == Some(at);
             if physics_boundary {
                 if !self.step_physics() {
@@ -1241,6 +1298,14 @@ impl Runtime {
                 self.stop(Status::ComponentFailure, error);
                 break;
             }
+            if electrical_boundary
+                && let (Some(control), Some(circuit)) =
+                    (&mut self.state.control, &mut self.state.electrical)
+                && let Err(reason) = control.electrical_advance(&self.state.bus, at, circuit)
+            {
+                self.stop(Status::ComponentFailure, reason);
+                break;
+            }
             self.deliver(at);
             for phase in [
                 Phase::Sensors,
@@ -1254,6 +1319,15 @@ impl Runtime {
                 }
                 if let Err(error) = self.control_phase(at, phase) {
                     self.stop(Status::ComponentFailure, error);
+                    break;
+                }
+                if electrical_boundary
+                    && phase == Phase::Links
+                    && let (Some(control), Some(circuit)) =
+                        (&mut self.state.control, &mut self.state.electrical)
+                    && let Err(reason) = control.electrical_latch(at, circuit)
+                {
+                    self.stop(Status::ComponentFailure, reason);
                     break;
                 }
                 let boundary = phase == Phase::Actuators && (at == Time::ZERO || physics_boundary);
@@ -1338,6 +1412,24 @@ impl Runtime {
         let result = control.phase(self, at, phase);
         self.state.control = Some(control);
         result
+    }
+
+    fn close_electrical(&mut self, at: Time) -> Result<(), String> {
+        let Some(circuit) = &mut self.state.electrical else {
+            return Ok(());
+        };
+        circuit.close(at)?;
+        for (id, value) in circuit.samples()? {
+            self.state.plant[id.0 as usize] = Some(value);
+            self.state.log.push(LogEntry {
+                at,
+                kind: LogKind::Truth,
+                id: id.0,
+                value,
+                valid: true,
+            });
+        }
+        Ok(())
     }
 
     fn stop(&mut self, status: Status, reason: String) {

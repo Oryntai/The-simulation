@@ -17,7 +17,8 @@
 //! Семантика внешних входов: значение `set_source` относится к концу следующего шага, внутри
 //! шага — линейная интерполяция от прошлого значения (для трапеций это точно соответствует
 //! кусочно-линейному входу). `set_switch` — состояние на весь следующий шаг (как ШИМ из
-//! прошивки с удержанием), после переключения шаг делается неявным Эйлером.
+//! прошивки с удержанием). `set_source_step` задаёт скачок на левой границе следующего
+//! интервала. После скачка и переключения шаг делается неявным Эйлером.
 //!
 //! Внутренний шаг: изломы PULSE/PWL/SIN решатель проходит точно; после излома — шаг Эйлера
 //! длиной 0.1 от штатного (или от расстояния до следующего излома), затем шаг удваивается
@@ -29,6 +30,9 @@ use crate::mna::{
     CapState, Engine, IndState, Method, PointCtx, PointFail, SimOptions, singular_error,
 };
 use crate::netlist::TranSpec;
+
+// Относительная граница округления шага из прежней схемы интегрирования.
+const STEP_ROUNDING: f64 = 1e-9;
 
 /// Настройки переходного процесса.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -52,6 +56,7 @@ pub struct TranStats {
 }
 
 /// Переходный процесс с фиксированным шагом хоста.
+#[derive(Clone)]
 pub struct Transient {
     eng: Engine,
     dt: f64,
@@ -60,10 +65,15 @@ pub struct Transient {
     need_be: bool,
     h_hint: f64,
     sw_pending: Vec<Option<bool>>,
+    source_steps: Vec<Option<f64>>,
     stats: TranStats,
-    /// Предупреждения запуска (например, не удалось согласовать начальные условия UIC).
+    /// Предупреждения разбора и построения схемы.
     pub warnings: Vec<String>,
 }
+
+/// Состояние схемы и планировщика на границе шага, вместе с отложенными командами.
+#[derive(Clone)]
+pub struct TransientSnapshot(Transient);
 
 impl Transient {
     /// Создать переходный процесс с шагом `dt`. Начальное состояние — рабочая точка по
@@ -87,25 +97,29 @@ impl Transient {
                 "шаг переходного процесса должен быть положительным, а не {dt}"
             )));
         }
+        if opts.max_step.is_some_and(|h| !h.is_finite() || h <= 0.0) {
+            return Err(SimError::Invalid(
+                "максимальный шаг должен быть конечным и положительным".into(),
+            ));
+        }
         let h_max = opts.max_step.map_or(dt, |m| m.min(dt));
+        let mut eng = Engine::new(ckt, opts.sim)?;
         // Нулевые фронты PULSE → шаг (правило SPICE: «tr, tf по умолчанию = TSTEP»).
-        let mut ckt = ckt.clone();
-        for e in &mut ckt.elems {
+        for e in &mut eng.ckt.elems {
             if let Kind::Vsrc { src, .. } | Kind::Isrc { src, .. } = &mut e.kind
                 && let Some(w) = &src.wave
             {
                 src.wave = Some(w.with_default_edges(dt));
             }
         }
-        let mut eng = Engine::new(&ckt, opts.sim);
-        let mut warnings = ckt.warnings.clone();
         if opts.uic {
-            init_uic(&mut eng, dt, &mut warnings)?;
+            init_uic(&mut eng, dt)?;
         } else {
             eng.solve_dc(false, 0.0)?;
             eng.init_reactive_from_dc();
         }
         let n_sw = eng.sw_on.len();
+        let n_ext = eng.ext.len();
         Ok(Transient {
             eng,
             dt,
@@ -114,8 +128,9 @@ impl Transient {
             need_be: true,
             h_hint: h_max,
             sw_pending: vec![None; n_sw],
+            source_steps: vec![None; n_ext],
             stats: TranStats::default(),
-            warnings,
+            warnings: ckt.warnings.clone(),
         })
     }
 
@@ -133,21 +148,49 @@ impl Transient {
         self.stats
     }
 
+    pub fn snapshot(&self) -> TransientSnapshot {
+        TransientSnapshot(self.clone())
+    }
+
+    /// Восстановить схему, настройки, текущую точку и ещё не применённые команды.
+    pub fn restore(&mut self, snapshot: &TransientSnapshot) {
+        *self = snapshot.0.clone();
+    }
+
     /// Задать значение EXT-источника (В или А) на конец следующего шага.
+    /// После `set_source_step` линейный участок начинается с нового значения.
     pub fn set_source(&mut self, name: &str, value: f64) -> Result<(), SimError> {
+        let k = self.external_source(name, value)?;
+        self.eng.ext[k].to = value;
+        Ok(())
+    }
+
+    /// Задать скачок EXT-источника (В или А) в текущий момент для следующего интервала.
+    /// Сначала доведите расчёт до метки события через [`Self::advance_to`].
+    /// Точка на метке сохраняет значения с левой стороны. Скачок задаёт новое
+    /// значение на всём интервале, пока `set_source` не задаст другой его конец.
+    pub fn set_source_step(&mut self, name: &str, value: f64) -> Result<(), SimError> {
+        let k = self.external_source(name, value)?;
+        self.source_steps[k] = Some(value);
+        self.eng.ext[k].to = value;
+        Ok(())
+    }
+
+    fn external_source(&self, name: &str, value: f64) -> Result<usize, SimError> {
+        if !value.is_finite() {
+            return Err(SimError::Invalid(format!(
+                "неконечное значение источника «{name}»"
+            )));
+        }
         let e = self.eng.ckt.find_elem(name)?;
         match &e.kind {
-            Kind::Vsrc { src, .. } | Kind::Isrc { src, .. } => match src.ext {
-                Some(k) => {
-                    self.eng.ext[k].to = value;
-                    Ok(())
-                }
-                None => Err(SimError::WrongElement {
+            Kind::Vsrc { src, .. } | Kind::Isrc { src, .. } => {
+                src.ext.ok_or_else(|| SimError::WrongElement {
                     name: name.into(),
                     message: "источник не внешний: объявите его как «EXT начальное_значение»"
                         .into(),
-                }),
-            },
+                })
+            }
             _ => Err(SimError::WrongElement {
                 name: name.into(),
                 message: "это не источник".into(),
@@ -175,7 +218,8 @@ impl Transient {
         }
     }
 
-    /// Состояние ключа в последнем рассчитанном моменте.
+    /// Активное состояние ключа. На найденной границе переключения управляемого ключа
+    /// это состояние справа, тогда как ток относится к последней принятой точке MNA.
     pub fn switch_state(&self, name: &str) -> Result<bool, SimError> {
         let e = self.eng.ckt.find_elem(name)?;
         match &e.kind {
@@ -199,6 +243,11 @@ impl Transient {
         self.eng.element_current(element, self.t)
     }
 
+    /// Токи из принятого MNA, в порядке выводов нетлиста, положительные в сторону элемента.
+    pub fn terminal_currents(&self, element: &str) -> Result<Vec<f64>, SimError> {
+        self.eng.terminal_currents(element, self.t)
+    }
+
     /// Мгновенная поглощаемая мощность элемента, Вт (> 0 — потребляет, < 0 — отдаёт).
     pub fn power(&self, element: &str) -> Result<f64, SimError> {
         self.eng.element_power(element, self.t)
@@ -217,17 +266,43 @@ impl Transient {
     /// Сделать один шаг хоста `dt` (внутри — подшаги до изломов источников и при делении шага).
     pub fn step(&mut self) -> Result<(), SimError> {
         let target = self.t + self.dt;
+        if target == self.t {
+            return Err(SimError::Invalid(
+                "шаг меньше разрешения шкалы времени".into(),
+            ));
+        }
         self.advance_to(target)
     }
 
-    /// Дойти до момента `t_end` (внешние входы интерполируются по всему интервалу).
+    /// Дойти точно до `t_end`. Линейные входы интерполируются по всему интервалу.
+    /// При ошибке состояние и команды остаются на входной границе.
     pub fn advance_to(&mut self, t_end: f64) -> Result<(), SimError> {
-        let eps = 1e-9 * self.dt;
-        if t_end <= self.t + eps {
+        if !t_end.is_finite() || t_end < self.t {
+            return Err(SimError::Invalid(format!(
+                "недопустимая конечная метка {t_end} с"
+            )));
+        }
+        if t_end == self.t {
             return Ok(());
         }
-        for (k, p) in self.sw_pending.iter_mut().enumerate() {
-            if let Some(on) = p.take()
+        let saved = self.eng.save_state();
+        let timing = (self.t, self.need_be, self.h_hint, self.stats);
+        if let Err(error) = self.integrate(t_end) {
+            self.eng.restore_state(saved);
+            (self.t, self.need_be, self.h_hint, self.stats) = timing;
+            return Err(error);
+        }
+        self.sw_pending.fill(None);
+        self.source_steps.fill(None);
+        for e in &mut self.eng.ext {
+            e.from = e.to;
+        }
+        Ok(())
+    }
+
+    fn integrate(&mut self, t_end: f64) -> Result<(), SimError> {
+        for (k, &p) in self.sw_pending.iter().enumerate() {
+            if let Some(on) = p
                 && self.eng.sw_on[k] != on
             {
                 self.eng.sw_on[k] = on;
@@ -236,17 +311,39 @@ impl Transient {
         }
         let t_start = self.t;
         let span = t_end - t_start;
-        while self.t < t_end - eps {
-            let mut h = self.h_hint.min(self.h_max).min(t_end - self.t);
-            let mut bp_hit = None;
-            if let Some(bp) = self.next_breakpoint(self.t, eps)
-                && bp <= self.t + h + eps
-            {
-                h = bp - self.t;
-                bp_hit = Some(bp);
+        let mut source_jump = false;
+        for (e, &step) in self.eng.ext.iter_mut().zip(&self.source_steps) {
+            if let Some(value) = step {
+                source_jump |= value != e.from;
+                e.from = value;
             }
-            if bp_hit.is_none() && t_end - (self.t + h) < eps {
-                h = t_end - self.t;
+        }
+        if source_jump {
+            self.need_be = true;
+            // Та же стартовая доля шага, что у изломов PWL/PULSE.
+            self.h_hint = self.h_hint.min(0.1 * self.h_max.min(span));
+        }
+        while self.t < t_end {
+            let remaining = t_end - self.t;
+            let min_progress = self.t.next_up() - self.t;
+            let mut h = self.h_hint.max(min_progress).min(self.h_max).min(remaining);
+            // Сумма внутренних шагов может оставить остаток округления на правой границе.
+            // Достигаем заданной метки этим шагом без отдельного микрошага.
+            let proposed = self.t + h;
+            let mut reaches_end = proposed > self.t && t_end - proposed <= STEP_ROUNDING * h;
+            if reaches_end {
+                h = remaining;
+            }
+            let mut bp_hit = None;
+            if let Some(bp) = self.next_breakpoint(self.t) {
+                let limit = if reaches_end { t_end } else { proposed };
+                if bp <= limit {
+                    let coincides = reaches_end && t_end - bp <= STEP_ROUNDING * h;
+                    let boundary = if coincides { t_end } else { bp };
+                    reaches_end = coincides;
+                    h = boundary - self.t;
+                    bp_hit = Some(boundary);
+                }
             }
             let mut halvings = 0;
             let mut hit: bool;
@@ -262,7 +359,13 @@ impl Transient {
                 } else {
                     Method::Trap
                 };
-                let t_new = self.t + h;
+                let t_new = bp_hit.unwrap_or_else(|| if reaches_end { t_end } else { self.t + h });
+                if h <= 0.0 || t_new <= self.t || t_new > t_end {
+                    return Err(SimError::NoConvergence {
+                        time: self.t,
+                        message: "внутренний шаг меньше разрешения шкалы времени".into(),
+                    });
+                }
                 let ctx = PointCtx {
                     t: t_new,
                     method,
@@ -290,6 +393,7 @@ impl Transient {
                                 self.eng.nl_restore(snap);
                                 h *= theta;
                                 bp_hit = None;
+                                reaches_end = false;
                                 freeze = true;
                                 event_states = Some(states);
                                 continue;
@@ -305,16 +409,13 @@ impl Transient {
                                 continue;
                             }
                         }
+                        self.eng.record_inputs(ctx.ext_frac, &trial);
                         let toggled = self.commit(method, h, trial);
                         self.stats.steps += 1;
                         if method == Method::Be {
                             self.stats.euler_steps += 1;
                         }
-                        self.t = match bp_hit {
-                            Some(bp) => bp,
-                            None if (t_new - t_end).abs() < eps => t_end,
-                            None => t_new,
-                        };
+                        self.t = t_new;
                         self.need_be = bp_hit.is_some() || toggled;
                         hit = bp_hit.is_some();
                         if let Some(states) = event_states.take() {
@@ -340,6 +441,10 @@ impl Transient {
                         }
                         h /= 2.0;
                         bp_hit = None;
+                        reaches_end = false;
+                        if event_states.take().is_some() {
+                            freeze = false;
+                        }
                         self.need_be = true;
                     }
                 }
@@ -352,28 +457,33 @@ impl Transient {
                 h
             } else if hit {
                 let next = self
-                    .next_breakpoint(self.t, eps)
+                    .next_breakpoint(self.t)
                     .map_or(self.h_max, |b| b - self.t);
                 0.1 * self.h_max.min(next)
             } else {
                 (self.h_hint * 2.0).min(self.h_max)
             };
         }
-        for e in &mut self.eng.ext {
-            e.from = e.to;
-        }
         Ok(())
     }
 
-    fn next_breakpoint(&self, t: f64, eps: f64) -> Option<f64> {
+    fn next_breakpoint(&self, t: f64) -> Option<f64> {
         let mut best: Option<f64> = None;
         for e in &self.eng.ckt.elems {
             if let Kind::Vsrc { src, .. } | Kind::Isrc { src, .. } = &e.kind
                 && src.ext.is_none()
                 && let Some(w) = &src.wave
-                && let Some(bp) = w.next_breakpoint(t, eps)
             {
-                best = Some(best.map_or(bp, |b: f64| b.min(bp)));
+                // Суммы длительностей PULSE округляются отдельно от шкалы хоста.
+                // Для PWL метки даны напрямую, поэтому ищем их без сдвига.
+                let eps = if matches!(w, crate::netlist::Waveform::Pulse { .. }) {
+                    STEP_ROUNDING * self.dt
+                } else {
+                    0.0
+                };
+                if let Some(bp) = w.next_breakpoint(t, eps) {
+                    best = Some(best.map_or(bp, |b: f64| b.min(bp)));
+                }
             }
         }
         best
@@ -415,7 +525,7 @@ impl Transient {
 /// Старт без рабочей точки: истории C и L — из IC= (иначе ноль); согласованные потенциалы
 /// узлов при t = 0 — решение шага Эйлера ничтожной длины h₀ = 1e-6·dt (конденсатор с IC
 /// ведёт себя как источник напряжения, индуктивность — как источник тока).
-fn init_uic(eng: &mut Engine, dt: f64, warnings: &mut Vec<String>) -> Result<(), SimError> {
+fn init_uic(eng: &mut Engine, dt: f64) -> Result<(), SimError> {
     for e in &eng.ckt.elems {
         match &e.kind {
             Kind::Cap { ic, k, .. } => {
@@ -447,13 +557,22 @@ fn init_uic(eng: &mut Engine, dt: f64, warnings: &mut Vec<String>) -> Result<(),
     };
     let mut trial = eng.sw_on.clone();
     match eng.solve_point(&ctx, &mut trial) {
-        Ok(()) => eng.sw_on = trial,
+        Ok(()) => {
+            eng.record_inputs(ctx.ext_frac, &trial);
+            eng.sw_on = trial;
+            for e in &eng.ckt.elems {
+                if let Kind::Cap { a, b, c, k, .. } = e.kind {
+                    let v = eng.v(&eng.x, a) - eng.v(&eng.x, b);
+                    eng.cap[k].i = (c / ctx.h) * (v - eng.cap[k].v);
+                }
+            }
+        }
         Err(PointFail::Singular) => return Err(singular_error()),
         Err(PointFail::NoConvergence) => {
-            eng.x.fill(0.0);
-            warnings.push(
-                "UIC: не удалось согласовать потенциалы узлов при t = 0, старт с нулей".into(),
-            );
+            return Err(SimError::NoConvergence {
+                time: 0.0,
+                message: "UIC: не удалось согласовать потенциалы узлов".into(),
+            });
         }
     }
     Ok(())
@@ -479,6 +598,9 @@ impl Waveforms {
 
     /// Значение сигнала в момент `t` (линейная интерполяция между отсчётами).
     pub fn at(&self, name: &str, t: f64) -> Option<f64> {
+        if !t.is_finite() {
+            return None;
+        }
         let y = self.get(name)?;
         let ts = &self.time;
         if ts.is_empty() {
@@ -518,6 +640,16 @@ pub fn run_tran_with(
     spec: &TranSpec,
     sim: SimOptions,
 ) -> Result<Waveforms, SimError> {
+    if !spec.tstop.is_finite()
+        || !spec.tstart.is_finite()
+        || spec.tstop <= 0.0
+        || spec.tstart < 0.0
+        || spec.tstart >= spec.tstop
+    {
+        return Err(SimError::Invalid(
+            "недопустимые границы переходного процесса".into(),
+        ));
+    }
     let opts = TranOptions {
         uic: spec.uic,
         max_step: spec.tmax,
@@ -525,13 +657,16 @@ pub fn run_tran_with(
     };
     let mut tr = Transient::with_options(ckt, spec.tstep, opts)?;
     let names = tr.signal_names();
-    let n_steps = ((spec.tstop / spec.tstep) - 1e-9).ceil().max(1.0) as usize;
+    let steps = (spec.tstop / spec.tstep).ceil().max(1.0);
+    if steps >= usize::MAX as f64 {
+        return Err(SimError::Invalid(
+            "сетка переходного процесса слишком велика".into(),
+        ));
+    }
+    let n_steps = steps as usize;
     let mut wf = Waveforms {
-        time: Vec::with_capacity(n_steps + 1),
-        signals: names
-            .into_iter()
-            .map(|n| (n, Vec::with_capacity(n_steps + 1)))
-            .collect(),
+        time: Vec::new(),
+        signals: names.into_iter().map(|n| (n, Vec::new())).collect(),
     };
     let mut buf = Vec::new();
     let eps = 1e-9 * spec.tstep;
@@ -546,7 +681,14 @@ pub fn run_tran_with(
     };
     record(&tr, &mut wf);
     for k in 1..=n_steps {
-        let target = (k as f64 * spec.tstep).min(spec.tstop);
+        let target = if k == n_steps {
+            spec.tstop
+        } else {
+            k as f64 * spec.tstep
+        };
+        if target >= spec.tstop && k != n_steps {
+            continue;
+        }
         tr.advance_to(target)?;
         record(&tr, &mut wf);
     }

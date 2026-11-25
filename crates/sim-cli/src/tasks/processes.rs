@@ -93,7 +93,7 @@ pub(super) fn ensure_finite(value: &toml::Value) -> Result<(), String> {
 }
 
 #[derive(Clone, Default)]
-pub(super) struct Inputs(
+pub(crate) struct Inputs(
     BTreeMap<PathBuf, std::sync::Arc<[u8]>>,
     BTreeMap<PathBuf, PathBuf>,
 );
@@ -113,7 +113,7 @@ impl FileStamp {
 }
 
 impl Inputs {
-    pub(super) fn capture(&mut self, path: &Path) -> Result<&[u8], String> {
+    pub(crate) fn capture(&mut self, path: &Path) -> Result<&[u8], String> {
         let key = path
             .canonicalize()
             .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -133,13 +133,13 @@ impl Inputs {
         Ok(&self.0[&key])
     }
 
-    pub(super) fn toml<T: DeserializeOwned>(&mut self, path: &Path) -> Result<T, String> {
+    pub(crate) fn toml<T: DeserializeOwned>(&mut self, path: &Path) -> Result<T, String> {
         let bytes = self.capture(path)?;
         ensure_finite(&parse(path, bytes)?)?;
         parse(path, bytes)
     }
 
-    pub(super) fn verify(&self) -> Result<(), String> {
+    pub(crate) fn verify(&self) -> Result<(), String> {
         for (request, canonical) in &self.1 {
             if request.canonicalize().ok().as_ref() != Some(canonical) {
                 return Err(format!("изменилась цель ссылки {}", request.display()));
@@ -171,7 +171,7 @@ impl Inputs {
             .collect()
     }
 
-    pub(super) fn fingerprints(&self) -> BTreeMap<String, Fingerprint> {
+    pub(crate) fn fingerprints(&self) -> BTreeMap<String, Fingerprint> {
         self.0
             .iter()
             .map(|(path, bytes)| (path.to_string_lossy().into_owned(), Fingerprint::of(bytes)))
@@ -313,6 +313,130 @@ struct Case {
     hazard_witnesses: Vec<HazardWitness>,
     screen: Option<screen::Screen>,
     measured_result: Option<PathBuf>,
+    ingress: Option<IngressInput>,
+}
+
+pub(super) struct ModePhysics {
+    pub(super) world: sim_world::CompiledWorld,
+    pub(super) resolved: WorldInputs,
+    pub(super) settings: ModelSettings,
+    pairs: Vec<sim_process::contact::ResolvedContactPair>,
+    models: ModelSet,
+    window: Interval,
+    criterion: Criterion,
+}
+
+impl ModePhysics {
+    pub(super) fn load(
+        path: &Path,
+        witness: &str,
+        fallback_world: &Path,
+        seed: u64,
+        rate: Rate,
+        horizon_ns: u64,
+        files: &mut Inputs,
+    ) -> Result<Self, String> {
+        let case: Case = files.toml(path)?;
+        if case.window_ns != [0, horizon_ns] || case.models.is_empty() && case.contacts.is_none() {
+            return Err("физика режима требует согласованного окна и моделей или контактов".into());
+        }
+        let world_path = case.world.as_ref().map_or_else(
+            || fallback_world.to_owned(), |file| dir(path).join(file),
+        );
+        capture_world(&world_path, files)?;
+        let world_inputs = WorldInputs::load(&world_path).map_err(|e| e.to_string())?;
+        let table = case.contacts.as_ref()
+            .map(|contact| load_materials(&dir(path).join(&contact.table), files))
+            .transpose()?;
+        let (world, pairs, resolved, _) = build_world(
+            &world_inputs, Some(seed), rate, &case, table.as_ref(), VariantKind::Baseline, None, None,
+        )?;
+        if !case.model_mounts.is_empty() {
+            return Err("сменные насадки в физике режима требуют отдельной привязки".into());
+        }
+        let criterion = case.criteria.into_iter().find(|c| c.name == witness)
+            .ok_or_else(|| format!("в постановке нет метрики «{witness}»"))?.into();
+        Ok(Self {
+            world,
+            resolved,
+            settings: ModelSettings::default(),
+            pairs,
+            models: ModelSet(case.models),
+            criterion,
+            window: interval(case.window_ns),
+        })
+    }
+
+    pub(super) fn apply_sample(
+        &mut self,
+        sample: LinkedSample<'_>,
+        models: &Models,
+        wires: &BTreeMap<String, u64>,
+    ) -> Result<(), String> {
+        self.settings = sample.overlay(&self.world, &mut self.resolved, Some(models), wires)?;
+        sample.update_contact_pairs(&mut self.pairs)?;
+        self.world = self.resolved.compile().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub(super) fn install(&self, runtime: &mut Runtime) -> Result<(), String> {
+        runtime.record_process_contacts(self.pairs.clone())?;
+        self.models.install(&self.world, runtime, &self.resolved.world, &self.resolved.path)?;
+        runtime.add_simplification(sim_world::Simplification {
+            subject: "физика режима".into(),
+            text: "Проверка сочетаний на базовой сетке; сходимость и разброс каждой строки требуют отдельной серии.".into(),
+            blocks_proof: true,
+        })
+    }
+
+    pub(super) fn observe(&self, runtime: &Runtime) -> Result<(&str, [f64; 2]), String> {
+        sim_task::process::sample_criterion(runtime, self.window, &self.criterion)
+            .map_err(|e| e.to_string())?
+            .map(|bounds| (self.criterion.name.as_str(), bounds))
+            .ok_or_else(|| format!("нет полного ряда процесса «{}»", self.criterion.name))
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IngressInput {
+    object: String,
+    limit_source: String,
+    water_level_m: Scalar,
+    exterior: String,
+    zones: BTreeSet<String>,
+    protected: String,
+    openings: BTreeMap<String, OpeningInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpeningInput {
+    between: [String; 2],
+    crest_m: Scalar,
+    seal: Option<String>,
+}
+
+impl IngressInput {
+    fn enclosure(&self) -> sim_process::work::ingress::Enclosure {
+        use sim_process::work::ingress::{Enclosure, Opening, Passage};
+
+        Enclosure {
+            water_level_m: self.water_level_m.clone().into(),
+            exterior: self.exterior.clone(),
+            zones: self.zones.clone(),
+            protected: self.protected.clone(),
+            openings: self.openings.iter().map(|(name, input)| {
+                (name.clone(), Opening {
+                    between: input.between.clone(),
+                    crest_m: input.crest_m.clone().into(),
+                    passage: input.seal.as_ref().map_or(Passage::Open, |specification| {
+                        Passage::DeclaredSeal { specification: specification.clone() }
+                    }),
+                })
+            }).collect(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -416,12 +540,17 @@ struct CheckReport {
     observed: Option<[f64; 2]>,
     drift_allowance_m: Option<f64>,
     checked: Option<[f64; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_ns: Option<u64>,
+    #[serde(skip)]
+    window_ns: [u64; 2],
     outcome: &'static str,
 }
 
 impl WindowCheck {
     fn sample(runtime: &Runtime, range: Interval, signal: &str, unit: &str) -> WindowSamples {
         let mut observed: Option<[f64; 2]> = None;
+        let mut extrema = [None, None];
         let mut first = None;
         let mut samples = 0;
         let mut missing = false;
@@ -441,6 +570,12 @@ impl WindowCheck {
             if let Some(sim_process::Analysis::Analyzed { value, .. }) = value.map(|x| &x.result) {
                 samples += 1;
                 first.get_or_insert(*value);
+                if observed.is_none_or(|[lo, _]| *value < lo) {
+                    extrema[0] = Some(tick.at);
+                }
+                if observed.is_none_or(|[_, hi]| *value > hi) {
+                    extrema[1] = Some(tick.at);
+                }
                 let [lo, hi] = observed.unwrap_or([*value; 2]);
                 observed = Some([lo.min(*value), hi.max(*value)]);
             } else {
@@ -449,6 +584,7 @@ impl WindowCheck {
         }
         WindowSamples {
             observed,
+            extrema,
             first,
             samples,
             complete: !missing
@@ -511,6 +647,14 @@ impl WindowCheck {
         } else {
             "satisfied"
         };
+        let limit_event = data.observed.and_then(|[lo, hi]| {
+            let low = data.extrema[0].filter(|_| self.min.as_ref().is_some_and(|x| lo < x.value));
+            let high = data.extrema[1].filter(|_| self.max.as_ref().is_some_and(|x| hi > x.value));
+            low.into_iter().chain(high).min()
+        });
+        let evidence_event = evidence.as_ref().and_then(|sample| {
+            sample.extrema[0].filter(|_| sample.observed.is_some_and(|[lo, _]| lo <= 0.0))
+        });
         CheckReport {
             name: self.name.clone(),
             rate_hz: rate.as_hz(),
@@ -519,6 +663,8 @@ impl WindowCheck {
             observed: data.observed,
             drift_allowance_m,
             checked,
+            event_ns: limit_event.into_iter().chain(evidence_event).min().map(|at| at.0),
+            window_ns: self.window_ns,
             outcome,
         }
     }
@@ -526,6 +672,7 @@ impl WindowCheck {
 
 struct WindowSamples {
     observed: Option<[f64; 2]>,
+    extrema: [Option<Time>; 2],
     first: Option<f64>,
     samples: usize,
     complete: bool,
@@ -1045,6 +1192,15 @@ fn build_world(
     Ok((compiled, pairs, inputs, settings))
 }
 
+fn load_materials(path: &Path, files: &mut Inputs) -> Result<ContactMaterialTable, String> {
+    let table: PairTable = files.toml(path)?;
+    if table.version != 1 {
+        return Err("неподдерживаемая версия таблицы контактов".into());
+    }
+    let rows = table.entries.into_iter().map(PairRow::parameters).collect::<Result<Vec<_>, _>>()?;
+    ContactMaterialTable::new(rows).map_err(|e| e.to_string())
+}
+
 fn run_case(
     mode: &str,
     mut case: Case,
@@ -1078,21 +1234,8 @@ fn run_case(
             Ok::<_, String>(text.to_owned())
         })
         .transpose()?;
-    let table = case
-        .contacts
-        .as_ref()
-        .map(|contact| {
-            let table: PairTable = inputs.toml(&base.join(&contact.table))?;
-            if table.version != 1 {
-                return Err("неподдерживаемая версия таблицы контактов".into());
-            }
-            let rows = table
-                .entries
-                .into_iter()
-                .map(PairRow::parameters)
-                .collect::<Result<Vec<_>, _>>()?;
-            ContactMaterialTable::new(rows).map_err(|e| e.to_string())
-        })
+    let table = case.contacts.as_ref()
+        .map(|contact| load_materials(&base.join(&contact.table), inputs))
         .transpose()?;
     let wiring = case
         .control
@@ -1101,6 +1244,12 @@ fn run_case(
         .transpose()?;
     let window = interval(case.window_ns);
     let child = super::campaign::profile_key("", mode, mode, Vec::new());
+    let ingress = case.ingress.as_ref().map(IngressInput::enclosure);
+    if let Some((input, enclosure)) = case.ingress.as_ref().zip(ingress.as_ref()) {
+        sim_task::measured::assess_ingress(
+            enclosure, &input.object, &input.limit_source, &child, case.window_ns, None,
+        ).map_err(|e| e.to_string())?;
+    }
     let measured = case
         .measured_result
         .as_ref()
@@ -1253,6 +1402,8 @@ fn run_case(
     let mut comparison = None;
     let mut diagnostics = Vec::new();
     let mut view_export = None;
+    let mut captured = None;
+    let capture = options.campaign_capture.as_ref();
     let mut checks = Vec::new();
     let mut packets = BTreeMap::<String, PacketCounts>::new();
     let mut installations = BTreeMap::new();
@@ -1280,6 +1431,9 @@ fn run_case(
                 );
             }
             let mut runtime = Runtime::load(compiled.clone())?;
+            if capture.is_some_and(|c| c.records_view() && c.grid(Some(&variant.name), rate.as_hz() as u64)) {
+                runtime.record_view()?;
+            }
             if rate.as_hz() == plan.base_hz as f64 && variant.kind == VariantKind::Baseline {
                 options.record_view(&mut runtime)?;
             }
@@ -1361,7 +1515,11 @@ fn run_case(
                     case.models.iter().filter_map(|(name, model)| {
                         matches!(model, models::Spec::Electrical { conductor_heat: Some(_), .. })
                             .then(|| (sim_task::verdict::ComponentKind::Wire, name.clone()))
-                    }),
+                    }).chain(case.ingress.iter().map(|input| {
+                        (sim_task::verdict::ComponentKind::EnvironmentalPath, input.object.clone())
+                    })).chain(wiring.iter().flat_map(|w| w.sampled.keys()).map(|name| {
+                        (sim_task::verdict::ComponentKind::Battery, name.clone())
+                    })),
                 ));
             }
             Ok(runtime)
@@ -1384,6 +1542,9 @@ fn run_case(
             );
             if let Some(screen) = &case.screen {
                 screened.push(screen.observe(&case, mode, runtime, reference.as_deref()));
+            }
+            if let Some(capture) = capture.filter(|c| c.grid(Some(&variant.name), rate.as_hz() as u64)) {
+                captured = Some(capture.save(runtime, None));
             }
             if rate.as_hz() != plan.base_hz as f64 || variant.kind != VariantKind::Baseline {
                 return;
@@ -1433,6 +1594,9 @@ fn run_case(
         },
     )
     .map_err(|e| e.to_string())?;
+    if capture.is_some() {
+        captured.ok_or("в опыте процессов отсутствует сетка повтора")??;
+    }
     if options.view.is_some() {
         view_export.ok_or("нет исходного прогона для выгрузки просмотра")??;
     }
@@ -1449,6 +1613,15 @@ fn run_case(
         && convergence.trials.iter().all(|trial| trial.completed && trial.steps > 0)
     {
         hazard_witnesses.extend(measured);
+    }
+    if let Some((input, enclosure)) = case.ingress.as_ref().zip(ingress.as_ref()) {
+        let journal = convergence.trials.first()
+            .filter(|_| convergence.trials.iter().all(|trial| trial.completed && trial.steps > 0))
+            .and_then(|trial| trial.journal)
+            .map(Fingerprint::from_fnv1a);
+        hazard_witnesses.push(sim_task::measured::assess_ingress(
+            enclosure, &input.object, &input.limit_source, &child, case.window_ns, journal,
+        ).map_err(|e| e.to_string())?);
     }
     for witness in &case.hazard_witnesses {
         let class = sim_task::verdict::REGISTRY
@@ -1538,7 +1711,7 @@ fn run_case(
     })
 }
 
-pub(super) fn capture_world(path: &Path, inputs: &mut Inputs) -> Result<sim_world::World, String> {
+pub(crate) fn capture_world(path: &Path, inputs: &mut Inputs) -> Result<sim_world::World, String> {
     let text = std::str::from_utf8(inputs.capture(path)?).map_err(|e| e.to_string())?;
     let world = sim_world::parse_world(path, text)?;
     let mut mesh_paths = BTreeSet::new();
@@ -1649,57 +1822,24 @@ pub(super) fn run_observed(
         inputs.verify()?;
         return Ok(0);
     }
-    let jobs = options
-        .jobs
-        .map_or(1, std::num::NonZeroUsize::get)
-        .min(selected.len());
+    let local = super::workers::Workers::new(options.jobs.unwrap_or(std::num::NonZeroUsize::MIN));
+    let workers = options.workers.as_deref().unwrap_or(&local);
     let inventory_requested = audit.is_some();
-    let run_one = |(mode, file, case, mut files): (String, PathBuf, Case, Inputs)| {
-        let report = run_case(
-            &mode,
-            case,
-            &file,
-            options,
-            &mut files,
-            sample,
-            inventory_requested,
-        );
-        (mode, report, files)
-    };
-    let mut finished: Vec<_> = if jobs <= 1 {
-        selected.into_iter().map(run_one).collect()
-    } else {
-        let pending = std::sync::Mutex::new(selected.into_iter());
-        std::thread::scope(|scope| {
-            let workers = (0..jobs)
-                .map(|_| {
-                    std::thread::Builder::new()
-                        .spawn_scoped(scope, || {
-                            let mut results = Vec::new();
-                            loop {
-                                let next = pending.lock().expect("очередь режимов").next();
-                                let Some(next) = next else { break };
-                                results.push(run_one(next));
-                            }
-                            results
-                        })
-                        .map_err(|e| format!("не удалось создать поток режимов процессов: {e}"))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let mut results = Vec::new();
-            for worker in workers {
-                results.extend(
-                    worker
-                        .join()
-                        .map_err(|_| "ошибка потока режимов процессов")?,
-                );
-            }
-            Ok::<_, String>(results)
+    for (mode, report, files) in
+        workers.map(selected, options.jobs, |(mode, file, case, mut files)| {
+            let report = run_case(
+                &mode,
+                case,
+                &file,
+                options,
+                &mut files,
+                sample,
+                inventory_requested,
+            )?;
+            Ok((mode, report, files))
         })?
-    };
-    finished.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-    for (mode, report, files) in finished {
-        cases.insert(mode, report?);
+    {
+        cases.insert(mode, report);
         inputs.merge(files)?;
     }
     for (mode, against) in sensitivity {
@@ -1750,11 +1890,17 @@ pub(super) fn run_observed(
                 finding.key.run = Some(key.clone());
                 finding
             }));
-            let violations = case
-                .checks
-                .iter()
+            findings.extend(case.checks.iter()
                 .filter(|check| check.outcome == "violated")
-                .map(|check| (check.name.as_str(), check.checked, None));
+                .map(|check| {
+                    let journal = case.convergence.trials.iter().find(|trial| {
+                        trial.variant == check.variant && trial.rate_hz as f64 == check.rate_hz
+                    }).and_then(|trial| trial.journal).map(Fingerprint::from_fnv1a);
+                    super::campaign::check_violation(
+                        &key, &check.name, check.checked, None, check.window_ns,
+                        check.event_ns.zip(journal),
+                    )
+                }));
             audit.observe(
                 key,
                 case.outcome,
@@ -1772,8 +1918,17 @@ pub(super) fn run_observed(
                     fault_delay_ns: None,
                 },
                 findings,
-                violations,
             )?;
+            audit.consider_playback(case.convergence.trials.iter()
+                .filter(|trial| trial.completed && trial.steps > 0)
+                .filter_map(|trial| {
+                    Some(super::campaign::playback::Grid {
+                        variant: Some(trial.variant.clone()),
+                        hz: trial.rate_hz,
+                        journal: trial.journal?,
+                        end_ns: case.convergence.window_ns[1],
+                    })
+                }));
             audit.record_comparison(case.reference.as_ref());
         }
     }

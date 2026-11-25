@@ -9,6 +9,7 @@ pub type Point = Point3<f64>;
 pub type Vec3 = Vector3<f64>;
 pub const BACKGROUND: [u8; 3] = [18, 22, 31];
 pub const WRENCH_COLOR: [u8; 3] = [104, 234, 222];
+pub(super) const KINEMATICS_COLOR: [u8; 3] = [147, 183, 255];
 pub const FORCE_COLOR: [u8; 3] = [255, 183, 56];
 // Три строки позволяют различать полосу даже при масштабировании текстуры.
 pub(super) const FORCE_ROWS: usize = 3;
@@ -197,6 +198,7 @@ pub struct Texture {
     pub depth: Vec<f64>,
     pub force_pixels: usize,
     pub projected_reactions: Vec<[[f64; 2]; 2]>,
+    pub projected_kinematics: Vec<[[f64; 2]; 2]>,
 }
 
 impl Texture {
@@ -213,6 +215,7 @@ impl Texture {
             depth: vec![f64::INFINITY; pixels],
             force_pixels: 0,
             projected_reactions: Vec::new(),
+            projected_kinematics: Vec::new(),
         })
     }
 
@@ -266,7 +269,7 @@ impl Texture {
         }
     }
 
-    fn line(&mut self, from: [f64; 2], to: [f64; 2]) {
+    fn line(&mut self, from: [f64; 2], to: [f64; 2], color: [u8; 3]) {
         let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
         // Шаг по ведущей оси не превышает один пиксель. Границы пересечения
         // обрезают отрезки даже при камере рядом с точкой наложения.
@@ -292,7 +295,7 @@ impl Texture {
             let x = (from[0] + dx * t).floor() as u32;
             let y = (from[1] + dy * t).floor() as u32;
             if x < self.size[0] && y < self.size[1] {
-                self.rgb[(y * self.size[0] + x) as usize] = WRENCH_COLOR;
+                self.rgb[(y * self.size[0] + x) as usize] = color;
             }
         }
     }
@@ -324,11 +327,11 @@ impl Texture {
             let tip = point + force * (length_m / scale_n);
             if let [Some(a), Some(b)] = [camera.project(point), camera.project(tip)] {
                 self.projected_reactions.push([a, b]);
-                self.line(a, b);
+                self.line(a, b, WRENCH_COLOR);
                 // Наконечник занимает 1/5 проекции вектора и сохраняет его направление.
                 let d = [(b[0] - a[0]) / 5.0, (b[1] - a[1]) / 5.0];
-                self.line(b, [b[0] - d[0] + d[1] / 2.0, b[1] - d[1] - d[0] / 2.0]);
-                self.line(b, [b[0] - d[0] - d[1] / 2.0, b[1] - d[1] + d[0] / 2.0]);
+                self.line(b, [b[0] - d[0] + d[1] / 2.0, b[1] - d[1] - d[0] / 2.0], WRENCH_COLOR);
+                self.line(b, [b[0] - d[0] - d[1] / 2.0, b[1] - d[1] + d[0] / 2.0], WRENCH_COLOR);
             }
         }
         Ok(())
@@ -425,11 +428,52 @@ pub(crate) fn render(
             }
         }
     }
+    if needs_kinematics(sim, geometry) {
+        for [a, b] in kinematics(sim) {
+            if let Some([from, to]) = camera.project(a).zip(camera.project(b)).map(|(a, b)| [a, b]) {
+                texture.line(from, to, KINEMATICS_COLOR);
+                texture.projected_kinematics.push([from, to]);
+            }
+        }
+    }
     texture.reactions(camera, reactions, length_m, scale_n)?;
     if let Some(force) = force {
         texture.force_overlay(force)?;
     }
     Ok(texture)
+}
+
+pub(super) fn needs_kinematics(sim: &Sim, geometry: &[Geometry]) -> bool {
+    sim.nbody() > 1 && !geometry.iter().any(|g| g.body != 0 && !g.vertices.is_empty())
+}
+
+fn kinematics(sim: &Sim) -> impl Iterator<Item = [Point; 2]> + '_ {
+    (1..sim.nbody()).flat_map(|id| {
+        let origin = Point::from(sim.body_pose(id).0);
+        // MuJoCo хранит одного родителя и три координаты центра масс на тело.
+        // Индекс берётся из диапазона nbody того же экземпляра.
+        let (parent, center) = unsafe {
+            let parent = *sim.model().body_parentid.add(id) as usize;
+            let center = *sim.data().xipos.cast::<[f64; 3]>().add(id);
+            (parent, Point::from(center))
+        };
+        [[origin, center]].into_iter().chain(
+            (parent != 0).then(|| [Point::from(sim.body_pose(parent).0), origin])
+        )
+    })
+}
+
+pub(super) fn kinematic_bounds(sim: &Sim) -> Option<(Point, f64)> {
+    let mut points = kinematics(sim).flatten();
+    let first = points.next()?.coords;
+    let (low, high) = points.fold((first, first), |(lo, hi), p| {
+        (lo.inf(&p.coords), hi.sup(&p.coords))
+    });
+    let radius = (high - low).norm() / 2.0;
+    let center = Point::from((high + low) / 2.0);
+    // Для совпавших точек используется штатный метровый масштаб обзора.
+    (radius.is_finite() && center.coords.iter().all(|v| v.is_finite()))
+        .then(|| (center, if radius > 0.0 { radius } else { 1.0 }))
 }
 
 pub(crate) fn bounds(

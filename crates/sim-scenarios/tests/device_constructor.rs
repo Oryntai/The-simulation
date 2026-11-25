@@ -78,6 +78,54 @@ fn thin_link() {
 }
 
 #[test]
+fn старый_расчёт_прочности_не_закрывает_центробежную_нагрузку() {
+    let mut d = device();
+    let mut rod = d.links[0].clone();
+    rod.name = "Стержень".into();
+    rod.parent = Some(0);
+    rod.length_mm = 1000.0;
+    rod.end_mass_kg = 0.2;
+    rod.direction = Direction::Forward;
+    rod.joint.kind = JointKind::Hinge;
+    rod.joint.axis = Axis::Z;
+    rod.joint.min_deg = -90.0;
+    rod.joint.max_deg = 90.0;
+    // Постановка приёмки, 300 рад/с. У неподвижного узла есть запас по одной статике.
+    rod.joint.speed_limit_dps = 300.0_f64.to_degrees();
+    d.links.push(rod.clone());
+    let mut block = rod;
+    block.name = "Блок".into();
+    block.parent = Some(1);
+    block.joint = JointSpec::fixed();
+    d.links.push(block);
+    let mut stationary = d.clone();
+    stationary.links[1].joint = JointSpec::fixed();
+    let stationary_report = assess_device(&stationary);
+    let static_check = stationary_report.findings.iter()
+        .find(|f| f.link == Some(2) && f.code == "static_strength").unwrap();
+    assert_eq!(static_check.outcome, Outcome::NotAnalyzed);
+    assert!(static_check.detail.contains(sim_world::STRENGTH_REQUIRES_BENCH));
+    assert!(static_check.value > static_check.limit);
+
+    let report = assess_device(&d);
+    let analysis = report.analysis.as_ref().unwrap();
+    // Только концевой груз даёт 18 кН при 300 рад/с на плече 1 м.
+    let force = 0.2 * analysis.joints[0].speed_rad_s.powi(2) * 1.0;
+    assert!((force - 18_000.0).abs() < 18_000.0 * f64::EPSILON);
+    assert!(analysis.links[1].shear_n < force);
+    let moving_check = report.findings.iter()
+        .find(|f| f.link == Some(2) && f.code == "static_strength").unwrap();
+    assert_eq!(moving_check.value, static_check.value);
+    assert_eq!(moving_check.outcome, Outcome::NotAnalyzed);
+    for i in 0..d.links.len() {
+        assert!(report.findings.iter().any(|f| f.link == Some(i)
+            && f.code == "rotational_inertia" && f.outcome == Outcome::NotAnalyzed));
+        assert!(!report.findings.iter().any(|f| f.link == Some(i)
+            && f.code == "static_strength" && f.outcome == Outcome::Pass));
+    }
+}
+
+#[test]
 fn inadequate_torque_limit() {
     reject(moving(), Group::Actuators, "torque_limit", |d| {
         d.links[0].joint.torque_limit_nm = 0.1
@@ -609,10 +657,16 @@ fn every_group_and_real_input_is_mandatory() {
         .iter()
         .filter(|f| f.outcome != Outcome::Pass)
         .collect();
-    assert_eq!(r.verdict(), BuildVerdict::PassedSimulation, "{blocked:#?}");
+    assert_eq!(r.verdict(), BuildVerdict::NotProven, "{blocked:#?}");
+    assert_eq!(blocked.len(), 2, "{blocked:#?}");
+    assert!(blocked.iter().all(|f| matches!(f.code, "bending_stress" | "static_strength")
+        && f.outcome == Outcome::NotAnalyzed
+        && f.detail.contains(sim_world::STRENGTH_REQUIRES_BENCH)));
+    // Проверяем полноту независимых групп отдельно от открытой прочности.
+    let other_checks: Vec<_> = r.findings.iter().filter(|f| f.outcome == Outcome::Pass).cloned().collect();
+    assert_eq!(verdict(&other_checks), BuildVerdict::PassedSimulation);
     for g in Group::ALL {
-        let filtered: Vec<_> = r
-            .findings
+        let filtered: Vec<_> = other_checks
             .iter()
             .filter(|f| f.group != g)
             .cloned()
@@ -646,7 +700,8 @@ fn every_group_and_real_input_is_mandatory() {
             result
                 .findings
                 .iter()
-                .any(|f| f.group == *group && f.outcome != Outcome::Pass),
+                .any(|f| f.group == *group && f.outcome != Outcome::Pass
+                    && !blocked.iter().any(|known| known.code == f.code && known.outcome == f.outcome)),
             "{group}"
         );
     }

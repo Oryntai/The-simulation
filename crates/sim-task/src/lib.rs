@@ -64,6 +64,11 @@ impl Fingerprint {
         Self(fnv1a(bytes.iter().copied()))
     }
 
+    /// Числовое представление без преобразования через f64.
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+
     /// Отпечаток FNV-1a, уже посчитанный при установке ресурса.
     pub fn from_fnv1a(value: u64) -> Self {
         Self(value)
@@ -223,6 +228,7 @@ pub struct Assessor {
     task: Task,
     topology: Topology,
     world: CompiledWorld,
+    mode_worlds: BTreeMap<String, CompiledWorld>,
     identity: Arc<Identity>,
     cases: Vec<Case>,
 }
@@ -251,6 +257,7 @@ impl Assessor {
             task,
             topology,
             world,
+            mode_worlds: BTreeMap::new(),
             identity,
             cases,
         })
@@ -266,6 +273,37 @@ impl Assessor {
 
     pub fn world(&self) -> &CompiledWorld {
         &self.world
+    }
+
+    /// Привязывает миры отдельных режимов к идентичности оценщика.
+    pub fn with_mode_worlds(
+        mut self,
+        worlds: BTreeMap<String, CompiledWorld>,
+    ) -> Result<Self, Error> {
+        let mut fingerprints = BTreeMap::new();
+        for (mode, world) in &worlds {
+            if self.task.mode(mode).is_none()
+                || world.seed != self.world.seed
+                || world.physics != self.world.physics
+            {
+                return Err(invalid("неизвестный режим или другая сетка или зерно мира режима"));
+            }
+            self.topology.validate(world)?;
+            validate_world_numbers(world)?;
+            fingerprints.insert(mode, verdict::compiled_world_fingerprint(world));
+        }
+        let base = verdict::compiled_world_fingerprint(&self.world);
+        Arc::make_mut(&mut self.identity).world = if fingerprints.is_empty() {
+            base
+        } else {
+            Fingerprint::of(format!("{base:?}{fingerprints:?}").as_bytes())
+        };
+        self.mode_worlds = worlds;
+        Ok(self)
+    }
+
+    fn world_for(&self, mode: &str) -> &CompiledWorld {
+        self.mode_worlds.get(mode).unwrap_or(&self.world)
     }
 
     pub fn required_cases(&self) -> &[Case] {
@@ -331,7 +369,7 @@ impl Assessor {
                         self.task.criteria(),
                         &live.journal,
                         &self.topology,
-                        &self.world,
+                        self.world_for(&plan.mode.id),
                     )?;
                     if let Err(error) = archive(RunKind::Live, &live.runtime, &live.journal) {
                         report
@@ -422,7 +460,7 @@ impl Assessor {
         install: &mut impl FnMut(&mut Runtime, &RunPlan<'_>, &EventSink) -> Result<Inputs, String>,
     ) -> Result<Result<LiveRun, String>, Error> {
         let events = EventSink::default();
-        let mut runtime = Runtime::load(self.world.clone()).map_err(invalid)?;
+        let mut runtime = Runtime::load(self.world_for(&plan.mode.id).clone()).map_err(invalid)?;
         let original = runtime.snapshot();
         let installation = install(&mut runtime, plan, &events).and_then(|installed| {
             if installed != self.identity.inputs {

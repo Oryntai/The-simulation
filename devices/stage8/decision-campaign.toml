@@ -1,5 +1,6 @@
 # Три коротких опыта кампании корпуса этапа 6. Границы, сетки и значения
-# остаются в исходных постановках, здесь только выбор опытов для проверки окна.
+# взяты из исходных постановок. Для bounded задана дискретная оснастка.
+# Для подтверждения её прочности нужен заверенный стендовый замер.
 version = 1
 
 [assemblies.exceeded]
@@ -13,7 +14,7 @@ installation = "../stage6/corpus/over-travel-install.toml"
 scope = "Стержень под допустимой нагрузкой"
 [assemblies.bounded.experiments.loaded]
 kind = "scenario"
-campaign = "../stage6/corpus/under-travel.toml"
+campaign = "acceptance/bounded.toml"
 installation = "../stage6/corpus/under-travel-install.toml"
 
 [assemblies.estimated]

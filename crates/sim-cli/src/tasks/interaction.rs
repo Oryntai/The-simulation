@@ -6,7 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::campaign::installation::{LinkedInventory, LinkedSample, Receipt};
+use super::campaign::{
+    installation::{LinkedInventory, LinkedSample, Receipt},
+    playback,
+};
 use serde::{Deserialize, Serialize};
 use sim_human::{
     Sex,
@@ -442,6 +445,8 @@ impl From<Metric> for ContactMetric {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DesignLimit {
+    #[serde(default)]
+    kind: LimitKind,
     patch: String,
     region: String,
     metric: Metric,
@@ -450,6 +455,14 @@ struct DesignLimit {
     area_m2: Option<Scalar>,
     #[serde(with = "Origin")]
     validation: Provenance,
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LimitKind {
+    #[default]
+    Design,
+    TissueScreen,
 }
 
 #[derive(Deserialize)]
@@ -581,6 +594,10 @@ struct CheckReport<'a> {
     rate_hz: f64,
     samples: usize,
     value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_ns: Option<u64>,
+    #[serde(skip)]
+    window_ns: [u64; 2],
     bounds: [f64; 2],
     source: &'a str,
     outcome: Outcome,
@@ -1375,6 +1392,7 @@ impl Experiment<'_> {
                     .keys()
                     .map(|name| (ComponentKind::EnergyPath, name.clone())),
             );
+            extra.extend(setup.sampled.keys().map(|name| (ComponentKind::Battery, name.clone())));
             if power.reach == Reach::Reachable {
                 extra.extend(
                     compiled
@@ -1527,10 +1545,12 @@ impl Experiment<'_> {
             tick_number(hz, p.at_ns)?;
         }
         let faster = |factor| hz.checked_mul(factor).ok_or("переполнение частоты");
+        let capture = options.campaign_capture.as_ref();
+        let record = |rate| capture.is_some_and(|c| c.records_view() && c.grid(None, rate));
         let [base, middle, fine] = [
-            self.run_grid(hz, false)?,
-            self.run_grid(faster(2)?, false)?,
-            self.run_grid(faster(4)?, options.view.is_some())?,
+            self.run_grid(hz, record(hz))?,
+            self.run_grid(faster(2)?, record(faster(2)?))?,
+            self.run_grid(faster(4)?, options.view.is_some() || record(faster(4)?))?,
         ];
         if base.assets != middle.assets || base.assets != fine.assets {
             return Err("ресурсы контура изменились между сетками".into());
@@ -1552,7 +1572,10 @@ impl Experiment<'_> {
                     patch: l.patch.clone(),
                     region: l.region.clone(),
                     metric: l.metric.into(),
-                    kind: CriterionKind::Design,
+                    kind: match l.kind {
+                        LimitKind::Design => CriterionKind::Design,
+                        LimitKind::TissueScreen => CriterionKind::TissueScreen,
+                    },
                     limit: sourced(&l.limit)?,
                     validation: Some(l.validation.clone()),
                     geometry: patch.geometry.clone(),
@@ -1565,6 +1588,11 @@ impl Experiment<'_> {
             })
             .collect::<Result<Vec<_>, String>>()?;
         let runs = [&base.runtime, &middle.runtime, &fine.runtime];
+        if let Some(capture) = capture {
+            let runtime = runs.iter().find(|rt| capture.grid(None, rt.physics_rate().as_hz() as u64))
+                .ok_or("в опыте взаимодействия отсутствует сетка повтора")?;
+            capture.save(runtime, None)?;
+        }
         let ids = runs.each_ref().map(|rt| {
             rt.interaction_identity()
                 .ok_or("нет идентичности взаимодействия")
@@ -1732,7 +1760,7 @@ pub(super) fn run_observed(
 ) -> Result<u8, String> {
     if options.matrix_full || options.jobs.is_some() {
         return Err(
-            "порядок опытов взаимодействия задаётся профилем и выполняется последовательно".into(),
+            "для взаимодействия порядок вариантов задаётся профилем, число исполнителей — кампанией".into(),
         );
     }
     let mut inputs = Inputs::default();
@@ -1866,8 +1894,12 @@ pub(super) fn run_observed(
     }
     let mut reports = Vec::new();
     let mut fingerprints = BTreeMap::new();
-    for (experiment, files) in &experiments {
-        let report = experiment.run(options)?;
+    let local = super::workers::Workers::new(std::num::NonZeroUsize::MIN);
+    let workers = options.workers.as_deref().unwrap_or(&local);
+    let finished = workers.map(experiments.iter().collect(), None, |(experiment, files)| {
+        Ok((experiment, files, experiment.run(options)?))
+    })?;
+    for (experiment, files, report) in finished {
         let mut files = (*files).clone();
         if let Some(audit) = audit.as_mut() {
             for (path, hash) in &report.resources {
@@ -1935,18 +1967,18 @@ pub(super) fn run_observed(
                     .collect::<Vec<_>>(),
             ))?;
             let key = audit.child(case.id, case.id, Vec::new());
-            let findings = case.evidence.campaign_findings(&key);
-            let violations = case
-                .checks
-                .iter()
+            let mut findings = case.evidence.campaign_findings(&key);
+            findings.extend(case.checks.iter()
                 .filter(|check| check.outcome == Outcome::Fail)
                 .map(|check| {
-                    (
-                        check.id,
-                        check.value.map(|v| [v; 2]),
-                        Some((check.bounds, check.source)),
+                    let journal = case.evidence.grids().iter().find(|grid| grid.rate_hz == check.rate_hz)
+                        .map(|grid| grid.journal);
+                    super::campaign::check_violation(
+                        &key, check.id, check.value.map(|value| [value; 2]),
+                        Some((check.bounds, check.source)), check.window_ns,
+                        check.event_ns.zip(journal),
                     )
-                });
+                }));
             audit.observe(
                 key,
                 case.outcome,
@@ -1963,8 +1995,15 @@ pub(super) fn run_observed(
                     fault_delay_ns: None,
                 },
                 findings,
-                violations,
             )?;
+            audit.consider_playback(case.evidence.grids().iter().map(|grid| {
+                playback::Grid {
+                    variant: None,
+                    hz: grid.rate_hz as u64,
+                    journal: grid.journal.as_u64(),
+                    end_ns: case.horizon_ns,
+                }
+            }));
         }
     }
     if options.json {
@@ -2015,17 +2054,28 @@ fn norm(v: [f64; 3]) -> f64 {
     v[0].hypot(v[1]).hypot(v[2])
 }
 
-fn statistic(values: &[f64], stat: &Stat) -> Option<f64> {
-    let first = *values.first()?;
-    let max = || values.iter().copied().fold(first, f64::max);
-    let min = || values.iter().copied().fold(first, f64::min);
-    Some(match stat {
-        Stat::Peak => values.iter().map(|v| v.abs()).fold(0.0, f64::max),
-        Stat::Span => max() - min(),
-        Stat::Last => *values.last()?,
-        Stat::Sum => values.iter().sum(),
-        Stat::Min => min(),
-    })
+fn statistic(values: &[(Time, f64)], stat: &Stat) -> Option<(f64, Option<Time>)> {
+    let first = values.first()?.1;
+    let series = || values.iter().map(|&(_, value)| value);
+    let min = || series().fold(first, f64::min);
+    let max = || series().fold(first, f64::max);
+    let result = match stat {
+        Stat::Peak => {
+            let value = series().map(f64::abs).fold(0.0, f64::max);
+            (value, values.iter().find(|(_, v)| v.abs() == value).map(|(at, _)| *at))
+        }
+        Stat::Min => {
+            let value = min();
+            (value, values.iter().find(|(_, v)| *v == value).map(|(at, _)| *at))
+        }
+        Stat::Last => {
+            let &(at, value) = values.last()?;
+            (value, Some(at))
+        }
+        Stat::Span => (max() - min(), None),
+        Stat::Sum => (series().sum(), None),
+    };
+    result.0.is_finite().then_some(result)
 }
 
 impl Check {
@@ -2040,16 +2090,16 @@ impl Check {
             .flat_map(|tick| {
                 tick.outputs
                     .values()
-                    .filter_map(|out| out.interaction.as_ref())
+                    .filter_map(|out| out.interaction.as_ref().map(|out| (tick.at, out)))
             });
         let reactions = |name: &str| {
             interaction
                 .clone()
-                .filter_map(move |tick| {
+                .filter_map(move |(at, tick)| {
                     tick.patches
                         .get(name)
                         .and_then(|sample| match &sample.reaction {
-                            Analysis::Analyzed { value, .. } => Some((value, sample)),
+                            Analysis::Analyzed { value, .. } => Some((at, value, sample)),
                             _ => None,
                         })
                 })
@@ -2058,31 +2108,31 @@ impl Check {
         let steps = |id: &str| {
             interaction
                 .clone()
-                .filter_map(|tick| tick.interfaces.get(id))
+                .filter_map(|(at, tick)| tick.interfaces.get(id).map(|step| (at, step)))
                 .collect::<Vec<_>>()
         };
         let control = control::run(rt);
         let peak = Stat::Peak;
         let mut stat = &peak;
-        let mut values: Vec<f64> = match &self.metric {
+        let mut values: Vec<(Time, f64)> = match &self.metric {
             Measure::Normal { patch } => reactions(patch)
                 .into_iter()
-                .map(|(v, _)| v.normal_n)
+                .map(|(at, v, _)| (at, v.normal_n))
                 .collect(),
             Measure::Shear { patch } => reactions(patch)
                 .into_iter()
-                .map(|(v, _)| norm(v.shear_n))
+                .map(|(at, v, _)| (at, norm(v.shear_n)))
                 .collect(),
             Measure::OpposedNormal { first, second } => {
                 // Одновременный прижим ограничивается меньшей из встречных сил.
                 interaction
                     .clone()
-                    .filter_map(|tick| {
+                    .filter_map(|(at, tick)| {
                         let reaction = |id| match &tick.patches.get(id)?.reaction {
                             Analysis::Analyzed { value, .. } => Some(value.normal_n),
                             _ => None,
                         };
-                        Some(reaction(first)?.min(reaction(second)?))
+                        Some((at, reaction(first)?.min(reaction(second)?)))
                     })
                     .collect()
             }
@@ -2094,7 +2144,7 @@ impl Check {
                     let dt = Time(*sample_ns).as_secs();
                     let rows: Vec<_> = interaction
                         .clone()
-                        .flat_map(|tick| &tick.axes)
+                        .flat_map(|(_, tick)| &tick.axes)
                         .filter(|axis| {
                             Some(axis.channel) == id && axis.interval.start.0 % sample_ns == 0
                         })
@@ -2102,13 +2152,13 @@ impl Check {
                         .collect();
                     rows.windows(3)
                         .filter(|v| v[2].0 - v[1].0 == *sample_ns && v[1].0 - v[0].0 == *sample_ns)
-                        .map(|v| (v[2].1 - 2.0 * v[1].1 + v[0].1) / dt.powi(2))
+                        .map(|v| (Time(v[2].0), (v[2].1 - 2.0 * v[1].1 + v[0].1) / dt.powi(2)))
                         .collect()
                 }
             }
             Measure::Pressure { patch } => reactions(patch)
                 .into_iter()
-                .filter_map(|(v, s)| Some(v.normal_n / s.area_m2.as_ref()?.min))
+                .filter_map(|(at, v, s)| Some((at, v.normal_n / s.area_m2.as_ref()?.min)))
                 .collect(),
             // Сверка проектного бюджета оснастки по её номинальной площади.
             Measure::NominalPressure { patch } => c
@@ -2120,23 +2170,23 @@ impl Check {
                 .flat_map(|area| {
                     reactions(patch)
                         .into_iter()
-                        .map(move |(v, _)| v.normal_n / area.min)
+                        .map(move |(at, v, _)| (at, v.normal_n / area.min))
                 })
                 .collect(),
             Measure::Tension { route } => interaction
                 .clone()
-                .filter_map(|tick| match &tick.completed_routes.get(route)?.reaction {
-                    Analysis::Analyzed { value, .. } => Some(value.tension_n),
+                .filter_map(|(at, tick)| match &tick.completed_routes.get(route)?.reaction {
+                    Analysis::Analyzed { value, .. } => Some((at, value.tension_n)),
                     _ => None,
                 })
                 .collect(),
             Measure::RoutePayout { route } => interaction
                 .clone()
-                .filter_map(|tick| tick.completed_routes.get(route)?.payout_m)
+                .filter_map(|(at, tick)| Some((at, tick.completed_routes.get(route)?.payout_m?)))
                 .collect(),
             Measure::InterfaceState { interface, state } => steps(interface)
                 .into_iter()
-                .map(|s| {
+                .map(|(at, s)| {
                     let expected = match state {
                         State::Open => InterfaceState::Open,
                         State::Loaded => InterfaceState::Loaded,
@@ -2144,12 +2194,12 @@ impl Check {
                         State::Released => InterfaceState::Released,
                         State::Broken => InterfaceState::Broken,
                     };
-                    f64::from(s.state == expected)
+                    (at, f64::from(s.state == expected))
                 })
                 .collect(),
             Measure::ActionReactionResidual { interface } => steps(interface)
                 .into_iter()
-                .filter_map(|s| {
+                .filter_map(|(at, s)| {
                     if s.body_loads.is_empty() {
                         return None;
                     }
@@ -2159,12 +2209,12 @@ impl Check {
                             *a += b;
                         }
                     }
-                    Some(norm(total))
+                    Some((at, norm(total)))
                 })
                 .collect(),
             Measure::VirtualWorkResidual { route } => steps(route)
                 .into_iter()
-                .filter_map(|s| {
+                .filter_map(|(at, s)| {
                     let Length::Affine { slope, .. } = &c.routes.get(route)?.length else {
                         return None;
                     };
@@ -2172,18 +2222,18 @@ impl Check {
                         return None;
                     };
                     // Независимая производная e(q)=L−(L₀+s·q) по коэффициенту из данных.
-                    Some((s.drive_effort?.1 - value.tension_n * slope.value).abs())
+                    Some((at, (s.drive_effort?.1 - value.tension_n * slope.value).abs()))
                 })
                 .collect(),
             Measure::LengthResidual { route } => steps(route)
                 .into_iter()
-                .filter_map(|s| {
-                    Some((s.path_length_m? - s.free_length_m? - s.deformation_m?).abs())
+                .filter_map(|(at, s)| {
+                    Some((at, (s.path_length_m? - s.free_length_m? - s.deformation_m?).abs()))
                 })
                 .collect(),
             Measure::PadLawResidual { patch } => steps(patch)
                 .into_iter()
-                .filter_map(|s| {
+                .filter_map(|(at, s)| {
                     let law = c.pads.get(patch)?.law.as_ref()?;
                     if law.damping_ns_m.value != 0.0 || s.state.is_terminal() {
                         return None;
@@ -2201,7 +2251,7 @@ impl Check {
                     let Analysis::Analyzed { value, .. } = &s.reaction else {
                         return None;
                     };
-                    Some((expected - value.normal_n).abs())
+                    Some((at, (expected - value.normal_n).abs()))
                 })
                 .collect(),
             Measure::Axis {
@@ -2213,13 +2263,13 @@ impl Check {
                 rt.channel(channel)
                     .into_iter()
                     .flat_map(|id| {
-                        interaction.clone().flat_map(move |tick| {
+                        interaction.clone().flat_map(move |(at, tick)| {
                             tick.axes.iter().filter(move |a| a.channel == id).map(
-                                |a| match quantity {
+                                move |a| (at, match quantity {
                                     AxisQuantity::Position => a.position,
                                     AxisQuantity::Velocity => a.velocity,
                                     AxisQuantity::Effort => a.applied_effort,
-                                },
+                                }),
                             )
                         })
                     })
@@ -2257,7 +2307,7 @@ impl Check {
                                             LogKind::Truth
                                         }
                             })
-                            .map(|entry| entry.value)
+                            .map(|entry| (entry.at, entry.value))
                     })
                     .collect()
             }
@@ -2271,7 +2321,8 @@ impl Check {
                     .iter()
                     .flat_map(|run| run.events())
                     .filter(|event| inside(event.at))
-                    .filter_map(|event| match (&event.kind, quantity) {
+                    .filter_map(|record| {
+                        let value = match (&record.kind, quantity) {
                         (
                             control::EventKind::PacketDelivered {
                                 route: r,
@@ -2283,7 +2334,7 @@ impl Check {
                         ) if r == route => match q {
                             PacketQuantity::Delivered => Some(1.0),
                             PacketQuantity::LatencyNs => {
-                                event.at.0.checked_sub(sent_at.0).map(|ns| ns as f64)
+                                record.at.0.checked_sub(sent_at.0).map(|ns| ns as f64)
                             }
                             PacketQuantity::Sequence => Some(*id as f64),
                             PacketQuantity::Lost => None,
@@ -2293,7 +2344,9 @@ impl Check {
                         {
                             Some(1.0)
                         }
-                        _ => None,
+                            _ => None,
+                        }?;
+                        Some((record.at, value))
                     })
                     .collect()
             }
@@ -2301,8 +2354,7 @@ impl Check {
                 stat = &Stat::Sum;
                 interaction
                     .clone()
-                    .flat_map(|tick| &tick.motion_events)
-                    .map(|_| 1.0)
+                    .flat_map(|(at, tick)| tick.motion_events.iter().map(move |_| (at, 1.0)))
                     .collect()
             }
             Measure::Probe {
@@ -2321,7 +2373,7 @@ impl Check {
                             if measurement.signal.name == *name
                                 && measurement.signal.unit == *unit =>
                         {
-                            Some(*value)
+                            Some((measurement.at, *value))
                         }
                         _ => None,
                     })
@@ -2333,7 +2385,7 @@ impl Check {
                 .iter()
                 .flat_map(|camera| &camera.frames)
                 .filter(|f| inside(Time(f.delivered_ns)))
-                .map(|f| f.projection_error_px)
+                .map(|f| (Time(f.delivered_ns), f.projection_error_px))
                 .collect(),
             Measure::CameraShift => {
                 stat = &Stat::Span;
@@ -2342,7 +2394,7 @@ impl Check {
                     .iter()
                     .flat_map(|camera| &camera.frames)
                     .filter(|f| inside(Time(f.delivered_ns)))
-                    .map(|f| f.centroid_px[0])
+                    .map(|f| (Time(f.delivered_ns), f.centroid_px[0]))
                     .collect()
             }
             Measure::PowerCut => {
@@ -2361,19 +2413,19 @@ impl Check {
                             .as_ref()
                             .is_some_and(|p| p.id == *id && p.target == *target) =>
                         {
-                            Some(1.0)
+                            Some((event.at, 1.0))
                         }
                         _ => None,
                     })
                     .collect()
             }
         };
-        if values.iter().any(|v| !v.is_finite()) {
+        if values.iter().any(|(_, v)| !v.is_finite()) {
             values.clear();
         }
-        let value = statistic(&values, stat).filter(|v| v.is_finite());
-        let outcome = match value {
-            Some(v) if values.len() >= self.min_samples => {
+        let result = statistic(&values, stat);
+        let outcome = match result {
+            Some((v, _)) if values.len() >= self.min_samples => {
                 if (self.bounds[0]..=self.bounds[1]).contains(&v) {
                     Outcome::Pass
                 } else {
@@ -2386,7 +2438,9 @@ impl Check {
             id: &self.id,
             rate_hz: rt.physics_rate().as_hz(),
             samples: values.len(),
-            value,
+            value: result.map(|(value, _)| value),
+            event_ns: result.and_then(|(_, at)| at.map(|at| at.0)),
+            window_ns: [start, end],
             bounds: self.bounds,
             source: &self.source,
             outcome,

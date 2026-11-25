@@ -1,0 +1,108 @@
+source = "Численная оснастка со статичной опорой и живым откликом участника на упругий прижим."
+# Короткое окно проверки реакции: 16 полных шагов нижней сетки.
+horizon_ns = 8000000
+audit_from_ns = 500000 # Первый завершённый кадр на базовой сетке.
+construction_complete = true
+
+[participant]
+name = "участник"
+population = "male"
+stature_m = { value = 1.754, source = { paper = "NHANES 2015–2018, табл. 11, медиана мужчин 20+." } }
+mass_kg = { value = 87.4, source = { paper = "NHANES 2015–2018, табл. 5, медиана мужчин 20+." } }
+pose = {}
+
+[motion.axes.j0038]
+channel = "поворот"
+initial_position = 0.0
+initial_velocity = 0.0
+stiffness = { value = 18, source = { estimate = "Регулятор базовой стендовой постановки этапа 5." } }
+damping = { value = 2, source = { estimate = "Регулятор базовой стендовой постановки этапа 5." } }
+effort_limit = { value = 2, source = { estimate = "Регулятор базовой стендовой постановки этапа 5." } }
+reference = { knots = [[0, 0.0], [180000000, 0.045]], source = { estimate = "Опорный поворот контрольной постановки этапа 5." } }
+
+[pads."опора"]
+mounts = ["участник/s1253", "регистратор/блок/контакт"]
+geometries = ["участник/r0001", "регистратор/блок/collision/0"]
+normal = [[0, 0, 1], [0, 0, 1]]
+tangent = [[1, 0, 0], [1, 0, 0]]
+# Эффективная площадь идеальной плоской опоры 5 × 10 мм по чертежу оснастки.
+area_curve = [
+    { compression_m = 0, area_m2 = { value = 0.00005, source = { datasheet = "Размер плоской опоры оснастки 5 × 10 мм." } } },
+    { compression_m = 0.06, area_m2 = { value = 0.00005, source = { datasheet = "Размер плоской опоры оснастки 5 × 10 мм." } } },
+]
+
+[pads."опора".calibration]
+compression_m = { value = 0.03, range = [0, 0.06], source = { datasheet = "Предел хода пружины оснастки 60 мм." } }
+offset_m = { value = 0.08, range = [0, 0.16], source = { datasheet = "Окно положения учебной оснастки из контактной постановки этапа 5." } }
+axis_error_rad = { value = 0, range = [0, 3.141592653589793], source = { datasheet = "Направление силы задаёт первая опора; шарнир второй стороны допускает поворот на π." } }
+relative_speed_m_s = { value = 2.5, range = [0, 5], source = { datasheet = "Окно скорости учебной оснастки из контактной постановки этапа 5." } }
+
+[pads."опора".law]
+free_gap_m = { value = 0.003, source = { datasheet = "Свободный зазор пружины оснастки 3 мм; преднатяг зависит от координат портов." } }
+compression = { points = [[0, 0], [0.06, 10.8]], source = { datasheet = "Линейная пружина оснастки 0,18 Н/мм на ходе 60 мм." } }
+damping_ns_m = { value = 0, source = { datasheet = "Идеальная пружина без вязкого сопротивления." } }
+shear_stiffness_n_m = { value = 180, source = { datasheet = "Сдвиговая ветвь той же модельной жёсткости 0,18 Н/мм." } }
+friction = { value = 0, source = { datasheet = "Контрольная установка без передачи касательной силы." } }
+capacity_n = { value = 10.8, source = { datasheet = "Граница линейной характеристики 0,18 Н/мм × 60 мм." } }
+
+[contacts]
+table = "../../../../catalog/contact/stage5.toml"
+# Реакцию этой пары даёт только закон упругой опоры.
+assignments = {}
+pairs = []
+
+[contacts.solver]
+# Штатная настройка стенда, без экстраполяции на физическую калибровку.
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-8
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 0
+ccd_tolerance = 1e-6
+ccd_iterations = 35
+
+[power]
+topology = { estimate = "Пассивный блок используется для проверки контактной оснастки." }
+required = ["гравитационная нагрузка"]
+
+[power.sources."гравитационная нагрузка"]
+reach = "reachable"
+
+[tolerances]
+onset_s = { value = 0.004, source = { datasheet = "Допуск сравнения сеток из протокола оснастки этапа 5." } }
+force_n = { value = 0.35, source = { datasheet = "Допуск сравнения сеток из протокола оснастки этапа 5." } }
+impulse_ns = { value = 0.02, source = { datasheet = "Допуск сравнения сеток из протокола оснастки этапа 5." } }
+duration_s = { value = 0.012, source = { datasheet = "Допуск сравнения сеток из протокола оснастки этапа 5." } }
+drift_m = { value = 0.001, source = { datasheet = "Допуск сравнения сеток из протокола оснастки этапа 5." } }
+stress_pa = { value = 3500, source = { datasheet = "Допуск сравнения сеток из протокола оснастки этапа 5." } }
+
+[[checks]]
+id = "невязка закона прижима"
+bounds = [0, 1e-12]
+source = "Независимая оценка F = kx по журналу сжатия; допуск сложения и интерполяции двойной точности."
+min_samples = 16
+metric = { kind = "pad_law_residual", patch = "опора" }
+
+[[limits]]
+kind = "tissue_screen"
+patch = "опора"
+region = "участник/r0001"
+metric = "mean_pressure"
+limit = { value = 80000, source = { datasheet = "Порог отсева численного имитатора из протокола корпуса этапа 6." } }
+duration_s = { value = 0.008, range = [0, 0.008000000000001], source = { datasheet = "Окно оснастки: 16 тактов по 0,5 мс плюс 1 фс на округление суммы." } }
+area_m2 = { value = 0.00005, range = [0.00005, 0.00012], source = { datasheet = "Две плоские опоры оснастки 5 × 10 и 10 × 12 мм." } }
+validation = { datasheet = "Приёмка оснастки по средней нагрузке плоской пробы; предел постановки, без экстраполяции на ткани." }
+
+[[limits]]
+kind = "tissue_screen"
+patch = "опора"
+region = "участник/r0001"
+metric = "normal_force"
+limit = { value = 10, source = { datasheet = "Порог силы численного имитатора из протокола корпуса этапа 6." } }
+duration_s = { value = 0.008, range = [0, 0.008000000000001], source = { datasheet = "Окно оснастки: 16 тактов по 0,5 мс плюс 1 фс на округление суммы." } }
+area_m2 = { value = 0.00005, range = [0.00005, 0.00012], source = { datasheet = "Две плоские опоры оснастки 5 × 10 и 10 × 12 мм." } }
+validation = { datasheet = "Приёмка нагрузки оснастки на плоской пробе." }

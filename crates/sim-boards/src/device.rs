@@ -1,7 +1,7 @@
 use crate::ports::{OutputPort, PortSample, PortValue, end_cycle, event_time};
 use crate::{
-    Advance, BoardInput, BoardOutput, Capabilities, InputEvent, InputOutcome, OutputEvent,
-    PwmOutput, ResetCause, capabilities,
+    Advance, BoardInput, BoardOutput, Capabilities, GpioMode, InputEvent, InputOutcome,
+    OutputEvent, PwmOutput, ResetCause, capabilities,
 };
 use crate::{
     BoardFault, BoardId, arm::Arm, avr::Avr, image, memory::Bus, peripheral::Hardware, riscv::Riscv,
@@ -17,6 +17,10 @@ pub trait BoardSim: Send {
     fn set_pin_input(&mut self, pin: u32, high: bool);
     fn set_adc_volts(&mut self, channel: u32, volts: f64);
     fn pin_output(&self, pin: u32) -> Option<bool>;
+    /// Отсутствие значения означает, что периферия не установила модель контакта.
+    fn gpio_mode(&self, pin: u32) -> Option<GpioMode> {
+        self.pin_output(pin).map(GpioMode::Output)
+    }
     fn pwm_duty(&self, pin: u32) -> Option<f64>;
     fn uart_take(&mut self) -> Vec<u8>;
 
@@ -67,6 +71,7 @@ pub fn new_board(id: BoardId) -> Box<dyn BoardSim> {
         digital: [None; 48],
         analog: [None; 18],
         powered: true,
+        brownout: false,
         executing: true,
         image: None,
         cycle: 0,
@@ -169,6 +174,7 @@ struct Device {
     digital: [Option<bool>; 48],
     analog: [Option<f64>; 18],
     powered: bool,
+    brownout: bool,
     executing: bool,
     image: Option<std::sync::Arc<[u8]>>,
     cycle: u64,
@@ -419,6 +425,13 @@ impl BoardSim for Device {
         self.machine.as_ref()?.bus.hw.output(pin)
     }
 
+    fn gpio_mode(&self, pin: u32) -> Option<GpioMode> {
+        if !self.powered || self.fault.is_some() {
+            return None;
+        }
+        self.machine.as_ref()?.bus.hw.gpio_mode(pin)
+    }
+
     fn pwm_duty(&self, pin: u32) -> Option<f64> {
         if !self.powered || self.fault.is_some() {
             return None;
@@ -515,10 +528,24 @@ impl BoardSim for Device {
         event_time(self.cycle, event.cycle)?;
         match event.input {
             BoardInput::Power { on } => {
+                if self.brownout && on {
+                    return Err(BoardFault::Unpowered);
+                }
                 if self.powered == on {
                     return Ok(InputOutcome::Unchanged);
                 }
                 self.set_power(on)?;
+            }
+            BoardInput::Brownout { asserted } => {
+                if self.brownout == asserted {
+                    return Ok(InputOutcome::Unchanged);
+                }
+                self.set_power(!asserted)?;
+                self.brownout = asserted;
+                if asserted {
+                    self.reset_cause = Some(ResetCause::Brownout);
+                    self.emit(BoardOutput::Reset(ResetCause::Brownout));
+                }
             }
             BoardInput::Execution { enabled } => {
                 if self.executing == enabled {

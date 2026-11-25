@@ -164,6 +164,164 @@ fn explicit_pair_cannot_bypass_masks_or_body_exclusions() {
 }
 
 #[test]
+fn достижимая_исключённая_пара_блокирует_доказательство() {
+    let mut opts = options();
+    opts.pairs.clear();
+    opts.excluded_bodies
+        .push(["world".into(), "блок&/блок&".into()]);
+    let world = compile(&fixture(), &opts).unwrap();
+    let sim = world.open_contact_sim().unwrap();
+    assert!(!sim.contact_pair_allowed([BLOCK, FLOOR]).unwrap());
+    assert!(sim.contact_wrenches().unwrap().is_empty());
+    // В исходном опыте грань уже пересекает опору на 1 мм.
+    let mut original = compile(&fixture(), &options())
+        .unwrap()
+        .open_contact_sim()
+        .unwrap();
+    assert!(!original.step_with_contacts().unwrap().contacts.is_empty());
+    assert!(
+        world
+            .simplifications
+            .iter()
+            .any(|note| note.subject == "contact/exclusions"
+                && note.blocks_proof
+                && note.text.contains(BLOCK)
+                && note.text.contains(FLOOR))
+    );
+}
+
+#[test]
+fn жёсткая_группа_проверяет_соседние_ветви_и_геометрический_зазор() {
+    let mut world = fixture();
+    world.environment.collision.clear();
+    world.objects.clear();
+    world.devices.push(Placement {
+        name: "стенд".into(),
+        file: "block.toml".into(),
+        pose: Pose::default(),
+    });
+    // Кубы со стороной 0,2 м. У смещения 0,15 м есть пересечение 0,05 м,
+    // у смещения 1 м зазор заведомо больше диагонали куба.
+    let link = |name: &str, parent: &str, x: f64| {
+        format!(
+            r#"
+[[links]]
+name = "{name}"
+{parent}
+pose = {{ position_m = [{x:?}, 0.0, 0.0] }}
+joint = {{ kind = "fixed" }}
+mass = {{ kind = "massless" }}
+[[links.collision]]
+shape = {{ kind = "box", size_m = [0.2, 0.2, 0.2] }}
+"#
+        )
+    };
+    for (offset, blocked) in [(0.15, true), (1.0, false)] {
+        let data = format!(
+            "format = 3\nname = \"Блок\"\n{}{}{}",
+            link("основание", "", 0.0),
+            link("первый", "parent = \"основание\"", 0.0),
+            link("второй", "parent = \"основание\"", offset),
+        );
+        let device = toml::from_str(&data).unwrap();
+        let devices = BTreeMap::from([(
+            "стенд".into(),
+            DeviceInput {
+                path: "block.toml".into(),
+                device,
+            },
+        )]);
+        let compiled = compile_world(Path::new("стенд.toml"), &world, &devices).unwrap();
+        let blockers: Vec<_> = compiled
+            .simplifications
+            .iter()
+            .filter(|note| note.subject == "contact/exclusions" && note.blocks_proof)
+            .collect();
+        assert_eq!(blockers.len(), usize::from(blocked));
+        if let [note] = blockers.as_slice() {
+            assert!(note.text.contains("стенд/первый") && note.text.contains("стенд/второй"));
+            assert!(!note.text.contains("стенд/основание"));
+        }
+    }
+}
+
+#[test]
+fn фильтр_шарнира_оставляет_риск_защемления_в_огибающей() {
+    let mut world = fixture();
+    world.environment.collision.clear();
+    world.objects.clear();
+    world.devices.push(Placement {
+        name: "стенд".into(), file: "block.toml".into(), pose: Pose::default(),
+    });
+    let first = "стенд/основание/collision/0";
+    let second = "стенд/блок/collision/0";
+    // У кубов со стороной 0,2 м при смещении 0,15 м пересечение 0,05 м.
+    // Якорь посередине между центрами: поворот на 180° совмещает центры.
+    // При смещении 1 м и ходе 5° номинальная хорда меньше зазора.
+    // Мягкий предел не исключает перебег, поэтому пара остаётся в аудите.
+    // При якоре в центре второго куба внешние сферы разделены при любом угле.
+    for (offset, limit, anchor, blocked) in [
+        (0.15_f64, 5.0, -0.15 / 2.0, true),
+        (1.0, 180.0, -0.5, true),
+        (1.0, 5.0, -0.5, true),
+        (1.0, 5.0, 0.0, false),
+    ] {
+        let data = format!(r#"
+format = 3
+name = "Шарнир"
+[[links]]
+name = "основание"
+joint = {{ kind = "free" }}
+mass = {{ kind = "explicit", mass_kg = 2.0, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [0.01, 0.02, 0.025, 0.0, 0.0, 0.0], provenance = {{ measured = "Инерция численного стенда." }} }}
+[[links.collision]]
+shape = {{ kind = "box", size_m = [0.2, 0.2, 0.2] }}
+[[links]]
+name = "блок"
+parent = "основание"
+pose = {{ position_m = [{offset:?}, 0.0, 0.0] }}
+joint = {{ kind = "hinge", axis = [0.0, 0.0, 1.0], anchor_m = [{anchor:?}, 0.0, 0.0], limits_deg = [0.0, {limit:?}] }}
+mass = {{ kind = "explicit", mass_kg = 2.0, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [0.01, 0.02, 0.025, 0.0, 0.0, 0.0], provenance = {{ measured = "Инерция численного стенда." }} }}
+[[links.collision]]
+shape = {{ kind = "box", size_m = [0.2, 0.2, 0.2] }}
+"#);
+        let devices = BTreeMap::from([("стенд".into(), DeviceInput {
+            path: "block.toml".into(), device: toml::from_str(&data).unwrap(),
+        })]);
+        let compiled = compile_world(Path::new("стенд.toml"), &world, &devices).unwrap();
+        let sim = compiled.open_contact_sim().unwrap();
+        assert!(!sim.contact_pair_allowed([first, second]).unwrap());
+        assert_eq!(compiled.simplifications.iter().any(|note| note.blocks_proof
+            && note.subject == "contact/exclusions" && note.text.contains(first)
+            && note.text.contains(second)), blocked, "{offset}/{limit}/{anchor}");
+    }
+}
+
+#[test]
+fn плечо_сечения_учитывает_позу_и_точку_нагрузки() {
+    // Стержень 2 м, локальная X после поворота стала Y. Его торцы лежат
+    // в (1, 1, 0) и (1, 3, 0). От точки (4, 7, 0) до дальнего торца √45 м.
+    let mut geometry = Geometry::new(Shape::Box {
+        size_m: [2.0, 0.2, 0.2],
+    });
+    geometry.pose.position_m = [1.0, 2.0, 0.0];
+    geometry.pose.rpy_deg = Some([0.0, 0.0, 90.0]);
+    let arm = geometry
+        .section_load_arm(SectionAxis::X, &[[4.0, 7.0, 0.0]])
+        .unwrap()
+        .unwrap();
+    assert!((arm - 45_f64.sqrt()).abs() <= arm * f64::EPSILON);
+    assert_eq!(
+        geometry.section_load_arm(SectionAxis::X, &[]).unwrap(),
+        Some(2.0)
+    );
+    assert!(
+        geometry
+            .section_load_arm(SectionAxis::X, &[[f64::NAN, 0.0, 0.0]])
+            .is_err()
+    );
+}
+
+#[test]
 fn rejects_duplicates_unknown_pairs_and_engine_clipping() {
     let mut opts = options();
     let mut reversed = opts.pairs[0].clone();
@@ -278,4 +436,40 @@ fn loader_rebuilds_with_options_and_preserves_strict_parsing() {
             .unwrap_err()
             .contains("unknown")
     );
+}
+
+#[test]
+fn отключённая_пара_блокирует_доказательство_до_встречи_и_при_пересечении() {
+    for height in [0.099, 0.2] {
+        // Первая проба использует исходное вдавливание стенда, вторая начинает над опорой.
+        let mut scene = fixture();
+        scene.objects[0].pose.position_m[2] = height;
+        for geom in [&mut scene.environment.collision[0], &mut scene.objects[0].collision[0]] {
+            geom.contact_mask = Some([0, 0]);
+            geom.friction = Some([0.0; 3]);
+        }
+        let defaults = ContactBuildOptions::default();
+        let compiled = compile(&scene, &defaults).unwrap();
+        assert!(compiled.simplifications.iter().any(|note| {
+            note.subject == "contact" && note.blocks_proof
+                && note.text.contains(BLOCK) && note.text.contains(FLOOR)
+        }));
+        let mut masked = compiled.open_contact_sim().unwrap();
+        let enabled = compile(&scene, &options()).unwrap_err();
+        assert!(enabled.contains("запрещают пару"));
+        scene.objects[0].collision[0].contact_mask = None;
+        scene.environment.collision[0].contact_mask = None;
+        let mut physical = compile(&scene, &defaults).unwrap().open_contact_sim().unwrap();
+        let mut touched = false;
+        // 250 шагов по 1 мс, свободное падение пересекает опору в обеих пробах.
+        for _ in 0..250 {
+            masked.step();
+            physical.step();
+            assert!(masked.contacts().is_empty());
+            touched |= !physical.contacts().is_empty();
+        }
+        let z = height - 10.0 * 0.001_f64.powi(2) * 250.0 * 251.0 / 2.0;
+        assert!((masked.qpos()[2] - z).abs() < 1e-12);
+        assert!(touched && physical.qpos()[2] > masked.qpos()[2]);
+    }
 }

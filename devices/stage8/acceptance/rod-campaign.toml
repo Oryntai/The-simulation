@@ -1,0 +1,9 @@
+version = 1
+
+[assemblies.rod]
+scope = "Две продолжительности опыта на одной направляющей."
+
+[assemblies.rod.experiments.travel]
+kind = "task"
+world = "../rod-world.toml"
+task = "rod-task.toml"

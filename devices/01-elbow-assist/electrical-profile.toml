@@ -1,0 +1,24 @@
+format = 1
+# Шаг совпадает с сеткой sampled-drive и closed-world.
+step_ns = 25000
+source = "Численный режим assist: 25 мкс, тот же мир, образ, измерители и начальный BLE-пакет из tasks/assist-wiring.toml. Батарея в электрическом опыте использует фиксированные SOC и температуру."
+control = "control.toml"
+stimuli = "electrical-stimuli.toml"
+measurements = "electrical-measurements.toml"
+legacy_measurements = "tasks/profile.toml"
+sampled = { "устройство/мотор" = "sampled-drive.toml" }
+
+[circuits."устройство"]
+diagnostic_connections = { parameters = "../../catalog/electrical/diagnostics/nominal.toml", ohm = 0.1, source = "0,1 Ом на стык из эталонной цепи Э1 для численного опыта. Сопротивления монтажного жгута требуют замера." }
+observed_boards = { "плата" = "vdd" }
+drives = { "мотор" = "bridge/dc_load" }
+[circuits."устройство".probes]
+"шина" = { kind = "voltage", ends = ["bridge/p", "bridge/g"] }
+"клеммы батареи" = { kind = "voltage", ends = ["bank/p", "bank/g"] }
+"VDD" = { kind = "voltage", ends = ["board/p", "board/g"] }
+"ток батареи" = { kind = "current", branch = "bank/series" }
+"поляризация" = { kind = "current", branch = "bank/polarization" }
+
+[circuits."устройство".voltage_observations."батарея"]
+ends = ["bank/p", "bank/g"]
+meter = { rate_hz = 40000, minimum_v = 0.0, source = "Идеальный преобразователь шины с частотой ADC в tasks/profile.toml. Масштабирование в код АЦП задаёт control.toml." }

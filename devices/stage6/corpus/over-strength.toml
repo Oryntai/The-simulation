@@ -5,21 +5,22 @@ seed = 7 # Номер серии, зафиксированный в приёмк
 
 [sampling]
 # Люфт установки: номинал и фиксированное смещение на 1 мкм.
-axes = [{ id = "начальная координата", parameter = { kind = "joint_position", joint = "каретка/стержень" }, scope = "run", unit = "m", nominal = 0.0, min = 0.0, max = 0.000001, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
-boundaries = [{ id = "смещение", values = { "начальная координата" = 0.000001 }, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
+axes = [{ id = "начальная координата", parameter = { kind = "joint_position", joint = "каретка/стержень" }, scope = "run", unit = "m", nominal = 0.0, min = 0.0, max = 0.000001, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: сила 40 Н действует на последнем такте 0,5 мс, предельный ход 8 мкм." } }]
+boundaries = [{ id = "смещение", values = { "начальная координата" = 0.000001 }, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: сила 40 Н действует на последнем такте 0,5 мс, предельный ход 8 мкм." } }]
 
 [stations.stand]
 experiment = { kind = "scenario" }
 
 [stations.stand.modes.loaded]
 horizon_ns = 4000000
-source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }
+source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: сила 40 Н действует на последнем такте 0,5 мс, предельный ход 8 мкм." }
 steps = [
-  { id = "load", target = { kind = "effort", name = "каретка/сила" }, at_ns = 0, value = 1.0, unit = "N", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } },
-  { id = "change", target = { kind = "effort", name = "каретка/сила" }, at_ns = 2000000, value = 1.0, unit = "N", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } },
+  { id = "load", target = { kind = "effort", name = "каретка/сила" }, at_ns = 0, value = 0.0, unit = "N", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: сила 40 Н действует на последнем такте 0,5 мс, предельный ход 8 мкм." } },
+  # Живой опыт с нагрузкой 40 Н на плече 1 м из установки.
+  { id = "change", target = { kind = "effort", name = "каретка/сила" }, at_ns = 3500000, value = 40.0, unit = "N", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: сила 40 Н действует на последнем такте 0,5 мс, предельный ход 8 мкм." } },
 ]
 criteria = [{ id = "направление", window = "whole", limit = { kind = "range", signal = { name = "qpos[0]", unit = "m" }, min = 0.0, source = { kind = "datasheet", reference = "Движение начинается в неотрицательной координате, скорости и силы направлены по оси." } } }]
-metrics = [{ id = "конечный ход", signal = { name = "qpos[0]", unit = "m" }, series = "truth", reference = { kind = "constant", value = 0.0, unit = "m" }, window = "whole", interpolation = "linear", operation = { kind = "absolute", at_ns = 4000000 }, worse = "higher", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
+metrics = [{ id = "конечный ход", signal = { name = "qpos[0]", unit = "m" }, series = "truth", reference = { kind = "constant", value = 0.0, unit = "m" }, window = "whole", interpolation = "linear", operation = { kind = "absolute", at_ns = 4000000 }, worse = "higher", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: сила 40 Н действует на последнем такте 0,5 мс, предельный ход 8 мкм." } }]
 [stations.stand.modes.loaded.windows.whole]
 start_ns = 0
 end_ns = 4000000

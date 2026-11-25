@@ -2,8 +2,8 @@ use sim_mcu::{HaltReason, Mcu, ResetReason};
 
 use crate::ports::{end_cycle, event_time};
 use crate::{
-    Advance, BoardFault, BoardId, BoardInput, BoardOutput, BoardSim, InputEvent, InputOutcome,
-    OutputEvent, Packet, PwmOutput, ResetCause,
+    Advance, BoardFault, BoardId, BoardInput, BoardOutput, BoardSim, GpioMode, InputEvent,
+    InputOutcome, OutputEvent, Packet, PwmOutput, ResetCause,
 };
 
 #[derive(Clone)]
@@ -12,6 +12,7 @@ pub(crate) struct VirtualBoard {
     cycle: u64,
     target: f64,
     powered: bool,
+    brownout: bool,
     executing: bool,
     fault: Option<BoardFault>,
     analog_invalid: [bool; sim_mcu::periph::adc::CHANNELS],
@@ -29,6 +30,7 @@ impl Default for VirtualBoard {
             cycle: 0,
             target: 0.0,
             powered: true,
+            brownout: false,
             executing: true,
             fault: None,
             analog_invalid: [false; sim_mcu::periph::adc::CHANNELS],
@@ -256,6 +258,17 @@ impl BoardSim for VirtualBoard {
         self.output_mcu()?.gpio_drive(pin)
     }
 
+    fn gpio_mode(&self, pin: u32) -> Option<GpioMode> {
+        if pin as usize >= self.digital.len() {
+            return None;
+        }
+        Some(
+            self.output_mcu()?
+                .gpio_drive(pin)
+                .map_or(GpioMode::Input, GpioMode::Output),
+        )
+    }
+
     fn pwm_duty(&self, port: u32) -> Option<f64> {
         self.pwm(port).map(|p| p.duty)
     }
@@ -343,10 +356,24 @@ impl BoardSim for VirtualBoard {
         event_time(self.cycle, event.cycle)?;
         match event.input {
             BoardInput::Power { on } => {
+                if self.brownout && on {
+                    return Err(BoardFault::Unpowered);
+                }
                 if self.powered == on {
                     return Ok(InputOutcome::Unchanged);
                 }
                 self.set_power(on);
+            }
+            BoardInput::Brownout { asserted } => {
+                if self.brownout == asserted {
+                    return Ok(InputOutcome::Unchanged);
+                }
+                self.set_power(!asserted);
+                self.brownout = asserted;
+                if asserted {
+                    self.reset = Some(ResetCause::Brownout);
+                    self.event(BoardOutput::Reset(ResetCause::Brownout));
+                }
             }
             BoardInput::Execution { enabled } => {
                 if self.executing == enabled {

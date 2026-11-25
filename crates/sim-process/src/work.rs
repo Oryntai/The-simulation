@@ -9,6 +9,7 @@ use crate::{Analysis, ProcessError};
 pub mod electrical;
 pub mod heat;
 pub mod immersion;
+pub mod ingress;
 pub mod mechanical_limits;
 pub mod mechanics;
 pub mod rotary;

@@ -2,9 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use sim_runtime::{Log, Runtime, Status};
-use sim_signal::{Command, Time};
-use sim_world::{StrengthSection, strength_section};
+use sim_mujoco::{JointInfo, JointKind};
+use sim_runtime::{Evaluator, Log, LogEnd, LogEntry, LogKind, Runtime, Status, Truth, TruthId, TruthOut};
+use sim_signal::{Command, Rng, SignalSpec, Time};
+use sim_world::{
+    JointType, Mass, STRENGTH_REQUIRES_BENCH, SectionAxis, Shape, StrengthSection, strength_section,
+};
 
 use crate::{
     Error, Fingerprint, Limit, Outcome, RunResult, Source, SourceKind,
@@ -23,9 +26,10 @@ use crate::{
 };
 
 use super::{
-    Check, ControlCriterion, Finding, HazardClass, LimitValue, Requirement, RequirementKey,
-    RequirementSet, Verification, checked_pair, compiled_world_fingerprint, fault_class,
-    limit_source, provenance, requires_fault, trace,
+    Check, ControlCriterion, Finding, HazardClass, LimitValue, Requirement, RequirementKey, SectionLoad,
+    RequirementSet, Verification, compiled_world_fingerprint, fault_class,
+    limit_source, provenance, requires_fault, section_reaction::{self, Wrench, cross, sub}, trace,
+    section_span::{self, Distribution, Motion},
 };
 
 /// Возвращает разрешитель установки в той же границе доверия, что и сборщик контура.
@@ -61,13 +65,75 @@ struct Measurement {
     uncertainty: Option<f64>,
 }
 
+#[derive(Clone)]
+struct AppliedEffort {
+    joint: String,
+    dof: usize,
+    index: Option<usize>,
+    signal: TruthId,
+}
+
+impl Evaluator for AppliedEffort {
+    fn evaluate(&mut self, truth: &Truth<'_>, _: &mut Rng, out: &mut TruthOut) -> Result<(), String> {
+        if truth.time() == Time::ZERO {
+            return Ok(());
+        }
+        let engine = truth.engine();
+        let index = if let Some(index) = self.index {
+            index
+        } else {
+            let joint = engine.joints().into_iter().find(|joint| joint.name == self.joint)
+                .ok_or("нет физической оси приложения нагрузки")?;
+            let index = joint.dof_adr + self.dof;
+            if index >= engine.nv() {
+                return Err("ось нагрузки за пределами массива MuJoCo".into());
+            }
+            self.index = Some(index);
+            index
+        };
+        // MuJoCo хранит nv приложенных усилий. Читаем сумму, применённую
+        // на завершённом шаге, после интегрирования и до следующего шага.
+        out.write(self.signal, unsafe { *engine.data().qfrc_applied.add(index) });
+        Ok(())
+    }
+}
+
+/// Часть живого журнала, которая нужна итоговому оценщику. Остальные
+/// записи уже учтены при оценке сценария и в отпечатке полного SIMLOG.
+#[derive(Debug)]
+struct TruthLog {
+    end: LogEnd,
+    specs: Vec<SignalSpec>,
+    entries: Vec<LogEntry>,
+    fingerprint: u64,
+}
+
+impl TruthLog {
+    fn capture(log: &Log, fingerprint: u64) -> Self {
+        Self {
+            end: log.end(),
+            specs: log.header().truth.clone(),
+            entries: log
+                .entries()
+                .iter()
+                .copied()
+                .filter(|entry| entry.kind == LogKind::Truth)
+                .collect(),
+            fingerprint,
+        }
+    }
+
+    fn series(&self, signal: &crate::Signal) -> Result<Series, Error> {
+        Series::from_entries(&self.entries, &self.specs, SeriesKind::Truth, signal)
+    }
+}
+
 #[derive(Debug)]
 struct Run {
     sampled: SampledInputs,
     build: Option<Fingerprint>,
-    log: Log,
-    divergent_repeat: Option<Log>,
-    journal: u64,
+    log: TruthLog,
+    divergent_repeat: Option<TruthLog>,
     sources: Vec<Source>,
     installation_confirmed: bool,
     missing: Vec<String>,
@@ -76,6 +142,8 @@ struct Run {
     snapshot: Option<SnapshotAudit>,
     faults_confirmed: bool,
     planned_faults: Vec<PlannedFault>,
+    joints: Vec<JointInfo>,
+    section_world_matches: bool,
     task: Option<Fingerprint>,
     process: Option<(Fingerprint, Outcome, Vec<Finding>)>,
     interaction: Option<(Fingerprint, Outcome, Vec<Finding>)>,
@@ -83,6 +151,370 @@ struct Run {
     linked_profile: Option<Fingerprint>,
     profiles: BTreeMap<ReferenceKind, BTreeSet<Fingerprint>>,
     bench: Vec<Measurement>,
+}
+
+#[derive(Clone, Copy)]
+struct SectionSample {
+    effort: f64,
+    reaction: Wrench,
+    motion: Option<Motion>,
+    at: u64,
+    journal: Fingerprint,
+}
+
+#[derive(Clone, Copy)]
+enum SectionWitness {
+    Fixture,
+    Root,
+    Interior,
+}
+
+struct SectionWindow<'a> {
+    link: &'a sim_world::Link,
+    samples: Vec<SectionSample>,
+    complete: bool,
+    complex_path: bool,
+}
+
+/// Расчёт схемы исполняется здесь. Импорта исходов из JSON или TOML нет.
+#[derive(Debug)]
+pub struct ElectricalEvidence {
+    instance: String,
+    file: Fingerprint,
+    build: Fingerprint,
+    inputs: Fingerprint,
+    boards: BTreeSet<String>,
+    live: Option<Fingerprint>,
+    assessment: sim_process::schematic::ElectricalAssessment,
+    findings: Vec<Finding>,
+}
+
+impl ElectricalEvidence {
+    pub fn evaluate(
+        instance: &str,
+        schematic_bytes: &[u8],
+        compiled: &sim_process::schematic::CompiledSchematic,
+        plan: &sim_process::schematic::ModePlan,
+        build: Fingerprint,
+    ) -> Result<Self, Error> {
+        use sim_process::schematic::{ElectricalClass, Scope, Status as ElectricalStatus};
+
+        crate::task::check_name(instance)?;
+        let file = Fingerprint::of(schematic_bytes);
+        let inputs = Fingerprint::of(format!("{file:?}{compiled:?}{plan:?}").as_bytes());
+        let assessment = compiled.assess_electrical(plan).map_err(|err| invalid(err.to_string()))?;
+        let modes: BTreeMap<_, _> = assessment.modes.iter().map(|mode| (&mode.mode, mode)).collect();
+        let mut findings = Vec::new();
+        for (index, item) in assessment.findings.iter().enumerate() {
+            let code = item.class.code();
+            let mode = item.mode.as_ref().and_then(|mode| modes.get(mode));
+            let key = RequirementKey {
+                class: item.class.into(),
+                object: format!("{instance}/{}", item.subject),
+                extension: Some(format!("{code}/{index}")),
+                run: None,
+                window_ns: mode.and_then(|mode| mode.horizon).map(|end| [0, end.0]),
+                level: super::Level::Simulation,
+            };
+            let mut finding = Finding::open(&key, &item.reason);
+            finding.code = code.into();
+            finding.outcome = match item.status {
+                ElectricalStatus::Fail => Outcome::Fail,
+                ElectricalStatus::Pass if assessment.scope == Scope::Reference
+                    || compiled.bindings().is_empty()
+                    || item.class == ElectricalClass::AssemblyMismatch => Outcome::Pass,
+                _ => Outcome::NotAnalyzed,
+            };
+            finding.measurement = item.measurement;
+            finding.unit = item.unit.map(str::to_owned);
+            finding.limit = item.limit.as_ref().map(|r| {
+                match item.class {
+                    ElectricalClass::RailSag => LimitValue { lower: Some([r.min, r.max]), upper: None },
+                    // Статическая проверка хранит напряжение со знаком.
+                    ElectricalClass::ReversePolarity if item.mode.is_none() => {
+                        LimitValue { lower: Some([-r.max, -r.min]), upper: None }
+                    }
+                    _ => LimitValue::upper([r.min, r.max]),
+                }
+            });
+            finding.limit_sources.extend(item.limit.as_ref().map(|r| {
+                let source = provenance(&r.provenance);
+                format!("{:?}: {}", source.kind, source.reference)
+            }));
+            finding.measurement_sources.push(format!("схема {:016x}, входы {:016x}", file.as_u64(), inputs.as_u64()));
+            finding.event_ns = item.event.map(|at| at.0);
+            finding.journal = mode.and_then(|mode| mode.journal)
+                .map(|journal| electrical_journal(build, inputs, journal))
+                .or_else(|| item.mode.is_none().then(|| {
+                    Fingerprint::of(format!("{build:?}{inputs:?}{item:?}").as_bytes())
+                }));
+            finding.model_scope = item.conditions.clone();
+            if assessment.scope == Scope::Reference && finding.outcome == Outcome::Pass {
+                finding.model_scope = Some(item.conditions.as_ref().map_or_else(
+                    || "эталонный стенд, только проверенное состояние".into(),
+                    |conditions| format!("эталонный стенд, только проверенное состояние. {conditions}"),
+                ));
+            }
+            if finding.outcome == Outcome::NotAnalyzed {
+                if item.status == ElectricalStatus::Pass {
+                    finding.reason = "расчёт нуждается в подтверждении на связанном живом режиме".into();
+                    finding.missing_data = vec![finding.reason.clone()];
+                }
+                if let Some(gap) = mode.and_then(|mode| mode.reason.as_ref()) {
+                    finding.coverage_gaps.push(gap.clone());
+                }
+            } else {
+                finding.missing_data.clear();
+            }
+            finding.confirmed_hazard = finding.outcome == Outcome::Fail;
+            finding.electrical = Some(super::ElectricalFindingIdentity {
+                schematic: file, inputs, build,
+                mode: item.mode.as_ref().map(|mode| format!("{mode:?}")),
+                probe: item.probe.as_ref().map(|probe| format!("{probe:?}")),
+                witness: item.witness.clone(),
+            });
+            if let Some(power) = item.dissipation_w {
+                let key = RequirementKey { class: HazardClass::WiringHeat, ..finding.key.clone() };
+                let mut heat = Finding::open(&key, "по диссипации вычисляется нагрев при известных теплоёмкости, теплоотводе и пределе температуры");
+                heat.measurement = Some([power, power]);
+                heat.unit = Some("W".into());
+                heat.event_ns = finding.event_ns;
+                heat.journal = finding.journal;
+                heat.electrical = finding.electrical.clone();
+                heat.measurement_sources.clone_from(&finding.measurement_sources);
+                findings.push(heat);
+            }
+            findings.push(finding);
+        }
+        if !assessment.inapplicable.contains_key(&ElectricalClass::ConnectionOvercurrent) {
+            let key = RequirementKey {
+                class: HazardClass::WiringHeat,
+                object: format!("{instance}/проводка"),
+                extension: Some("электрическая схема".into()),
+                run: None, window_ns: None, level: super::Level::Simulation,
+            };
+            let mut finding = Finding::open(&key,
+                "для нагрева нужны теплоёмкость, отвод тепла и предел температуры каждого участка");
+            finding.electrical = Some(super::ElectricalFindingIdentity {
+                schematic: file, inputs, build, mode: None, probe: None, witness: None,
+            });
+            findings.push(finding);
+        }
+        let outstanding = if assessment.scope == Scope::Reference {
+            Some("эталонная схема требует подтверждения фактического состава и монтажа")
+        } else if !compiled.bindings().is_empty() {
+            Some("положительный вывод требует связанного живого свидетельства электрических режимов")
+        } else {
+            None
+        };
+        if let Some(reason) = outstanding {
+            let key = RequirementKey {
+                class: HazardClass::Execution, object: format!("{instance}/электрический опыт"),
+                extension: Some("электрическая схема".into()), run: None, window_ns: None,
+                level: super::Level::Simulation,
+            };
+            let mut finding = Finding::open(&key, reason);
+            finding.electrical = Some(super::ElectricalFindingIdentity {
+                schematic: file, inputs, build, mode: None, probe: None, witness: None,
+            });
+            findings.push(finding);
+        }
+        let boards = compiled.bindings().iter().filter_map(|binding| match &binding.target {
+            sim_process::schematic::BindingTarget::BoardPower { board, .. } => Some(board.clone()),
+            _ => None,
+        }).collect();
+        Ok(Self { instance: instance.into(), file, build, inputs, boards, live: None, assessment, findings })
+    }
+
+    /// Добавляет фактическую шину и фронт сброса из установленного контура.
+    /// Один опыт не закрывает огибающую режимов.
+    pub fn observe_runtime(
+        &mut self, runtime: &Runtime, profile: Fingerprint, horizon: Time,
+        resets: &BTreeMap<String, sim_process::schematic::ResetProfile>,
+    ) -> Result<(), Error> {
+        use sim_runtime::{control::EventKind, electrical::PowerPhase};
+        use sim_process::schematic::{Scope, ns_bound};
+
+        let mut thresholds = BTreeMap::new();
+        if self.assessment.scope == Scope::Assembly {
+            for (board, spec) in resets.iter().filter(|(board, _)| self.boards.contains(*board)) {
+                spec.validate().map_err(|err| invalid(err.to_string()))?;
+                if let (Some(falling), Some(hold)) = (&spec.falling_v.range, &spec.assert_delay_s.range)
+                    && falling.can_prove() && hold.can_prove()
+                {
+                    let delay = ns_bound(hold.max, true).map_err(|err| invalid(err.to_string()))?;
+                    thresholds.insert(board, (falling, hold, delay));
+                }
+            }
+        }
+
+        #[derive(Clone, Copy)]
+        struct RailObservation {
+            range: [f64; 2],
+            min_time: Time,
+            worked: bool,
+            below: Option<Time>,
+            reset: Option<Time>,
+            qualified: bool,
+        }
+
+        let run = sim_runtime::control::run(runtime).ok_or_else(|| invalid("нет живого контура"))?;
+        let identity = run.identity();
+        if self.live.is_some() || horizon == Time::ZERO
+            || identity.task != profile.as_u64() || identity.criteria != profile.as_u64()
+            || identity.phase_horizon != horizon || identity.seed != run.log().header().seed
+        {
+            return Err(invalid("другой электрический профиль, горизонт, зерно или повтор свидетельства"));
+        }
+        let end = run.end();
+        let journal = Fingerprint::from_fnv1a(run.log().fingerprint());
+        let mut observations = BTreeMap::new();
+        for event in run.events() {
+            match &event.kind {
+                EventKind::ElectricalRail { board, voltage_v, phase, .. } if self.boards.contains(board) => {
+                    if !voltage_v.is_finite() || event.at > end.time {
+                        return Err(invalid("некорректное напряжение или метка электрического журнала"));
+                    }
+                    let observation = observations.entry(board).or_insert(RailObservation {
+                        range: [*voltage_v; 2], min_time: event.at, worked: false,
+                        below: None, reset: None, qualified: false,
+                    });
+                    if *voltage_v < observation.range[0] {
+                        observation.range[0] = *voltage_v;
+                        observation.min_time = event.at;
+                    }
+                    observation.range[1] = observation.range[1].max(*voltage_v);
+                    observation.worked |= *phase == PowerPhase::Working;
+                    if thresholds.get(board).is_some_and(|(falling, _, _)| *voltage_v < falling.min) {
+                        observation.below.get_or_insert(event.at);
+                    } else {
+                        observation.below = None;
+                    }
+                }
+                EventKind::ElectricalReset { board, asserted: true }
+                    if let Some(observation) = observations.get_mut(board)
+                        && observation.worked && observation.reset.is_none() =>
+                {
+                    observation.reset = Some(event.at);
+                    observation.qualified = observation.below.zip(thresholds.get(board))
+                        .is_some_and(|(start, (_, _, delay))| event.at.0.checked_sub(start.0)
+                            .is_some_and(|held| held >= *delay));
+                }
+                _ => {}
+            }
+        }
+        for board in &self.boards {
+            let key = RequirementKey {
+                class: HazardClass::RailSag,
+                object: format!("{}/{board}", self.instance),
+                extension: Some("rail_sag/живой опыт".into()),
+                run: None,
+                window_ns: Some([0, horizon.0]),
+                level: super::Level::Simulation,
+            };
+            let mut finding = Finding::open(&key,
+                "нужны применимые порог и выдержка сброса и огибающая режимов питания");
+            if let Some(observation) = observations.get(board) {
+                finding.measurement = Some(observation.range);
+                finding.unit = Some("V".into());
+                finding.event_ns = Some(observation.reset.unwrap_or(observation.min_time).0);
+                if observation.qualified && let Some((falling, hold, _)) = thresholds.get(board) {
+                    finding.outcome = Outcome::Fail;
+                    finding.confirmed_hazard = true;
+                    finding.reason = "после рабочей фазы шина удерживалась ниже порога и плата сбросилась".into();
+                    finding.missing_data.clear();
+                    finding.limit = Some(LimitValue { lower: Some([falling.min, falling.max]), upper: None });
+                    finding.limit_sources.extend([falling, hold].into_iter().map(|range| {
+                        let source = provenance(&range.provenance);
+                        format!("{:?}: {}", source.kind, source.reference)
+                    }));
+                }
+            } else {
+                finding.coverage_gaps.push("нет отсчётов локальной шины платы".into());
+            }
+            if !run.reached_horizon() || end.steps == 0 {
+                finding.coverage_gaps.push(format!("журнал достиг {} из {} нс", end.time.0, horizon.0));
+            }
+            finding.journal = Some(journal);
+            finding.electrical = Some(super::ElectricalFindingIdentity {
+                schematic: self.file, inputs: self.inputs, build: self.build,
+                mode: Some("живой опыт".into()), probe: Some(format!("шина {board}")),
+                witness: observations.get(board).and_then(|observation| {
+                    observation.reset.map(|at| format!("сброс после рабочей фазы на {} нс", at.0))
+                }),
+            });
+            self.findings.push(finding);
+        }
+        if !run.reached_horizon() || end.steps == 0 {
+            let key = RequirementKey {
+                class: HazardClass::Execution,
+                object: format!("{}/электрический журнал", self.instance),
+                extension: Some("электрическая схема/горизонт".into()),
+                run: None, window_ns: Some([0, horizon.0]), level: super::Level::Simulation,
+            };
+            let mut finding = Finding::open(&key, format!("журнал достиг {} из {} нс", end.time.0, horizon.0));
+            finding.journal = Some(journal);
+            finding.electrical = Some(super::ElectricalFindingIdentity {
+                schematic: self.file, inputs: self.inputs, build: self.build,
+                mode: Some("живой опыт".into()), probe: None, witness: None,
+            });
+            self.findings.push(finding);
+        }
+        self.live = Some(journal);
+        Ok(())
+    }
+
+    pub fn assessment(&self) -> &sim_process::schematic::ElectricalAssessment {
+        &self.assessment
+    }
+
+    pub fn mode_journal(&self, mode: &sim_process::schematic::ElectricalMode) -> Option<Fingerprint> {
+        self.assessment.modes.iter().find(|own| own.mode == mode.mode)
+            .and_then(|own| own.journal).map(|journal| electrical_journal(self.build, self.inputs, journal))
+    }
+
+    pub fn findings(&self) -> &[Finding] {
+        &self.findings
+    }
+
+    pub(super) fn inapplicable(&self) -> impl Iterator<Item = super::NotApplicable> + '_ {
+        self.assessment.inapplicable.iter().map(|(&class, reason)| super::NotApplicable {
+            class: class.into(),
+            code: Some(class.code().into()),
+            object: Some(self.instance.clone()),
+            reason: reason.clone(),
+            sources: vec![format!("схема {:016x}, входы {:016x}", self.file.as_u64(), self.inputs.as_u64())],
+        })
+    }
+
+    pub fn missing(instance: &str, reason: &str) -> Vec<Finding> {
+        sim_process::schematic::ElectricalClass::ALL.into_iter().map(|class| {
+            let key = RequirementKey {
+                class: class.into(), object: instance.into(), extension: Some(class.code().into()),
+                run: None, window_ns: None, level: super::Level::Simulation,
+            };
+            let mut finding = Finding::open(&key, reason);
+            finding.code = class.code().into();
+            finding
+        }).collect()
+    }
+
+    pub fn verify(
+        &self, instance: &str, build: Option<Fingerprint>,
+        device_path: &std::path::Path, device: &sim_world::Device,
+    ) -> Result<(), Error> {
+        let file = device.schematic.as_ref().ok_or_else(|| invalid("у экземпляра нет ссылки на схему"))?;
+        let path = device_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join(file);
+        let bytes = std::fs::read(&path).map_err(|err| invalid(format!("{}: {err}", path.display())))?;
+        if self.instance != instance || Some(self.build) != build || self.file != Fingerprint::of(&bytes) {
+            return Err(invalid("электрическое доказательство относится к другому экземпляру, версии или схеме"));
+        }
+        Ok(())
+    }
+}
+
+fn electrical_journal(build: Fingerprint, inputs: Fingerprint, journal: u64) -> Fingerprint {
+    Fingerprint::of(format!("{build:?}{inputs:?}{journal}").as_bytes())
 }
 
 /// Неподменяемые входы оценщика. Дисковый вердикт и статистические строки сюда не загружаются.
@@ -100,6 +532,25 @@ impl CampaignEvidence {
             runs: BTreeMap::new(),
             unavailable: BTreeMap::new(),
         }
+    }
+
+    /// Объединяет независимо исполненные строки одного набора требований.
+    /// При несовпадении требований или повторе ключа накопленные данные не меняются.
+    pub fn merge(&mut self, mut other: Self) -> Result<(), Error> {
+        if self.stamp != other.stamp {
+            return Err(invalid("другой набор требований кампании"));
+        }
+        if other
+            .runs
+            .keys()
+            .chain(other.unavailable.keys())
+            .any(|key| self.runs.contains_key(key) || self.unavailable.contains_key(key))
+        {
+            return Err(invalid("повтор ключа доказательства кампании"));
+        }
+        self.runs.append(&mut other.runs);
+        self.unavailable.append(&mut other.unavailable);
+        Ok(())
     }
 
     /// Регистрирует причину незапущенной строки, например ошибку установки или фильтрацию.
@@ -220,8 +671,8 @@ impl CampaignEvidence {
         let run = self.runs.get(key)?;
         Some((
             run.summary.as_ref()?,
-            run.journal,
-            run.log.end().steps,
+            run.log.fingerprint,
+            run.log.end.steps,
             run.snapshot.as_ref(),
         ))
     }
@@ -301,13 +752,33 @@ impl CampaignEvidence {
         };
         crate::validate_world_numbers(&compiled)?;
         let mut profiles: BTreeMap<_, BTreeSet<_>> = BTreeMap::new();
-        for check in requirements
+        let mut section_channels = BTreeSet::new();
+        let mut section_targets = BTreeSet::new();
+        let mut strength_bodies = BTreeSet::new();
+        let mut kinematic_check = false;
+        for (object, check) in requirements
             .requirements
             .iter()
             .filter(|r| r.key.run.as_ref() == Some(key))
-            .flat_map(|r| &r.checks)
+            .flat_map(|r| r.checks.iter().map(|check| (r.key.object.as_str(), check)))
         {
             let (kind, fingerprint) = match check.verification {
+                Verification::Section { ref live_load, .. } => {
+                    strength_bodies.insert(object);
+                    if let Some(live) = live_load
+                        && compiled.efforts.iter().any(|effort| effort.name == live.effort
+                            && effort.joint == object && effort.dof == 0)
+                    {
+                        section_channels.insert(live.effort.as_str());
+                        section_targets.insert(object);
+                    }
+                    continue;
+                }
+                Verification::Truth(_) if matches!(check.class,
+                    HazardClass::TravelJam | HazardClass::Fall | HazardClass::DangerousMotion) => {
+                    kinematic_check = true;
+                    continue;
+                }
                 Verification::Process { profile, .. } => (ReferenceKind::ProcessTask, profile),
                 Verification::Interaction { profile, .. } => {
                     (ReferenceKind::InteractionTask, profile)
@@ -317,9 +788,42 @@ impl CampaignEvidence {
             };
             profiles.entry(kind).or_default().insert(fingerprint);
         }
+        let world_matches = !requirements.compiled_rows.contains_key(key) || sampled.world.compile()? == compiled;
+        let (engine_joints, strength_bodies) = if kinematic_check || (world_matches && !strength_bodies.is_empty()) {
+            let sim = compiled.open_contact_sim().map_err(invalid)?;
+            let bodies = strength_bodies.into_iter()
+                .filter(|_| world_matches)
+                .filter_map(|name| sim.id(sim_mujoco::ffi::mjtObj::mjOBJ_BODY, name)
+                    .map(|id| (name.to_string(), id)))
+                .collect::<Vec<_>>();
+            (sim.joints(), bodies)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let section_world_matches = !strength_bodies.is_empty() && world_matches;
+        let section_joints: Vec<_> = engine_joints.iter()
+            .filter(|joint| section_world_matches && section_targets.contains(joint.name.as_str())
+                && matches!(joint.kind, JointKind::Slide | JointKind::Hinge))
+            .cloned().collect();
+        let joints = if kinematic_check { engine_joints } else { Vec::new() };
+        let expanded_candidates = if world_matches {
+            Vec::new()
+        } else {
+            compiled.powered_contact_candidates().map_err(invalid)?
+        };
         let mut observe = Some(observe);
         let mut run_one = |snapshot_at: Option<Time>| -> Result<_, Error> {
             let mut runtime = Runtime::load(compiled.clone()).map_err(invalid)?;
+            for effort in compiled.efforts.iter().filter(|effort| section_channels.contains(effort.name.as_str())) {
+                let name = format!("applied_effort/{}", effort.name);
+                let channel = runtime.channel(&effort.name).ok_or_else(|| invalid("нет канала нагрузки"))?;
+                let unit = runtime.log().header().commands[channel.0 as usize].unit.clone();
+                let signal = runtime.register_truth(&name, &unit).map_err(invalid)?;
+                runtime.register_evaluator(&name, runtime.physics_rate(), AppliedEffort {
+                    joint: effort.joint.clone(), dof: effort.dof, index: None, signal,
+                }).map_err(invalid)?;
+            }
+            section_reaction::register(&mut runtime, section_joints.clone(), &strength_bodies).map_err(invalid)?;
             let owner = runtime.snapshot();
             let mut receipt = install(&mut runtime, &sampled).map_err(invalid)?;
             runtime.verify_snapshot_owner(&owner).map_err(invalid)?;
@@ -333,6 +837,14 @@ impl CampaignEvidence {
                 && same_settings(&sampled.settings, &receipt.settings)
                 && settings_match_runtime(&sampled.settings, &runtime);
             let mut missing = Vec::new();
+            if !world_matches {
+                missing.push(
+                    "состав расширенной модели требует проверяемой связи с обязательствами".into(),
+                );
+                if !expanded_candidates.is_empty() {
+                    missing.push(format!("участники в пределах хода расширенной модели: {expanded_candidates:?}"));
+                }
+            }
             if !installation_confirmed {
                 missing
                     .push("не совпадают сборка, отпечатки, зерно или фактические установки".into());
@@ -588,10 +1100,9 @@ impl CampaignEvidence {
             Run {
                 sampled,
                 build: requirements.build,
-                journal,
-                log,
+                log: TruthLog::capture(&log, journal),
                 divergent_repeat: (repeat_installed && journal != repeated_journal)
-                    .then_some(repeat),
+                    .then(|| TruthLog::capture(&repeat, repeated_journal)),
                 sources,
                 installation_confirmed,
                 missing,
@@ -600,6 +1111,8 @@ impl CampaignEvidence {
                 snapshot,
                 faults_confirmed: faults_confirmed && repeat_faults,
                 planned_faults: row.faults.clone(),
+                joints,
+                section_world_matches,
                 task: plan.task_fingerprint(key),
                 process: None,
                 interaction: None,
@@ -630,7 +1143,7 @@ impl CampaignEvidence {
                 ReferenceKind::ControlTask,
                 result.identity.task_and_criteria,
             )
-            || report.journal != Some(run.journal)
+            || report.journal != Some(run.log.fingerprint)
             || report.case.path != key.path
             || report.case.mode != key.mode
             || report.case.fault.as_ref() != scheduled
@@ -681,7 +1194,7 @@ impl CampaignEvidence {
             || !evidence
                 .trials
                 .first()
-                .is_some_and(|base| base.journal == Some(run.journal))
+                .is_some_and(|base| base.journal == Some(run.log.fingerprint))
         {
             return Err(invalid("другой или изменённый отчёт о физических сетках"));
         }
@@ -707,7 +1220,7 @@ impl CampaignEvidence {
             || !evidence
                 .grids()
                 .iter()
-                .any(|g| g.journal == Fingerprint::from_fnv1a(run.journal))
+                .any(|g| g.journal == Fingerprint::from_fnv1a(run.log.fingerprint))
         {
             return Err(invalid("другое взаимодействие, сборка или журнал"));
         }
@@ -792,6 +1305,7 @@ impl CampaignEvidence {
         set: &RequirementSet,
         requirement: &Requirement,
         output: &mut Vec<Finding>,
+        model_strength_open: &mut Vec<Finding>,
     ) -> Result<(), Error> {
         let key = &requirement.key;
         let Some(run) = key
@@ -833,10 +1347,42 @@ impl CampaignEvidence {
             }
             return Ok(());
         }
+        if !matches!(
+            key.class, HazardClass::Measurement | HazardClass::TissueLoad
+                | HazardClass::Ingress | HazardClass::StaticStrength
+        )
+            && requirement.checks.iter().all(|check| check.verification.measurement_limit().is_some())
+        {
+            output.push(Finding::open(key, "замер не заменяет профильную проверку опасности"));
+        }
         for check in &requirement.checks {
-            output.extend(run.check(set, requirement, check)?);
+            for finding in run.check(set, requirement, check)? {
+                if key.class == HazardClass::StaticStrength
+                    && check.verification.measurement_limit().is_none()
+                    && finding.outcome == Outcome::NotAnalyzed
+                {
+                    model_strength_open.push(finding);
+                } else {
+                    output.push(finding);
+                }
+            }
         }
         Ok(())
+    }
+
+    pub(super) fn has_measured_pass(
+        &self, set: &RequirementSet, requirement: &Requirement,
+    ) -> Result<bool, Error> {
+        let Some(run) = requirement.key.run.as_ref().and_then(|key| self.runs.get(key))
+            .filter(|run| run.installation_confirmed) else { return Ok(false) };
+        for check in &requirement.checks {
+            if check.verification.measurement_limit().is_some()
+                && run.check(set, requirement, check)?.iter().any(|f| f.outcome == Outcome::Pass)
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }
 
@@ -893,7 +1439,7 @@ impl Run {
     }
 
     fn journal(&self) -> Fingerprint {
-        Fingerprint::from_fnv1a(self.journal)
+        Fingerprint::from_fnv1a(self.log.fingerprint)
     }
 
     fn execution(&self, set: &RequirementSet, key: &RequirementKey) -> Finding {
@@ -951,12 +1497,12 @@ impl Run {
         finding.confirmed_hazard &= proved
             && self.faults_confirmed
             && self.installation_confirmed
-            && self.log.end().steps > 0
+            && self.log.end.steps > 0
             && self
                 .sampled
                 .mode
                 .as_ref()
-                .is_some_and(|m| self.log.end().time.0 == m.horizon_ns);
+                .is_some_and(|m| self.log.end.time.0 == m.horizon_ns);
     }
 
     fn check(
@@ -974,9 +1520,10 @@ impl Run {
         sources.push(check.applicability.clone());
         let details = match &check.verification {
             Verification::Section {
-                geometry,
-                axis,
+                geometry: declared_geometry,
+                axis: _,
                 moment_nm,
+                live_load,
                 allowable_pa,
                 load,
                 limit,
@@ -985,61 +1532,354 @@ impl Run {
                 finding.unit = Some("Pa".into());
                 sources.push(load.clone());
                 finding.limit_sources = trace(std::slice::from_ref(limit), &set.derivations).1;
-                let world = &self.sampled.world;
-                let geometries = key
-                    .object
-                    .split_once('/')
-                    .and_then(|(device, link)| {
-                        world
-                            .devices
-                            .get(device)?
-                            .device
-                            .links
-                            .iter()
-                            .find(|l| l.name == link)
-                            .map(|l| &l.collision)
-                    })
-                    .or_else(|| {
-                        world
-                            .world
-                            .objects
-                            .iter()
-                            .find(|o| o.name == key.object)
-                            .map(|o| &o.collision)
-                    });
-                if let Some(shape) = geometries.and_then(|g| g.get(*geometry)).map(|g| &g.shape) {
-                    match strength_section(shape, *axis).map_err(invalid)? {
-                        StrengthSection::Applicable { section, .. } => {
-                            let abs = moment_nm.map(f64::abs);
-                            let lower = if moment_nm[0] <= 0.0 && moment_nm[1] >= 0.0 {
-                                0.0
-                            } else {
-                                abs[0].min(abs[1])
-                            };
-                            let measured =
-                                [lower, abs[0].max(abs[1])].map(|m| m / section.section_modulus());
-                            checked_pair(measured)?;
-                            finding.measurement = Some(measured);
-                            finding.outcome = upper_interval(measured, *allowable_pa);
-                            finding.reason = "расчёт напряжения изгиба по модулю сечения".into();
-                            // Нагрузка сечения задана для всего окна статической проверки.
-                            finding.event_ns = Some(check.window.start_ns);
-                            finding.confirmed_hazard = finding.outcome == Outcome::Fail
-                                && trace(std::slice::from_ref(limit), &set.derivations).0;
+                if self.section_world_matches
+                    && let Some(live) = live_load
+                    && let Some(SectionWindow { link, samples, complete, complex_path }) =
+                        self.section_samples(&key.object, check.window, live)?
+                {
+                    if *declared_geometry >= link.collision.len() {
+                        finding.coverage_gaps.push("объявленный индекс сечения вне геометрии звена".into());
+                    }
+                    let mass_volumes = match &link.mass {
+                        Mass::Volumes { volumes, .. } => volumes.as_slice(),
+                        _ => &[],
+                    };
+                    let geometries = link.collision.iter().chain(mass_volumes);
+                    // Внешние точки нагрузки выводятся из всех креплений, якоря и поз
+                    // объёмов. Положение центра масс может выходить за сечение.
+                    let points: Vec<_> = std::iter::once(link.joint.anchor_m)
+                        .chain(link.mounts.iter()
+                            .filter(|mount| mount.kind == sim_world::MountKind::Mechanical)
+                            .map(|mount| mount.pose.position_m))
+                        .chain(geometries.clone().map(|geometry| geometry.pose.position_m))
+                        .chain(match &link.mass {
+                            Mass::Explicit { com_m, .. } => Some(*com_m),
+                            _ => None,
+                        })
+                        .collect();
+                    let direction = link.joint.axis.ok_or_else(|| invalid("нет оси нагрузки сечения"))?;
+                    let sliding = link.joint.kind == JointType::Slide;
+                    let declared_moment = moment_nm[0].abs().max(moment_nm[1].abs());
+                    let mut worst = None::<f64>;
+                    let mut worst_live: Option<(f64, SectionSample, SectionWitness)> = None;
+                    let mut maximum_span_stress = 0.0_f64;
+                    let mut maximum_arm = 0.0_f64;
+                    let mut maximum_fixture_moment = 0.0_f64;
+                    let mut maximum_reaction_moment = 0.0_f64;
+                    let mut maximum_span_moment = 0.0_f64;
+                    let distribution = section_span::distribution(link, sliding);
+                    if !complete {
+                        finding.coverage_gaps.push("неполное окно записи реакции корневого сечения".into());
+                    }
+                    if complex_path {
+                        finding.coverage_gaps.push("нужна проверка пути нагрузки от реакции корня до сечений звена".into());
+                    }
+                    if distribution.is_none() {
+                        finding.coverage_gaps.push("не доказано распределение массы по отрезанным частям звена".into());
+                    }
+                    if !complex_path && samples.iter().any(|sample| sample.motion.is_none()) {
+                        finding.coverage_gaps.push("нет полного баланса внешних и инерционных нагрузок вдоль звена".into());
+                    }
+                    for geometry in geometries {
+                        use SectionAxis::{X, Y, Z};
+                        let local_axis = geometry.local_load_direction(direction).map_err(invalid)?;
+                        let basis = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+                            .map(|axis| geometry.local_load_direction(axis));
+                        let [bx, by, bz] = basis;
+                        let [bx, by, bz] = [bx.map_err(invalid)?, by.map_err(invalid)?, bz.map_err(invalid)?];
+                        let local = |[x, y, z]: [f64; 3]| {
+                            std::array::from_fn(|i| bx[i] * x + by[i] * y + bz[i] * z)
+                        };
+                        let center = local(sub(geometry.pose.position_m, link.joint.anchor_m));
+                        let outside = |distance: f64, half: f64| distance.abs() - half > half * f64::EPSILON;
+                        let outside_root = match geometry.shape {
+                            Shape::Box { size_m } => (0..3).any(|i| outside(center[i], size_m[i] / 2.0)),
+                            Shape::Cylinder { radius_m, length_m } =>
+                                outside(center[0].hypot(center[1]), radius_m) || outside(center[2], length_m / 2.0),
+                            _ => false,
+                        };
+                        if outside_root {
+                            finding.coverage_gaps.push("якорь сочленения вне объёма сечения".into());
                         }
-                        StrengthSection::NotAnalyzed { reason } => {
-                            finding.missing_data.push(reason)
+                        // Круговое постоянное сечение определено только вдоль оси цилиндра.
+                        let axes: &[_] = match geometry.shape {
+                            Shape::Box { .. } => &[X, Y, Z],
+                            _ => &[Z],
+                        };
+                        for &axis in axes {
+                            let (section, length_m) = match strength_section(&geometry.shape, axis).map_err(invalid)? {
+                                StrengthSection::Applicable { section, length_m } => (section, length_m),
+                                StrengthSection::NotAnalyzed { reason } => {
+                                    finding.missing_data.push(reason.clone());
+                                    finding.coverage_gaps.push(reason);
+                                    continue;
+                                }
+                            };
+                            let (geometric, eccentricity) = if sliding {
+                                let arm = geometry.section_load_arm(axis, &points).map_err(invalid)?
+                                    .ok_or_else(|| invalid("нет плеча для применимого сечения"))?;
+                                let radial = geometry.section_radial_arm(axis, &points).map_err(invalid)?
+                                    .ok_or_else(|| invalid("нет эксцентриситета для применимого сечения"))?;
+                                (arm, radial)
+                            } else {
+                                // Изолированная вращательная ось передаёт момент без редукции.
+                                (1.0, 0.0)
+                            };
+                            let modulus = section.section_modulus();
+                            if !modulus.is_finite() || modulus <= 0.0 {
+                                return Err(invalid("момент сопротивления сечения вне численного диапазона"));
+                            }
+                            let i = match axis {
+                                X => 0,
+                                Y => 1,
+                                Z => 2,
+                            };
+                            let j = (i + 1) % 3;
+                            let k = (i + 2) % 3;
+                            let dirs = local_axis.map(f64::abs);
+                            let (axial, u, v) = (dirs[i], dirs[j], dirs[k]);
+                            let transverse = u.hypot(v);
+                            // У круга W не зависит от плоскости. Для коробки
+                            // суперпозиция двух изгибов ограничена их суммой с W_min.
+                            let rectangular = matches!(geometry.shape, Shape::Box { .. });
+                            let (bending, eccentric_bending) = if rectangular {
+                                // Сумма модулей двух компонент не больше √2 их нормы.
+                                (u + v, std::f64::consts::SQRT_2)
+                            } else {
+                                (transverse, 1.0)
+                            };
+                            let stress_at = |moment: f64, effort: f64| {
+                                // σ_VM² = σ² + 3τ² для одного нормального
+                                // напряжения и результирующего сдвига.
+                                if sliding {
+                                    // Направление силы известно. Линия её передачи на
+                                    // неизвестное сечение может отличаться от оси каретки,
+                                    // поэтому сохраняем оценку изгиба с полным плечом.
+                                    let longitudinal = effort * axial;
+                                    let lateral = effort * transverse;
+                                    let normal = longitudinal / section.area()
+                                        + (moment * bending + longitudinal * eccentricity * eccentric_bending)
+                                            / modulus;
+                                    let shear = section.shear_stress(lateral)
+                                        + section.torsion_stress(lateral * eccentricity);
+                                    (moment / modulus).max(normal.hypot(3.0_f64.sqrt() * shear))
+                                } else {
+                                    let normal = (moment / modulus) * bending;
+                                    let shear = section.torsion_stress(moment * axial);
+                                    normal.hypot(3.0_f64.sqrt() * shear)
+                                }
+                            };
+                            maximum_arm = maximum_arm.max(geometric);
+                            // Перенос к центроиду сечения в плоскости якоря.
+                            let mut offset = center;
+                            offset[i] = 0.0;
+                            let (modulus_j, modulus_k) = match geometry.shape {
+                                // Момент каждого направления делится на W именно для
+                                // этой плоскости. Заявленная нагрузка и реакция корня
+                                // по-прежнему проверяются с прежним W_min.
+                                Shape::Box { size_m: d } =>
+                                    (d[j] * d[k].powi(2) / 6.0, d[k] * d[j].powi(2) / 6.0),
+                                _ => (modulus, modulus),
+                            };
+                            if ![modulus_j, modulus_k].into_iter().all(|w| w.is_finite() && w > 0.0) {
+                                return Err(invalid("момент сопротивления направленного изгиба вне численного диапазона"));
+                            }
+                            let adjacent = if !complex_path
+                                && let Some(Distribution::Stepped { material, volumes }) = distribution
+                            {
+                                section_span::adjoining_prisms(geometry, axis, i, material, volumes, local).map_err(invalid)?
+                            } else {
+                                None
+                            };
+                            let shear_per_n = section.shear_stress(1.0);
+                            let torsion_per_nm = section.torsion_stress(1.0);
+                            let span_stress = |wrench: Wrench| {
+                                let f = wrench.force.map(f64::abs);
+                                let m = wrench.moment.map(f64::abs);
+                                let bend = if rectangular {
+                                    m[j] / modulus_j + m[k] / modulus_k
+                                } else {
+                                    m[j].hypot(m[k]) / modulus
+                                };
+                                let normal = f[i] / section.area() + bend;
+                                let shear = shear_per_n * f[j].hypot(f[k]) + torsion_per_nm * m[i];
+                                normal.hypot(3.0_f64.sqrt() * shear)
+                            };
+                            for &sample in &samples {
+                                let force = local(sample.reaction.force);
+                                let moment = local(sample.reaction.moment);
+                                let shift = cross(force, offset);
+                                let [mx, my, mz]: [f64; 3] = std::array::from_fn(|axis| moment[axis] + shift[axis]);
+                                let moment = [mx, my, mz].map(f64::abs);
+                                let bend = if rectangular { moment[j] + moment[k] } else { moment[j].hypot(moment[k]) };
+                                // Огибающая нормального напряжения при любом знаке
+                                // продольной силы и изгиба. Сдвиг и кручение
+                                // складываются по модулю перед критерием Мизеса.
+                                let normal = force[i].abs() / section.area() + bend / modulus;
+                                let shear = section.shear_stress(force[j].hypot(force[k]))
+                                    + section.torsion_stress(moment[i]);
+                                let reaction_stress = normal.hypot(3.0_f64.sqrt() * shear);
+                                crate::task::finite(reaction_stress)?;
+                                let live_moment = sample.effort * live.moment_per_effort.max(geometric);
+                                crate::task::finite(live_moment)?;
+                                // Огибающая оснастки остаётся отдельным ограничением.
+                                // Сложный путь оцениваем по реакции корня.
+                                let (stress, witness) = if complex_path {
+                                    (reaction_stress, SectionWitness::Root)
+                                } else {
+                                    let fixture_stress = stress_at(live_moment, sample.effort);
+                                    if reaction_stress > fixture_stress {
+                                        (reaction_stress, SectionWitness::Root)
+                                    } else {
+                                        (fixture_stress, SectionWitness::Fixture)
+                                    }
+                                };
+                                let declared = stress_at(declared_moment, if complex_path { 0.0 } else { sample.effort });
+                                crate::task::finite(stress)?;
+                                crate::task::finite(declared)?;
+                                if worst_live.is_none_or(|(old, _, _)| stress > old) {
+                                    worst_live = Some((stress, sample, witness));
+                                }
+                                let resultant = moment[0].hypot(moment[1]).hypot(moment[2]);
+                                crate::task::finite(resultant)?;
+                                maximum_reaction_moment = maximum_reaction_moment.max(resultant);
+                                if !complex_path {
+                                    maximum_fixture_moment = maximum_fixture_moment.max(live_moment);
+                                }
+                                let mut observed = stress.max(declared);
+                                if !complex_path && let (Some(distribution), Some(motion)) = (distribution, sample.motion) {
+                                    let motion = Motion { gravity: local(motion.gravity), ..motion };
+                                    let mut bound_at = |wrench: Wrench| -> Result<(), Error> {
+                                        for value in wrench.force.into_iter().chain(wrench.moment) {
+                                            crate::task::finite(value)?;
+                                        }
+                                        let stress = span_stress(wrench);
+                                        let moment = section_span::norm(wrench.moment);
+                                        crate::task::finite(stress)?;
+                                        crate::task::finite(moment)?;
+                                        maximum_span_stress = maximum_span_stress.max(stress);
+                                        maximum_span_moment = maximum_span_moment.max(moment);
+                                        Ok(())
+                                    };
+                                    match distribution {
+                                        Distribution::Uniform | Distribution::Stepped { .. } => {
+                                            let span = match distribution {
+                                                Distribution::Uniform => Some((motion.mass, &[][..])),
+                                                _ => adjacent.as_ref().map(|(mass, pieces)| (*mass, pieces.as_slice())),
+                                            };
+                                            if let Some((mass, adjacent)) = span {
+                                                for controls in section_span::overhangs(
+                                                    i, length_m, section_span::scale(center, -1.0),
+                                                    section_span::variances(geometry), local_axis,
+                                                    Motion { mass, ..motion }, sliding, adjacent,
+                                                ) {
+                                                    // Норма напряжений выпукла по силе и моменту.
+                                                    // Максимум контрольных точек ограничивает весь отрезок.
+                                                    for control in controls {
+                                                        bound_at(control)?;
+                                                    }
+                                                    for at_cut in [controls[0], Wrench::midpoint(controls), controls[3]] {
+                                                        let stress = span_stress(at_cut);
+                                                        crate::task::finite(stress)?;
+                                                        if worst_live.is_none_or(|(old, _, _)| stress > old) {
+                                                            worst_live = Some((stress, sample, SectionWitness::Interior));
+                                                        }
+                                                        observed = observed.max(stress);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Distribution::Translation { com, inertia_trace } => {
+                                            crate::task::finite(inertia_trace)?;
+                                            let relative_com = local(sub(com, geometry.pose.position_m));
+                                            let acceleration = sub(section_span::scale(local_axis, motion.acceleration), motion.gravity);
+                                            bound_at(section_span::translation_bound(
+                                                i, length_m, relative_com, inertia_trace, acceleration, motion.mass,
+                                            ).map_err(invalid)?)?;
+                                        }
+                                    }
+                                }
+                                worst = Some(worst.map_or(observed, |previous| previous.max(observed)));
+                            }
                         }
                     }
+                    if let (Some(stress), Some((live_stress, sample, witness))) = (worst, worst_live) {
+                        let measured = [stress, stress.max(maximum_span_stress)];
+                        finding.measurement = Some(measured);
+                        finding.outcome = if stress > allowable_pa[1] {
+                            Outcome::Fail
+                        } else {
+                            Outcome::NotAnalyzed
+                        };
+                        finding.reason = match witness {
+                            SectionWitness::Root => "расчёт напряжения по полной реакции корневого сечения",
+                            SectionWitness::Interior => "расчёт напряжения по балансу отсечённой части звена",
+                            SectionWitness::Fixture if sliding =>
+                                "расчёт напряжения изгиба по модулю сечения и проверка продольной силы и сдвига",
+                            SectionWitness::Fixture => "расчёт напряжения от изгиба и кручения по оси сочленения",
+                        }.into();
+                        if measured[1] > measured[0] {
+                            finding.reason.push_str(". Верхняя граница охватывает сечения вдоль звена");
+                            if stress <= allowable_pa[1] && measured[1] > allowable_pa[0] {
+                                finding.coverage_gaps.push("интервал напряжения вдоль звена пересекает допустимую границу".into());
+                            }
+                        }
+                        if stress > live_stress {
+                            finding.reason.push_str(". Заявленная огибающая выше оценки живой нагрузки");
+                        } else {
+                            finding.event_ns = Some(sample.at);
+                        }
+                        finding.journal = Some(sample.journal);
+                        finding.confirmed_hazard = finding.outcome == Outcome::Fail
+                            && trace(std::slice::from_ref(limit), &set.derivations).0;
+                        if live.moment_per_effort < maximum_arm {
+                            finding.coverage_gaps.push(format!(
+                                "заявленная передача нагрузки меньше геометрической границы {maximum_arm}"
+                            ));
+                        }
+                        // Граница вычисляется из трёх компонент после поворотов.
+                        // Округление на масштабе момента не образует физический перебег.
+                        if maximum_fixture_moment > declared_moment
+                            || maximum_reaction_moment - declared_moment > f64::EPSILON * maximum_reaction_moment
+                        {
+                            finding.coverage_gaps.push("максимум живого момента превышает заявленную нагрузку".into());
+                        }
+                        if maximum_span_moment - declared_moment > f64::EPSILON * maximum_span_moment {
+                            finding.coverage_gaps.push("верхняя граница момента вдоль звена выше заявленной нагрузки".into());
+                        }
+                        // Огибающая отдельных сечений выявляет превышение, но не
+                        // восстанавливает физический стык нескольких объёмов.
+                        if link.collision.len() > 1 || mass_volumes.len() > 1 {
+                            finding.coverage_gaps.push("не доказана передача нагрузки между объёмами звена".into());
+                        }
+                    } else {
+                        finding.missing_data.push("у звена нет применимого сечения".into());
+                    }
+                } else {
+                    finding.missing_data.push("нет полной записи применимой нагрузки сечения".into());
                 }
+                self.section_rotation(&mut finding, check.window, *allowable_pa,
+                    trace(std::slice::from_ref(limit), &set.derivations).0)?;
                 if !trace(std::slice::from_ref(limit), &set.derivations).0 {
                     sources.push(limit.clone());
                 }
                 vec![finding]
             }
             Verification::Truth(limit) => {
-                let series = Series::from_log(&self.log, SeriesKind::Truth, limit.signal())?;
+                let physical = self.kinematic_limit(key, limit);
+                let limit = physical.as_ref().unwrap_or(limit);
+                let series = self.log.series(limit.signal())?;
                 compare_truth(&mut finding, limit, check.window, &series, 0.0, set)?;
+                let unbound = key.class != HazardClass::TaskCriterion && physical.is_none();
+                if unbound {
+                    // Произвольная метка ряда не подтверждает опасность
+                    // назначенного объекта, даже если предел соблюдён.
+                    if finding.outcome == Outcome::Pass {
+                        finding.outcome = Outcome::NotAnalyzed;
+                    }
+                    finding.confirmed_hazard = false;
+                    finding.coverage_gaps.push("нет выведенной из мира привязки ряда к опасности".into());
+                }
                 if key.class != HazardClass::TaskCriterion
                     && !trace(std::slice::from_ref(limit_source(limit)), &set.derivations).0
                 {
@@ -1047,10 +1887,11 @@ impl Run {
                 }
                 if let Some(log) = &self.divergent_repeat {
                     let mut repeated = Finding::open(key, "критерий повторного прогона");
-                    let series = Series::from_log(log, SeriesKind::Truth, limit.signal())?;
+                    let series = log.series(limit.signal())?;
                     compare_truth(&mut repeated, limit, check.window, &series, 0.0, set)?;
                     if repeated.outcome == Outcome::Fail {
-                        repeated.journal = Some(Fingerprint::from_fnv1a(log.fingerprint()));
+                        repeated.confirmed_hazard &= !unbound;
+                        repeated.journal = Some(Fingerprint::from_fnv1a(log.fingerprint));
                         vec![finding, repeated]
                     } else {
                         vec![finding]
@@ -1059,7 +1900,41 @@ impl Run {
                     vec![finding]
                 }
             }
-            Verification::Measurement(limit) => {
+            Verification::Measurement(limit) | Verification::TissueMeasurement { limit, .. }
+                | Verification::EnergyMeasurement { limit, .. } => {
+                if requires_fault(key.class)
+                    && !self.planned_faults.iter().any(|planned| {
+                        planned.schedule.fault.node == key.object
+                            && fault_class(planned.schedule.fault.kind) == key.class
+                    })
+                {
+                    finding.missing_data.push("замер не связан с обязательной инъекцией отказа".into());
+                    return Ok(self.checked_findings(set, check, key, &sources, vec![finding]));
+                }
+                if key.class == HazardClass::TissueLoad {
+                    let qualified = if let Verification::TissueMeasurement { duration, .. } = &check.verification {
+                        sources.push(duration.source.clone());
+                        let signal = duration.contact.as_ref().unwrap_or_else(|| limit.signal());
+                        let boundary = self.bench.iter().find(|m| &m.signal == signal);
+                        if let Some(bench) = boundary {
+                            sources.push(bench.source.clone());
+                        }
+                        // При подтверждённом размыкании на обеих границах длительность
+                        // контакта лежит между нулём и длиной окна, включая пробелы ряда.
+                        duration.ns[0] == 0 && duration.ns[1] >= check.window.end_ns - check.window.start_ns
+                            && trace(std::slice::from_ref(&duration.source), &set.derivations).0
+                            && boundary.is_some_and(|bench| bench.uncertainty == Some(0.0)
+                                && [check.window.start_ns, check.window.end_ns].iter().all(|at|
+                                    bench.samples.iter().any(|point| point.at_ns == *at
+                                        && point.valid && point.value == 0.0)))
+                    } else {
+                        false
+                    };
+                    if !qualified {
+                        finding.missing_data.push("нет подтверждённого тканевого предела для длительности контакта в окне".into());
+                        return Ok(self.checked_findings(set, check, key, &sources, vec![finding]));
+                    }
+                }
                 if let Some(bench) = self.bench.iter().find(|m| &m.signal == limit.signal()) {
                     if let Some(uncertainty) = bench.uncertainty {
                         compare_truth(
@@ -1171,7 +2046,7 @@ impl Run {
                             };
                         }
                         ControlCriterion::Limit(signal) => {
-                            let series = Series::from_log(&self.log, SeriesKind::Truth, signal)?;
+                            let series = self.log.series(signal)?;
                             let mut results = Vec::new();
                             for metric in report
                                 .metrics
@@ -1246,6 +2121,228 @@ impl Run {
         Ok(self.checked_findings(set, check, key, &sources, details))
     }
 
+    fn kinematic_limit(&self, key: &RequirementKey, limit: &Limit) -> Option<Limit> {
+        let Limit::Range { signal, mut min, mut max, source } = limit.clone() else { return None };
+        let named = self.joints.iter().find(|joint| joint.name == key.object);
+        let scalar_units = |kind| match kind {
+            JointKind::Hinge => Some(("rad", "rad/s")),
+            JointKind::Slide => Some(("m", "m/s")),
+            _ => None,
+        };
+        let (name, unit) = match key.class {
+            HazardClass::TravelJam => {
+                let joint = named?;
+                if joint.limited {
+                    let [low, high] = joint.range;
+                    min = Some(min.map_or(low, |given| given.max(low)));
+                    max = Some(max.map_or(high, |given| given.min(high)));
+                } else {
+                    (min, max) = symmetric_limit(min, max)?;
+                }
+                (format!("qpos[{}]", joint.qpos_adr), scalar_units(joint.kind)?.0)
+            }
+            HazardClass::Fall => {
+                // У свободного тела координата в направлении тяжести
+                // проверяет заявленную границу падения по высоте.
+                let joint = named.filter(|joint| joint.kind == JointKind::Free)?;
+                let gravity = self.sampled.world.world.gravity_m_s2;
+                let axis = gravity.iter().position(|component| *component != 0.0)?;
+                if gravity.iter().filter(|component| **component != 0.0).count() != 1
+                    || if gravity[axis] < 0.0 { min.is_none() } else { max.is_none() }
+                {
+                    return None;
+                }
+                (format!("qpos[{}]", joint.qpos_adr + axis), "m")
+            }
+            HazardClass::DangerousMotion => {
+                let joint = named.or_else(|| match self.joints.as_slice() {
+                    // На одноосном стенде нет других скоростей, между
+                    // которыми мог бы выбирать автор постановки.
+                    [joint] => Some(joint),
+                    _ => None,
+                })?;
+                (min, max) = symmetric_limit(min, max)?;
+                (format!("qvel[{}]", joint.dof_adr), scalar_units(joint.kind)?.1)
+            }
+            _ => return None,
+        };
+        (signal.name == name && signal.unit == unit && min.zip(max).is_none_or(|(a, b)| a <= b))
+            .then_some(Limit::Range { signal, min, max, source })
+    }
+
+    fn section_rotation(
+        &self, finding: &mut Finding, window: Window, allowable_pa: [f64; 2], proved_limit: bool,
+    ) -> Result<(), Error> {
+        if !self.section_world_matches {
+            return Ok(());
+        }
+        let object = &finding.key.object;
+        let Some((placement, body)) = object.split_once('/') else { return Ok(()) };
+        let world = &self.sampled.world;
+        let part = world.devices.get(placement)
+            .and_then(|input| input.device.links.iter().find(|link| link.name == body)
+                .map(|link| (&link.mass, link.collision.as_slice(), input.path.as_path())))
+            .or_else(|| {
+                world.world.objects.iter().chain(&world.contact.added_objects)
+                    .find(|item| item.name == placement && item.name == body)
+                    .map(|item| (&item.mass, item.collision.as_slice(), world.path.as_path()))
+            });
+        let Some((mass, collision, path)) = part else { return Ok(()) };
+        let (material, geometries) = match mass {
+            Mass::Geometry { material } => (Some(material), collision),
+            Mass::Volumes { material, volumes } => (Some(material), volumes.as_slice()),
+            _ => (None, collision),
+        };
+        let signals = section_reaction::angular_channels(object);
+        let mut peak = None::<([f64; 2], u64, Fingerprint, Option<[f64; 2]>)>;
+        let mut models = None;
+        let asset_base = path.parent().unwrap_or_else(|| std::path::Path::new(""));
+        for log in std::iter::once(&self.log).chain(&self.divergent_repeat) {
+            let [x, y, z] = signals.each_ref().map(|signal| log.series(signal));
+            let [x, y, z] = [x?, y?, z?];
+            let journal = Fingerprint::from_fnv1a(log.fingerprint);
+            for ((x, y), z) in x.points.iter().zip(&y.points).zip(&z.points) {
+                if !(window.start_ns..=window.end_ns).contains(&x.at_ns)
+                    || x.at_ns != y.at_ns || x.at_ns != z.at_ns || !(x.valid && y.valid && z.valid)
+                {
+                    continue;
+                }
+                let angular_velocity = [x.value, y.value, z.value];
+                if angular_velocity == [0.0; 3] {
+                    continue;
+                }
+                if models.is_none() {
+                    models = Some(geometries.iter().map(|geometry| {
+                        geometry.centrifugal_model(material, asset_base).map_err(invalid)
+                    }).collect::<Result<Vec<_>, _>>()?);
+                }
+                for model in models.iter().flatten().flatten() {
+                    let stress = model.stress(angular_velocity).map_err(invalid)?;
+                    let reference = stress.disk_reference_pa
+                        .map_or(stress.normal_pa, |[radial, hoop]| stress.normal_pa.max(radial).max(hoop));
+                    let envelope = stress.disk_envelope_pa.map_or(reference, |upper| reference.max(upper));
+                    if peak.is_none_or(|(old, _, _, _)| envelope > old[1]) {
+                        peak = Some(([reference, envelope], x.at_ns, journal, stress.disk_reference_pa));
+                    }
+                }
+            }
+        }
+        if models.is_some_and(|models| models.is_empty() || models.iter().any(Option::is_none)) {
+            finding.coverage_gaps.push("для вращающейся формы нет замкнутого объёма или плотности".into());
+        }
+        let Some((stress, at, journal, disk_reference)) = peak else { return Ok(()) };
+        let fails = stress[1] > allowable_pa[1];
+        if let Some(old) = finding.measurement {
+            // Подтверждённое превышение сохраняет свой численный свидетель,
+            // даже если у другой оценки выше лишь консервативная граница.
+            if if finding.outcome == Outcome::Fail { stress[0] <= old[0] }
+                else { !fails && stress[1] <= old[1] }
+            {
+                return Ok(());
+            }
+        }
+        finding.measurement = Some(stress);
+        finding.event_ns = Some(at);
+        finding.journal = Some(journal);
+        finding.outcome = if fails { Outcome::Fail } else { Outcome::NotAnalyzed };
+        finding.confirmed_hazard = fails && proved_limit && stress[0] > allowable_pa[1];
+        finding.reason = if let Some([radial, hoop]) = disk_reference {
+            format!(
+                "центробежные напряжения: радиальное {radial:.3} Па и окружное {hoop:.3} Па при справочном ν = 0,3; верхняя огибающая по ν {:.3} Па",
+                stress[1],
+            )
+        } else {
+            "центробежное растяжение по балансу нормальной силы в объёме формы".into()
+        };
+        Ok(())
+    }
+
+    fn section_samples(
+        &self, object: &str, window: Window, load: &SectionLoad,
+    ) -> Result<Option<SectionWindow<'_>>, Error> {
+        let world = &self.sampled.world;
+        let Some((placement, body)) = object.split_once('/') else {
+            return Ok(None);
+        };
+        let Some(device) = world.devices.get(placement).map(|input| &input.device) else {
+            return Ok(None);
+        };
+        let Some(link) = device.links.iter().find(|link| link.name == body) else {
+            return Ok(None);
+        };
+        if !link.joint.efforts.iter().any(|e| e.dof == 0 && format!("{placement}/{}", e.name) == load.effort) {
+            return Ok(None);
+        }
+        // Прежняя огибающая оснастки применима на изолированной оси.
+        // Реакцию корня можно измерить и при дополнительных путях нагрузки,
+        // но нужна отдельная проверка, какие сечения они нагружают.
+        let complex_path = device.links.len() != 1 || world.devices.len() != 1 || !world.world.objects.is_empty()
+            || !world.contact.added_objects.is_empty() || !world.world.attachments.is_empty()
+            || !world.contact.added_attachments.is_empty() || !device.constraints.is_empty()
+            || !device.transmissions.is_empty() || !world.world.environment.collision.is_empty()
+            || world.world.environment.density_kg_m3 != 0.0
+            || world.world.environment.viscosity_pa_s != 0.0 || link.joint.limits_deg.is_some()
+            || link.joint.limits_m.is_some() || link.joint.damping != Some(0.0)
+            || link.joint.friction_loss != Some(0.0);
+        let unit = match link.joint.kind {
+            sim_world::JointType::Slide => "N",
+            sim_world::JointType::Hinge => "N*m",
+            _ => return Ok(None),
+        };
+        let signal = crate::Signal { name: format!("applied_effort/{}", load.effort), unit: unit.into() };
+        let rate = sim_signal::Rate::hz(world.world.physics_hz).ok_or_else(|| invalid("частота нагрузки вне шкалы времени"))?;
+        let reaction_signals = section_reaction::channels(object);
+        let motion_signals = section_reaction::motion_channels(object, link.joint.kind == JointType::Slide);
+        let mut samples = Vec::new();
+        let mut complete = true;
+        for log in std::iter::once(&self.log).chain(&self.divergent_repeat) {
+            let series = std::iter::once(&signal).chain(&reaction_signals).chain(&motion_signals).map(|signal| log.series(signal))
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut channels: Vec<_> = series.iter()
+                .map(|series| series.points.iter().peekable()).collect();
+            let journal = Fingerprint::from_fnv1a(log.fingerprint);
+            let mut left = 0;
+            for index in 1..=log.end.steps {
+                let right = rate.tick(index).0;
+                if right > window.start_ns && left < window.end_ns {
+                    let mut values = [None; 13];
+                    for (value, points) in values.iter_mut().zip(&mut channels) {
+                        while points.peek().is_some_and(|point| point.at_ns < right) {
+                            points.next();
+                        }
+                        if let Some(point) = points.next_if(|point| point.at_ns == right).filter(|point| point.valid) {
+                            crate::task::finite(point.value)?;
+                            *value = Some(point.value);
+                        }
+                    }
+                    // Разрыв запрещает Pass. Уже записанное превышение
+                    // в другом интервале остаётся свидетельством.
+                    if let [Some(effort), Some(fx), Some(fy), Some(fz), Some(mx), Some(my), Some(mz), motion @ ..] = values {
+                        let motion = match motion {
+                            [Some(speed), Some(acceleration), Some(gx), Some(gy), Some(gz), Some(mass)] =>
+                                Some(Motion { speed, acceleration, gravity: [gx, gy, gz], mass }),
+                            _ => None,
+                        };
+                        samples.push(SectionSample {
+                            effort: effort.abs(), at: left.max(window.start_ns), journal,
+                            reaction: Wrench { force: [fx, fy, fz], moment: [mx, my, mz] },
+                            motion,
+                        });
+                        complete &= right - left <= window.max_gap_ns;
+                    } else {
+                        complete = false;
+                    }
+                }
+                left = right;
+                if left >= window.end_ns {
+                    break;
+                }
+            }
+            complete &= left >= window.end_ns;
+        }
+        Ok((!samples.is_empty()).then_some(SectionWindow { link, samples, complete, complex_path }))
+    }
+
     fn checked_findings(
         &self,
         set: &RequirementSet,
@@ -1270,19 +2367,31 @@ impl Run {
                     item.outcome = Outcome::NotAnalyzed;
                 }
             }
+            if check.verification.measurement_limit().is_none() {
+                if key.class == HazardClass::StaticStrength && item.outcome != Outcome::Fail {
+                    item.outcome = Outcome::NotAnalyzed;
+                    item.reason.push_str(". ");
+                    item.reason.push_str(STRENGTH_REQUIRES_BENCH);
+                    item.missing_data.push(STRENGTH_REQUIRES_BENCH.into());
+                } else if matches!(key.class, HazardClass::TissueLoad | HazardClass::Ingress)
+                    && item.outcome == Outcome::Pass
+                {
+                    item.outcome = Outcome::NotAnalyzed;
+                    item.missing_data.push("требуется заверенный замер этой ревизии".into());
+                }
+            }
             self.finish(set, item);
         }
         details
     }
 }
 
-fn upper_interval(measured: [f64; 2], limit: [f64; 2]) -> Outcome {
-    if measured[0] > limit[1] {
-        Outcome::Fail
-    } else if measured[1] <= limit[0] {
-        Outcome::Pass
-    } else {
-        Outcome::NotAnalyzed
+fn symmetric_limit(min: Option<f64>, max: Option<f64>) -> Option<(Option<f64>, Option<f64>)> {
+    match (min, max) {
+        (None, Some(upper)) if upper >= 0.0 => Some((Some(-upper), max)),
+        (Some(lower), None) if lower <= 0.0 => Some((min, Some(-lower))),
+        (Some(_), Some(_)) => Some((min, max)),
+        _ => None,
     }
 }
 

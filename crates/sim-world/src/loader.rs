@@ -1,14 +1,18 @@
 //! Чтение формата 3 и автоматическое определение формата подключённых моделей.
 
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::de::DeserializeOwned;
 use toml::de::{DeTable, DeValue, Deserializer};
 
 use crate::compile::{base, version};
 use crate::{
-    CompiledWorld, ContactBuildOptions, Device, DeviceInput, LegacyCatalog, World,
-    compile_world_with_contact_options, import_mjcf, import_urdf, migrate_v2,
+    CompiledWorld, ContactBuildOptions, Device, DeviceInput, LegacyCatalog, Simplification, World,
+    WorldWithSchematics, compile_world_with_contact_options, import_mjcf, import_urdf, migrate_v2,
 };
 
 fn read(path: &Path) -> Result<String, String> {
@@ -102,7 +106,38 @@ pub fn parse_world(path: &Path, text: &str) -> Result<World, String> {
 pub fn parse_device(path: &Path, text: &str) -> Result<Device, String> {
     let d: Device = parse(path, text)?;
     version(d.format).map_err(|e| format!("{}: {e}", path.display()))?;
+    if let Some(file) = &d.schematic
+        && (file.is_absolute() || file.extension().and_then(|ext| ext.to_str()) != Some("toml"))
+    {
+        return Err(format!(
+            "{}: schematic: требуется относительный путь к файлу TOML",
+            path.display()
+        ));
+    }
     Ok(d)
+}
+
+fn schematic_path(path: &Path, device: &Device) -> Result<Option<PathBuf>, String> {
+    device
+        .schematic
+        .as_ref()
+        .map(|file| {
+            let file = base(path).join(file);
+            let error = |detail: &str| {
+                format!(
+                    "{}: schematic: {}: {detail}",
+                    path.display(),
+                    file.display()
+                )
+            };
+            let resolved = file.canonicalize().map_err(|e| error(&e.to_string()))?;
+            if !resolved.is_file() {
+                return Err(error("требуется обычный файл"));
+            }
+            read(&resolved).map_err(|e| error(&e))?;
+            Ok(resolved)
+        })
+        .transpose()
 }
 
 pub fn load_device(path: &Path, catalog: &dyn sim_device::Catalog) -> Result<Device, String> {
@@ -157,8 +192,38 @@ pub fn load_and_compile_with_catalog_and_contact_options(
     catalog: &dyn sim_device::Catalog,
     options: &ContactBuildOptions,
 ) -> Result<CompiledWorld, String> {
+    let WorldWithSchematics {
+        mut world,
+        schematics,
+    } = load_and_compile_with_schematics_and_options(path, catalog, options)?;
+    for instance in schematics.keys() {
+        // Старый путь загружает только физику. Заявленная электрика требует своего доказательства.
+        world.simplifications.push(Simplification {
+            subject: format!("{instance}/электрическая схема"),
+            text: "проверки заявленной электрической схемы отсутствуют в физическом прогоне".into(),
+            blocks_proof: true,
+        });
+    }
+    Ok(world)
+}
+
+/// Загружает физический мир и отдельные ссылки на читаемые файлы схем.
+pub fn load_and_compile_with_schematics(path: &Path) -> Result<WorldWithSchematics, String> {
+    load_and_compile_with_schematics_and_options(
+        path,
+        &LegacyCatalog,
+        &ContactBuildOptions::default(),
+    )
+}
+
+pub fn load_and_compile_with_schematics_and_options(
+    path: &Path,
+    catalog: &dyn sim_device::Catalog,
+    options: &ContactBuildOptions,
+) -> Result<WorldWithSchematics, String> {
     let world = parse_world(path, &read(path)?)?;
     let mut devices = BTreeMap::new();
+    let mut schematics = BTreeMap::new();
     for (i, d) in world.devices.iter().enumerate() {
         if devices.contains_key(&d.name) {
             return Err(format!(
@@ -170,6 +235,11 @@ pub fn load_and_compile_with_catalog_and_contact_options(
         let device_path = base(path).join(&d.file);
         let device = load_device(&device_path, catalog)
             .map_err(|e| format!("{}: devices[{i}].file: {e}", path.display()))?;
+        if let Some(file) = schematic_path(&device_path, &device)
+            .map_err(|e| format!("{}: devices[{i}].file: {e}", path.display()))?
+        {
+            schematics.insert(d.name.clone(), file);
+        }
         devices.insert(
             d.name.clone(),
             DeviceInput {
@@ -178,5 +248,8 @@ pub fn load_and_compile_with_catalog_and_contact_options(
             },
         );
     }
-    compile_world_with_contact_options(path, &world, &devices, options)
+    Ok(WorldWithSchematics {
+        world: compile_world_with_contact_options(path, &world, &devices, options)?,
+        schematics,
+    })
 }

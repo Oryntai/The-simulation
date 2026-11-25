@@ -25,13 +25,13 @@ applicability = { kind = "datasheet", reference = "Спецификация не
 scope = "Независимая статическая нагрузка поперёк прямоугольного стержня длиной 1 м."
 inputs = [{ kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }]
 # M = F·1 м. Порог 5 МПа принят в приёмке синтетической постановки B.
-verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [20.0, 20.0], allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Стенд статической нагрузки: 20 Н на плече 1 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }
+verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [2.0, 2.0], live_load = { effort = "каретка/сила", moment_per_effort = 1.0 }, allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Протокол штатного режима: до 2 Н на плече 1 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }
 
 [inventory]
 off_participant = { kind = "datasheet", reference = "Модель ограничена изолированным расчётным стендом без участника и доступного пути к человеку." }
 
 [inventory.coverage]
-parts = { state = "resolved", source = { kind = "datasheet", reference = "Один однородный стержень в rod.toml. Нагрузка и предел независимой проверки сечения заданы выше." } }
+parts = { state = "resolved", source = { kind = "datasheet", reference = "Один однородный стержень в rod.toml. Нагрузка сечения пропорциональна усилию оснастки по плечу 1 м. Предел задан выше." } }
 geometry = { state = "resolved", source = { kind = "datasheet", reference = "Одна поступательная ось. Полная геометрия и допуск начального положения заданы файлами стенда." } }
 attachments = { state = "resolved", source = { kind = "datasheet", reference = "У стенда отсутствуют соединения, сменные стыки и насадки." } }
 catalog = { state = "resolved", source = { kind = "datasheet", reference = "Стенд использует пустой каталог и не подключает комплектующие." } }

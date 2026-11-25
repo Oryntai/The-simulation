@@ -1,0 +1,287 @@
+version = 1
+required_modes = ["assist", "wrong_payload", "hold_relaxed", "cold", "fault_hang", "estop", "sensor", "radio", "open", "jam", "water", "obstacle"]
+sampled_drives = { "устройство/мотор" = "../sampled-drive.toml" }
+mode_control = { assist = "assist-wiring.toml", wrong_payload = "wrong_payload-wiring.toml", hold_relaxed = "hold_relaxed-wiring.toml", cold = "cold-wiring.toml", fault_hang = "fault_hang-wiring.toml", estop = "estop-wiring.toml", sensor = "sensor-wiring.toml", radio = "radio-wiring.toml", open = "open-wiring.toml", jam = "../stage4/jam-wiring.toml", water = "../stage4/water-wiring.toml", obstacle = "../stage4/obstacle-wiring.toml" }
+
+[mode_physics]
+jam = { case = "../stage4/jam.toml", witness = "реакция зажима" }
+water = { case = "../stage4/water.toml", witness = "длинный объём/Архимед" }
+obstacle = { case = "../stage4/obstacle.toml", witness = "удар/пик" }
+
+[[readouts]]
+signal = { name = "нормальная сила контакта", unit = "N" }
+# Сетка CSV. Во всех восьми режимах нет препятствия, а упор записан отдельным моментом.
+rate_hz = 200
+source = { kind = "derived", reference = "Сумма нормальных сил контактов MuJoCo по сцене, на сетке CSV 5 мс." }
+formula = { kind = "contact_normal" }
+
+# Как в численных опытах этапа 4: опоры дают процессные модели.
+[sampled_modes.jam]
+fixture_enabled = false
+
+[sampled_modes.obstacle]
+fixture_enabled = false
+
+[sampled_modes.cold]
+ambient_c = -20
+
+[sampled_modes.hold_relaxed]
+fixture_enabled = false
+
+[sampled_modes.fault_hang]
+fixture_enabled = false
+
+[sampled_modes.estop]
+fixture_enabled = false
+
+[sampled_modes.sensor]
+fixture_enabled = false
+
+[sampled_modes.radio]
+fixture_enabled = false
+
+[sampled_modes.open]
+fixture_enabled = false
+
+[[measurements]]
+signal = { name = "угол", unit = "rad" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "rotary_position", joint = "устройство/ось", bounds_rad = [0.0, 2.6179938779914944] }
+
+[[measurements]]
+signal = { name = "ток", unit = "A" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "winding_current" }
+
+[[measurements]]
+signal = { name = "корпус", unit = "degC" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "housing_temperature" }
+
+[[measurements]]
+signal = { name = "батарея", unit = "V" }
+rate_hz = 40000
+source = { kind = "estimate", reference = "Идеализированная шкала ADC оракула. Начальное показание вычисляется моделью." }
+transducer = { kind = "sampled_drive", drive = "устройство/мотор", port = "supply_voltage" }
+
+[paths."драйвер"]
+observation = { name = "угол", unit = "rad" }
+physical_response = [{ name = "qpos[0]", unit = "rad" }, { name = "устройство/мотор/current_a", unit = "A" }]
+command_delta = 0.000015259021896696422
+max_observation_age_ns = 25000
+source = { kind = "derived", reference = "Разрешение 16-битной скважности виртуального контроллера, 1/65535." }
+hops = [
+  { target = "channel:радио", direction = "input", delay_ns = 0, jitter_ns = 0, receiver_tick_ns = 25000, source = { kind = "derived", reference = "Таблица слотов в build-inputs.py, очередь без добавочной задержки." } },
+  { target = "channel:ответ", direction = "output", delay_ns = 7500000, jitter_ns = 7500000, receiver_tick_ns = 25000, source = { kind = "derived", reference = "Ожидание ближайшего слота BLE от 0 до 15 мс, плюс шаг выгрузки 25 мкс. Сверка флагов использует точное время доставки из календаря." } },
+]
+
+[reference.assist]
+file = "../../../golden/exo_loop/assist.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.wrong_payload]
+file = "../../../golden/exo_loop/wrong_payload.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.hold_relaxed]
+file = "../../../golden/exo_loop/hold_relaxed.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.cold]
+file = "../../../golden/exo_loop/cold.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.fault_hang]
+file = "../../../golden/exo_loop/fault_hang.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.estop]
+file = "../../../golden/exo_loop/fault_estop.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.sensor]
+file = "../../../golden/exo_loop/fault_sensor.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]
+
+[reference.radio]
+file = "../../../golden/exo_loop/fault_radio.csv"
+time_column = "t"
+interval_ns = 5000000
+horizon_ns = 3000000000
+# max|x−reference| / max|reference|, все 600 точек. Положение и скорость
+# эталон записывает после интервала 25 мкс, остальные ряды помечены его началом.
+tolerance = 0.01
+columns = [
+  { reference = "theta", signal = "qpos[0]", offset_ns = 25000 },
+  { reference = "omega", signal = "qvel[0]", offset_ns = 25000 },
+  { reference = "joint_torque", signal = "устройство/мотор/joint_torque_nm", offset_ns = 0 },
+  { reference = "human_torque", signal = "устройство/мотор/fixture_torque_nm", offset_ns = 0 },
+  { reference = "stop_torque", signal = "устройство/мотор/stop_torque_nm", offset_ns = 0 },
+  { reference = "current_a", signal = "устройство/мотор/current_a", offset_ns = 0 },
+  { reference = "winding_c", signal = "устройство/мотор/winding_c", offset_ns = 0 },
+  { reference = "housing_c", signal = "устройство/мотор/housing_c", offset_ns = 0 },
+  { reference = "motor_v", signal = "устройство/мотор/voltage_v", offset_ns = 0 },
+  { reference = "battery_v", signal = "устройство/мотор/bus_voltage_v", offset_ns = 0 },
+  { reference = "duty", signal = "устройство/мотор/accepted_command", offset_ns = 0, absolute = true },
+  { reference = "driver_on", signal = "устройство/мотор/bridge_enabled", offset_ns = 0, exact = true },
+  { reference = "contact_n", signal = "нормальная сила контакта", offset_ns = 0 },
+  # Два байта флагов ABI из firmware/exo-ctrl/src/control.rs и sim-mcu/src/exo.rs.
+  { reference = "reported_faults", signal = "флаги доставленной телеметрии", offset_ns = 0, packet = { route = "ответ", length = 14, prefix = [126], bytes_le = [10, 13], initial = 0 } },
+]

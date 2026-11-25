@@ -1584,3 +1584,458 @@ pulse_timeout_s = { value = 0.02, source = "derived", reference = "Синтет�
             .contains("-pulse-seq")
     );
 }
+
+#[derive(Clone, Copy, Debug)]
+enum CircuitPath {
+    Common,
+    Sampled,
+}
+
+impl CircuitPath {
+    fn setup(self, initial_speed: f64) -> (Runtime, ChannelId, ChannelId) {
+        self.setup_inertia(initial_speed, 8e8)
+    }
+
+    fn setup_inertia(
+        self,
+        initial_speed: f64,
+        body_inertia: f64,
+    ) -> (Runtime, ChannelId, ChannelId) {
+        // Синтетический стенд: R=2 Ом, L=2 мГн, k=1, N=1, без потерь передачи.
+        // Инерция зажима 8·10⁸ кг·м² удерживает скорость с изменением < 10⁻⁹ рад/с
+        // при моменте до 10 Н·м за проверяемые интервалы до 20 мс.
+        let id = "circuit-block";
+        let mut w = world(id, CompiledJointKind::Hinge, 0.2);
+        w.mjcf = w.mjcf.replace(
+            "0.8 0.8 0.8",
+            &format!("{body_inertia} {body_inertia} {body_inertia}"),
+        );
+        with_inputs(&mut w, &["-bus-v", "-power"]);
+        w.efforts[2].name = "блок/разрешение".into();
+        if matches!(self, Self::Common) {
+            w.efforts[2].name = "команда-power".into();
+        }
+        let mut r = Runtime::load(w.clone()).unwrap();
+        r.set_initial_velocities(&BTreeMap::from([(
+            "ось".into(),
+            BTreeMap::from([(0, initial_speed)]),
+        )]))
+        .unwrap();
+        let enable = r.channel(&w.efforts[2].name).unwrap();
+        let (bus, current) = match self {
+            Self::Common => {
+                let dir = Temp::new();
+                let f = position_file(id, "dc", "pwm", false, 0.0)
+                    .replace(
+                        "inductance_h = { value = 0.5",
+                        "inductance_h = { value = 0.002",
+                    )
+                    .replace("brake = \"none\"", "brake = \"none\"\npower_input = true");
+                dir.write(id, &f);
+                let catalog = DriveCatalog::load(&dir.0).unwrap();
+                let error = sim_drive::DriveHandle::install_with_circuit(
+                    &mut r,
+                    &w,
+                    &catalog,
+                    &["блок/привод", "блок/привод"],
+                )
+                .unwrap_err();
+                assert!(error.contains("повторно"));
+                let h = sim_drive::DriveHandle::install_with_circuit(
+                    &mut r,
+                    &w,
+                    &catalog,
+                    &["блок/привод"],
+                )
+                .unwrap()
+                .remove(0);
+                assert_eq!(h.power, Some(enable));
+                h.circuit_port().unwrap()
+            }
+            Self::Sampled => {
+                // Большие синтетические теплоёмкости C=τ/R=10⁶ Дж/К
+                // сохраняют сопротивление стенда с точностью лучше 10⁻⁸ Ом.
+                let spec: sim_drive::sampled::Spec = toml::from_str(
+                    r#"
+source = "Искусственный контур R–L и жёсткая передача"
+bridge_effort = "разрешение"
+ambient_c = 20
+fixture_enabled = false
+[motor]
+nominal_v = 8
+r_ohm = 2
+r_ref_c = 20
+l_h = 0.002
+k = 1
+j = 0.2
+coulomb = 0
+viscous = 0
+band = 1
+max_a = 100
+[gear]
+ratio = 1
+eta_forward = 1
+eta_backward = 1
+friction = 0
+j = 0
+rated = 1
+repeated = 2
+peak = 3
+mass = 1
+[thermal]
+r_wh = 1
+r_ha = 1
+tau_w = 1e6
+tau_h = 1e6
+max_c = 100
+fraction = 0
+"#,
+                )
+                .unwrap();
+                use sim_drive::sampled::Measurement::SupplyVoltage;
+                assert!(spec.initial_measurement(SupplyVoltage).is_err());
+                assert_eq!(
+                    spec.initial_measurement_with_circuit(SupplyVoltage, 4.0)
+                        .unwrap(),
+                    4.0
+                );
+                for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+                    assert!(
+                        spec.initial_measurement_with_circuit(SupplyVoltage, bad)
+                            .is_err()
+                    );
+                }
+                sim_drive::sampled::install_with_circuit(&mut r, &w, "блок/привод", spec)
+                    .unwrap()
+                    .1
+            }
+        };
+        assert_eq!(r.truth_id("блок/привод/next_bus_current_a"), Some(current));
+        (r, bus, enable)
+    }
+}
+
+const CIRCUIT_H: f64 = 0.0001; // Шаг стенда world(), 10 кГц.
+const CIRCUIT_R: f64 = 2.0; // Ом, одинаково в обоих профилях.
+const CIRCUIT_L: f64 = 0.002; // Гн, одинаково в обоих профилях.
+
+fn motor_signal(runtime: &Runtime, name: &str) -> f64 {
+    last(runtime, &format!("блок/привод/{name}"))
+}
+
+fn close(actual: f64, expected: f64, tolerance: f64) {
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "{actual:.12e} вместо {expected:.12e}, допуск {tolerance:.1e}"
+    );
+}
+
+fn rl_reference(initial: f64, terminal: f64, emf: f64, seconds: f64) -> (f64, f64) {
+    // Независимое ручное решение: экспонента и первообразная R–L.
+    let tau = CIRCUIT_L / CIRCUIT_R;
+    let dc = (terminal - emf) / CIRCUIT_R;
+    let a = (-seconds / tau).exp();
+    (
+        dc + (initial - dc) * a,
+        dc * seconds + (initial - dc) * tau * (1.0 - a),
+    )
+}
+
+struct ElectricalBench {
+    circuit: sim_circuit::Transient,
+    charge: f64,
+    work: f64,
+    mna_work: f64,
+    voltage: f64,
+    bus: ChannelId,
+    wire: &'static str,
+}
+
+impl ElectricalBench {
+    fn new(runtime: &mut Runtime, bus: ChannelId, feed_ohm: f64) -> Self {
+        // Локальная опора на +2 В проверяет разность клемм.
+        // Источник 4 В, регулируемое сопротивление проводки из параметра опыта.
+        let (wire, branch) = if feed_ohm == 0.0 {
+            ("Vwire", "Vwire src plus 0".into())
+        } else {
+            ("Rwire", format!("Rwire src plus {feed_ohm}"))
+        };
+        let netlist = format!(
+            "Блок\nVref minus 0 2\nVfeed src minus EXT 4\n{branch}\nIload plus minus EXT 0\n"
+        );
+        let circuit = sim_circuit::Circuit::parse(&netlist).unwrap();
+        let circuit = sim_circuit::Transient::new(&circuit, CIRCUIT_H).unwrap();
+        let voltage = circuit.voltage("plus").unwrap() - circuit.voltage("minus").unwrap();
+        // Численная проводимость MNA сдвигает рабочую точку на несколько пВ.
+        close(voltage, 4.0, 1e-10);
+        command(runtime, bus, voltage);
+        go(runtime, 0.0);
+        Self {
+            circuit,
+            charge: 0.0,
+            work: 0.0,
+            mna_work: 0.0,
+            voltage,
+            bus,
+            wire,
+        }
+    }
+
+    fn advance(&mut self, r: &mut Runtime, tick: u32, source: f64) {
+        let load = motor_signal(r, "next_bus_current_a");
+        let time = f64::from(tick) * CIRCUIT_H;
+        self.circuit.set_source_step("Iload", load).unwrap();
+        self.circuit.set_source_step("Vfeed", source).unwrap();
+        self.circuit.advance_to(time).unwrap();
+        let i_source = self.circuit.current("Vfeed").unwrap();
+        let i_wire = self.circuit.current(self.wire).unwrap();
+        let v_bus = self.circuit.voltage("plus").unwrap() - self.circuit.voltage("minus").unwrap();
+        // Допуск узлового решения для токов стенда порядка единиц ампер.
+        close(i_wire, load, 1e-9);
+        close(i_source, -load, 1e-9);
+        close(
+            self.circuit.power("Vfeed").unwrap() + self.circuit.power(self.wire).unwrap(),
+            -self.circuit.power("Iload").unwrap(),
+            1e-9,
+        );
+        self.charge += i_wire * CIRCUIT_H;
+        self.mna_work += self.circuit.power("Iload").unwrap() * CIRCUIT_H;
+        self.work += self.voltage * load * CIRCUIT_H;
+        self.voltage = v_bus;
+        command(r, self.bus, self.voltage);
+        go(r, time);
+        // Погрешность суммы 200 шагов и MNA при двух выводах.
+        close(motor_signal(r, "bus_charge_c"), self.charge, 2e-11);
+        close(motor_signal(r, "bus_energy_j"), self.work, 2e-11);
+        close(motor_signal(r, "motor_energy_residual_j"), 0.0, 2e-11);
+    }
+}
+
+#[test]
+fn circuit_drive_start_stall_and_release_match_rl_and_mna() {
+    for path in [CircuitPath::Common, CircuitPath::Sampled] {
+        let (mut r, bus, enable) = path.setup(0.0);
+        let duty = r.channel("команда").unwrap();
+        // Обратная скважность −1/2: ток обмотки отрицателен, ток источника
+        // при пуске и заклинивании положителен. Vш = 4 В, Uобм = −2 В.
+        command(&mut r, duty, -0.5);
+        command(&mut r, enable, 1.0);
+        // 1 мОм — сопротивление тестовой перемычки; затем 1 Ом.
+        let mut bench = ElectricalBench::new(&mut r, bus, 0.001);
+        let launch = motor_signal(&r, "next_bus_current_a");
+        let (_, q_first) = rl_reference(0.0, -2.0, 0.0, CIRCUIT_H);
+        close(launch, -0.5 * q_first / CIRCUIT_H, 1e-12);
+        let mut predicted_current = 0.0;
+        let mut predicted_charge = 0.0;
+        let mut greatest_delta = 0.0_f64;
+        for tick in 1..=120 {
+            let terminal = -0.5 * bench.voltage;
+            let (end, q) = rl_reference(predicted_current, terminal, 0.0, CIRCUIT_H);
+            predicted_current = end;
+            predicted_charge += -0.5 * q;
+            bench.advance(&mut r, tick, 4.0);
+            greatest_delta = greatest_delta.max((bench.work - bench.mna_work).abs());
+        }
+        // Каталожная четверть ВАХ: Iш = D²V/(R + D²Rпровода) при ω=0.
+        let stall = 0.25 * 4.0 / (CIRCUIT_R + 0.25 * 0.001);
+        close(motor_signal(&r, "current_a"), predicted_current, 1e-5);
+        close(motor_signal(&r, "next_bus_current_a"), stall, 4e-6);
+        close(bench.charge, predicted_charge, 2e-11);
+        assert!(r.joint_velocity("ось", 0).unwrap().abs() < 1e-9);
+        assert!(greatest_delta < 3e-8);
+        println!(
+            "{path:?}: пуск {launch:.9} А, заклинивание {:.9} А, Q {:.9} Кл, ∆E удержания {greatest_delta:.3e} Дж",
+            motor_signal(&r, "next_bus_current_a"),
+            bench.charge
+        );
+
+        // Снимаем разрешение при наличии напряжения. Начинается отдача
+        // магнитной энергии через диоды, после нуля цепь обмотки размыкается.
+        command(&mut r, enable, 0.0);
+        bench.advance(&mut r, 121, 4.0);
+        let at_release = bench.charge;
+        let initial = rl_reference(
+            predicted_current,
+            -0.5 * (4.0 - stall * 0.001),
+            0.0,
+            CIRCUIT_H,
+        )
+        .0;
+        let until_zero = (CIRCUIT_L / CIRCUIT_R) * (CIRCUIT_R * initial.abs() / 4.0).ln_1p();
+        let (_, returned) = rl_reference(initial, 4.0, 0.0, until_zero);
+        assert!(motor_signal(&r, "next_bus_current_a") < 0.0);
+        let saved = r.snapshot();
+        let mut fork = r.fork().unwrap();
+        let circuit_saved = bench.circuit.snapshot();
+        let saved_balances = (bench.voltage, bench.charge, bench.work, bench.mna_work);
+        let mut branched = ElectricalBench {
+            circuit: sim_circuit::Transient::new(
+                &sim_circuit::Circuit::parse("Блок\nV1 x 0 1\nR1 x 0 1\n").unwrap(),
+                CIRCUIT_H,
+            )
+            .unwrap(),
+            ..bench
+        };
+        branched.circuit.restore(&circuit_saved);
+        for tick in 122..=135 {
+            bench.advance(&mut r, tick, 4.0);
+            branched.advance(&mut fork, tick, 4.0);
+        }
+        assert_eq!(bytes(&r), bytes(&fork));
+        let log = bytes(&r);
+        r.restore(&saved).unwrap();
+        bench.circuit.restore(&circuit_saved);
+        (bench.voltage, bench.charge, bench.work, bench.mna_work) = saved_balances;
+        for tick in 122..=135 {
+            bench.advance(&mut r, tick, 4.0);
+        }
+        assert_eq!(bytes(&r), log);
+        assert_eq!(motor_signal(&fork, "next_bus_current_a"), 0.0);
+        close(bench.charge - at_release, returned, 2e-7);
+        println!(
+            "{path:?}: гашение, Q {:.9} Кл, t₀ {until_zero:.9} с",
+            bench.charge - at_release
+        );
+
+        let (mut weak, bus, enable) = path.setup(0.0);
+        let duty = weak.channel("команда").unwrap();
+        command(&mut weak, duty, -0.5);
+        command(&mut weak, enable, 1.0);
+        let mut weak_bench = ElectricalBench::new(&mut weak, bus, 1.0);
+        for tick in 1..=120 {
+            weak_bench.advance(&mut weak, tick, 4.0);
+        }
+        let weak_stall = 0.25 * 4.0 / (CIRCUIT_R + 0.25);
+        close(motor_signal(&weak, "next_bus_current_a"), weak_stall, 4e-6);
+        close(weak_bench.voltage, 4.0 - weak_stall, 4e-6);
+        let energy_difference = (weak_bench.work - weak_bench.mna_work).abs();
+        println!(
+            "{path:?}: 1 Ом, {:.9} В, {:.9} А, ∆E удержания {energy_difference:.3e} Дж",
+            weak_bench.voltage,
+            motor_signal(&weak, "next_bus_current_a")
+        );
+        assert!(energy_difference < 1.5e-5);
+    }
+}
+
+#[test]
+fn circuit_drive_regenerates_at_zero_bus_voltage_and_refuses_bad_voltage() {
+    for path in [CircuitPath::Common, CircuitPath::Sampled] {
+        let (mut r, bus, enable) = path.setup(10.0);
+        let duty = r.channel("команда").unwrap();
+        command(&mut r, duty, 1.0);
+        command(&mut r, enable, 1.0);
+        // E=10 В > Vш=4 В. При замкнутом мосте источник принимает ток.
+        let mut bench = ElectricalBench::new(&mut r, bus, 0.0);
+        let (_, q) = rl_reference(0.0, 4.0, 10.0, CIRCUIT_H);
+        close(motor_signal(&r, "next_bus_current_a"), q / CIRCUIT_H, 1e-9);
+        bench.advance(&mut r, 1, 4.0);
+        assert!(bench.charge < 0.0 && bench.work < 0.0);
+        // Источник опускает напряжение до нуля. После доставки нуля
+        // на следующей границе остаётся только диодный путь.
+        bench.advance(&mut r, 2, 0.0);
+        assert_eq!(bench.voltage, 0.0);
+        let (_, zero_q_after_front) = rl_reference(
+            rl_reference(0.0, 4.0, 10.0, 2.0 * CIRCUIT_H).0,
+            0.0,
+            10.0,
+            CIRCUIT_H,
+        );
+        close(
+            motor_signal(&r, "next_bus_current_a"),
+            zero_q_after_front / CIRCUIT_H,
+            1e-9,
+        );
+        let energy_at_front = motor_signal(&r, "bus_energy_j");
+        bench.advance(&mut r, 3, 0.0);
+        assert_eq!(
+            motor_signal(&r, "bus_energy_j").to_bits(),
+            energy_at_front.to_bits()
+        );
+
+        // Идеальный зажим шины в ноль. Команда остаётся единичной,
+        // отключение активного моста вызвано напряжением, а ток диодов сохраняется.
+        let (mut zero, zero_bus, enable) = path.setup(10.0);
+        let duty = zero.channel("команда").unwrap();
+        command(&mut zero, duty, 1.0);
+        command(&mut zero, enable, 1.0);
+        command(&mut zero, zero_bus, 0.0);
+        go(&mut zero, 0.0);
+        let (_, zero_q) = rl_reference(0.0, 0.0, 10.0, CIRCUIT_H);
+        let zero_i = motor_signal(&zero, "next_bus_current_a");
+        close(zero_i, zero_q / CIRCUIT_H, 1e-9);
+        go(&mut zero, CIRCUIT_H);
+        close(motor_signal(&zero, "bus_charge_c"), zero_q, 1e-13);
+        assert_eq!(motor_signal(&zero, "bus_energy_j"), 0.0);
+        println!(
+            "{path:?}: E=10 В, Iш при 4 В {:.9} А и при 0 В {zero_i:.9} А",
+            q / CIRCUIT_H
+        );
+
+        let (mut invalid, bus, enable) = path.setup(0.0);
+        command(&mut invalid, enable, 1.0);
+        let saved = invalid.snapshot();
+        assert_eq!(
+            invalid.run_until(Time::ZERO).unwrap(),
+            Status::ComponentFailure
+        );
+        assert!(
+            invalid
+                .failure()
+                .unwrap()
+                .contains("не поступило напряжение")
+        );
+        invalid.restore(&saved).unwrap();
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                invalid
+                    .act(&Command {
+                        targets: vec![(bus, bad)]
+                    })
+                    .is_err()
+            );
+        }
+        command(&mut invalid, bus, -1.0);
+        assert_eq!(
+            invalid.run_until(Time::ZERO).unwrap(),
+            Status::ComponentFailure
+        );
+        assert!(invalid.failure().unwrap().contains("напряжение шины"));
+    }
+}
+
+#[test]
+fn circuit_drive_load_matches_moving_block_emf_on_the_same_interval() {
+    for path in [CircuitPath::Common, CircuitPath::Sampled] {
+        // J = 0.8 + 0.2 = 1 кг·м². Противо-ЭДС начинается с 10 В
+        // и падает, когда регенерация тормозит свободный блок.
+        let (mut r, bus, enable) = path.setup_inertia(10.0, 0.8);
+        let duty = r.channel("команда").unwrap();
+        command(&mut r, duty, 1.0);
+        command(&mut r, enable, 1.0);
+        let mut bench = ElectricalBench::new(&mut r, bus, 0.0);
+        let mut predicted_current = 0.0;
+        let mut mechanical = 0.0;
+        for tick in 1..=100 {
+            let start = r.joint_velocity("ось", 0).unwrap();
+            let amps = motor_signal(&r, "next_bus_current_a");
+            bench.advance(&mut r, tick, 4.0);
+            let stop = r.joint_velocity("ось", 0).unwrap();
+            let emf = match path {
+                CircuitPath::Common => 0.5 * (start + stop),
+                CircuitPath::Sampled => start,
+            };
+            let (current, charge) = rl_reference(predicted_current, 4.0, emf, CIRCUIT_H);
+            predicted_current = current;
+            // Допуск включает изменение R при нагреве дискретной обмотки.
+            close(amps * CIRCUIT_H, charge, 2e-12);
+            mechanical += emf * charge;
+        }
+        assert!(r.joint_velocity("ось", 0).unwrap() < 9.98);
+        assert!(mechanical < 0.0);
+        let storage = 0.5 * CIRCUIT_L * predicted_current.powi(2);
+        let copper = motor_signal(&r, "copper_loss_j");
+        close(bench.work, copper + mechanical + storage, 5e-10);
+        close(bench.mna_work, bench.work, 2e-12);
+    }
+}

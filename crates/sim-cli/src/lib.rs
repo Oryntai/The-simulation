@@ -1,6 +1,7 @@
 //! Драйвер мира без окна. Часы компьютера используются только для темпа realtime.
 
 mod commands;
+pub mod electrical;
 mod tasks;
 pub mod view;
 
@@ -16,7 +17,8 @@ use sim_runtime::{Log, LogEnd, LogEntry, LogKind, Runtime, Status};
 use sim_signal::{Command, Time};
 use sim_world::CompiledWorld;
 
-const USAGE: &str = "sim-run <world.toml> --duration <с> [--catalog папка] [--commands файл.csv] [--seed N] [--log файл] [--csv файл] [--view файл [--peak канал]] [--mode fast|realtime|step] [--snapshot-at <с>] [--replay файл] [--json]\nsim-run <world.toml> --task <task.toml> [--case режим | --matrix full [--jobs N] [--checkpoint папка]] [--seed N] [--catalog папка] [--view файл [--peak канал]] [--json]\nsim-run --campaign <manifest.toml> [--checkpoint папка] [--repeat ключ [--view файл]] [--measurements файл] [--json]";
+const USAGE: &str = "sim-run <world.toml> --duration <с> [--electrical профиль.toml] [--catalog папка] [--commands файл.csv] [--seed N] [--log файл] [--csv файл] [--view файл [--peak канал]] [--mode fast|realtime|step] [--snapshot-at <с>] [--replay файл] [--json]\nsim-run <world.toml> --task <task.toml> [--case режим | --matrix full [--jobs N] [--checkpoint папка]] [--seed N] [--catalog папка] [--view файл [--peak канал]] [--json]\nsim-run --campaign <manifest.toml> [--jobs N] [--checkpoint папка] [--repeat ключ [--view файл | --log файл]] [--measurements файл] [--json]
+Для кампании --jobs ограничивает общее число исполнителей. По умолчанию используются до четырёх доступных логических ядер.";
 
 #[derive(Clone, Copy, Default)]
 enum Mode {
@@ -42,13 +44,16 @@ struct Options {
     snapshot_at: Option<Time>,
     replay: Option<PathBuf>,
     task: Option<PathBuf>,
+    electrical: Option<PathBuf>,
     campaign: Option<PathBuf>,
     repeat: Option<String>,
     case: Option<String>,
     matrix_full: bool,
     selected_control_case: Option<sim_task::Case>,
     linked_grid_hz: Option<u64>,
+    campaign_capture: Option<view::PlaybackCapture>,
     jobs: Option<std::num::NonZeroUsize>,
+    workers: Option<std::sync::Arc<tasks::workers::Workers>>,
     checkpoint: Option<PathBuf>,
     json: bool,
 }
@@ -100,6 +105,7 @@ impl Options {
                     | "--snapshot-at"
                     | "--replay"
                     | "--task"
+                    | "--electrical"
                     | "--campaign"
                     | "--repeat"
                     | "--case"
@@ -154,6 +160,7 @@ impl Options {
                 "--commands" => options.commands = Some(value.into()),
                 "--replay" => options.replay = Some(value.into()),
                 "--task" => options.task = Some(value.into()),
+                "--electrical" => options.electrical = Some(value.into()),
                 "--campaign" => options.campaign = Some(value.into()),
                 "--repeat" => options.repeat = Some(as_text()?.into()),
                 "--case" => options.case = Some(as_text()?.into()),
@@ -179,14 +186,24 @@ impl Options {
                 || used.iter().any(|flag| {
                     !matches!(
                         flag.as_str(),
-                        "--campaign" | "--checkpoint" | "--repeat" | "--view" | "--measurements" | "--json"
+                        "--campaign"
+                            | "--jobs"
+                            | "--checkpoint"
+                            | "--repeat"
+                            | "--view"
+                            | "--log"
+                            | "--measurements"
+                            | "--json"
                     )
                 })
             {
-                return Err("для --campaign допустимы --checkpoint, --repeat, --view, --measurements и --json".into());
+                return Err("для --campaign допустимы --jobs, --checkpoint, --repeat, --view, --log, --measurements и --json".into());
             }
-            if options.view.is_some() && options.repeat.is_none() {
-                return Err("просмотр кампании требует ключ --repeat".into());
+            if (options.view.is_some() || options.log.is_some()) && options.repeat.is_none() {
+                return Err("выгрузка прогона кампании требует ключ --repeat".into());
+            }
+            if options.view.is_some() && options.log.is_some() {
+                return Err("для повтора кампании выберите --view или --log".into());
             }
             return Ok(options);
         }
@@ -199,9 +216,15 @@ impl Options {
             return Err("нужны файл мира и ровно один из ключей --duration или --task".into());
         }
         if options.task.is_some()
-            && ["--commands", "--replay", "--mode", "--snapshot-at"]
-                .into_iter()
-                .any(|flag| used.contains(flag))
+            && [
+                "--commands",
+                "--replay",
+                "--mode",
+                "--snapshot-at",
+                "--electrical",
+            ]
+            .into_iter()
+            .any(|flag| used.contains(flag))
         {
             return Err("задание использует собственные стимулы, расписание и горизонт".into());
         }
@@ -209,11 +232,11 @@ impl Options {
             return Err("--case требуется --task".into());
         }
         if options.matrix_full
-            && (options.task.is_none()
-                || options.case.is_some()
-                || options.exports_run())
+            && (options.task.is_none() || options.case.is_some() || options.exports_run())
         {
-            return Err("--matrix full требует --task и исключает --case, --log, --csv и --view".into());
+            return Err(
+                "--matrix full требует --task и исключает --case, --log, --csv и --view".into(),
+            );
         }
         if (!options.matrix_full && options.checkpoint.is_some())
             || (options.task.is_none() && options.jobs.is_some())
@@ -225,7 +248,9 @@ impl Options {
         }
         let mut outputs = BTreeSet::new();
         if [&options.log, &options.csv, &options.view]
-            .into_iter().flatten().any(|path| !outputs.insert(path))
+            .into_iter()
+            .flatten()
+            .any(|path| !outputs.insert(path))
         {
             return Err("--log, --csv и --view требуют разных файлов".into());
         }
@@ -234,6 +259,12 @@ impl Options {
         }
         if options.commands.is_some() && options.replay.is_some() {
             return Err("--commands и --replay нельзя использовать одновременно".into());
+        }
+        if options.electrical.is_some() && options.commands.is_some() {
+            return Err("электрический опыт берёт стимулы из профиля".into());
+        }
+        if options.electrical.is_some() && options.replay.is_some() {
+            return Err("для повтора электрического опыта требуется запись управления (LiveExperiment::load_replay)".into());
         }
         Ok(options)
     }
@@ -263,7 +294,7 @@ impl Driver {
         diagnostics: &mut impl Write,
     ) -> Result<bool, String> {
         if let Self::Fast = self {
-            runtime.run_until(until)?;
+            runtime.run_electrical_until(until)?;
             return Ok(true);
         }
         loop {
@@ -294,7 +325,7 @@ impl Driver {
                 }
                 _ => {}
             }
-            runtime.run_until(time)?;
+            runtime.run_electrical_until(time)?;
             if time == until {
                 return Ok(true);
             }
@@ -397,6 +428,10 @@ struct Report<'a> {
     snapshot: Option<Checkpoint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     detail: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    electrical: Option<electrical::LiveSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    electrical_verdict: Option<electrical::report::ElectricalReport>,
 }
 
 fn write_report(report: &Report<'_>, json: bool, stdout: &mut impl Write) -> Result<(), String> {
@@ -516,7 +551,6 @@ impl<I: BufRead, W: Write> RunDriver<'_, I, W> {
 }
 
 fn run_world(
-    mut world: CompiledWorld,
     options: &Options,
     stdin: &mut impl BufRead,
     stdout: &mut impl Write,
@@ -531,16 +565,35 @@ fn run_world(
             log.end().time.as_secs()
         ));
     }
-    if let Some(seed) = options
+    let seed = options
         .seed
-        .or_else(|| replay.as_ref().map(|log| log.header().seed))
-    {
-        world.seed = seed;
-    }
-    let mut runtime = Runtime::load(world.clone())?;
-    install(&mut runtime, &world, options)?;
-    drop(world);
+        .or_else(|| replay.as_ref().map(|log| log.header().seed));
+    let mut electrical_installation = options.electrical.as_ref().map(|profile| {
+        electrical::report::Installation::load(&options.world, &catalog_path(options)?, Some(profile))
+    }).transpose()?;
+    let mut runtime = if let Some(profile) = &options.electrical {
+        electrical::LiveExperiment::load(
+            &options.world,
+            profile,
+            &catalog_path(options)?,
+            seed,
+            options.until,
+            electrical::LivePath::Full,
+        )?
+        .runtime
+    } else {
+        let mut world = sim_world::load_and_compile(&options.world)?;
+        if let Some(seed) = seed {
+            world.seed = seed;
+        }
+        let mut runtime = Runtime::load(world.clone())?;
+        install(&mut runtime, &world, options)?;
+        runtime
+    };
     runtime.record_joint_state("запись состояния")?;
+    if let Some(installation) = &mut electrical_installation {
+        installation.bind_live(&runtime, options.until)?;
+    }
     options.record_view(&mut runtime)?;
     let commands = options
         .commands
@@ -588,6 +641,10 @@ fn run_world(
         Status::NumericalFailure => "numerical_failure",
         Status::ComponentFailure => "component_failure",
     };
+    let electrical_verdict = electrical_installation.as_ref().map(|installation| {
+        installation.evaluate(electrical::report::build(installation)?, Some(&runtime), Some(options.until))
+            .map(|evaluated| evaluated.report)
+    }).transpose()?;
     let report = Report {
         status,
         time_s: Some(runtime.time().as_secs()),
@@ -625,6 +682,11 @@ fn run_world(
         } else {
             Some("ввод завершился до следующего шага")
         }),
+        electrical: options
+            .electrical
+            .as_ref()
+            .map(|_| electrical::LiveSummary::from(&runtime)),
+        electrical_verdict,
     };
     write_report(&report, options.json, stdout)?;
     if !options.json
@@ -655,11 +717,11 @@ pub fn run(
         if let Some(campaign) = &options.campaign {
             return tasks::run_campaign(campaign, &options, &mut stdout);
         }
-        let world = sim_world::load_and_compile(&options.world)?;
         if let Some(task) = &options.task {
+            let world = sim_world::load_and_compile(&options.world)?;
             return tasks::run(world, task, &options, &mut stdout);
         }
-        run_world(world, &options, &mut stdin, &mut stdout, &mut diagnostics)
+        run_world(&options, &mut stdin, &mut stdout, &mut diagnostics)
     });
     match result {
         Ok(code) => code,
@@ -678,6 +740,8 @@ pub fn run(
                     simplifications: Vec::new(),
                     snapshot: None,
                     detail: Some(&error),
+                    electrical: None,
+                    electrical_verdict: None,
                 };
                 if write_report(&report, true, &mut stdout).is_err() {
                     let _ = writeln!(diagnostics, "sim-run: {error}");

@@ -1,0 +1,24 @@
+# Короткое окно после первого пакета assist на сетке 25 мкс.
+world = "closed-world.toml"
+horizon_ns = 30000000
+profile = "electrical-profile.toml"
+phase_ns = 12500000
+
+[drive]
+voltage_of_completed_interval = false
+id = "устройство/мотор"
+rail = "устройство/шина"
+minimum_peak_a = 0.1
+
+[drive.ohm]
+emf_v = 24.56431461808056
+series_ohm = 0.080208
+rest_a = 0.12
+polarization_ohm = 0.03
+polarization_probe = "устройство/поляризация"
+battery_voltage = "устройство/клеммы батареи"
+battery_current = "устройство/ток батареи"
+# Десять последовательных участков в плюсе до клеммы и три в общем возврате.
+common_harness_ohm = 1.3
+# Провод к плюсу моста и два его стыка.
+drive_harness_ohm = 0.3

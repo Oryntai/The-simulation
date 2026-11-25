@@ -1,0 +1,19 @@
+# Синтетическая схема, параметры заданы для ручной сверки.
+format = 1
+scope = "reference"
+name = "Блок: сигнальный возврат"
+nets = ["signal", "return"]
+
+[components.sender]
+part = "reference_sender"
+nets = { plus = "signal", minus = "return" }
+
+[components.receiver]
+part = "reference_receiver"
+nets = { input = "signal", return = "return" }
+
+[connections.signal]
+kind = "solder"
+ends = ["sender/plus", "receiver/input"]
+resistance_ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Исходные данные синтетического корпуса: 0,1 Ом на стык" } } }
+current_limit_a = { measurement = "Измерить ток при указанном напряжении и допустимом нагреве", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условная граница стенда: 1 А на стык; Э1 её не проверяет" } } }

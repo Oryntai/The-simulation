@@ -13,6 +13,9 @@ use crate::fragments::{self, PreparedFragment};
 use crate::physics::{self, Frame, Geom, Vec3, finite, frame, nonnegative, positive, quat};
 use crate::*;
 
+#[path = "reach.rs"]
+mod reach;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct DeviceInput {
     /// Файл описания. По нему разрешаются пути сеток и строятся сообщения об ошибках.
@@ -338,6 +341,8 @@ struct Compiler {
     asset: Xml,
     custom: Xml,
     has_colliders: bool,
+    collision_geometries: Vec<String>,
+    has_contact_masks: bool,
     space: Xml,
     equality: Xml,
     tendon: Xml,
@@ -532,11 +537,13 @@ impl Compiler {
                 attrs.push(("rgba", numbers(&rgba)));
             }
         } else {
+            self.collision_geometries.push(name.into());
+            self.has_contact_masks |= g.data.contact_mask.is_some();
             self.has_colliders |= g.data.contact_mask != Some([0, 0]);
             attrs.push(("rgba", "0 0 0 0".into()));
             if let Some(friction) = g.data.friction {
                 attrs.push(("friction", numbers(&friction)));
-            } else if !self.explicit_contact {
+            } else if !self.explicit_contact && g.data.contact_mask != Some([0, 0]) {
                 self.note(name, "Контакт использует параметры MuJoCo по умолчанию: коэффициенты геометрии не заданы");
             }
             if let Some(n) = g.data.contact_dim {
@@ -595,6 +602,18 @@ impl Compiler {
             _ => Vec::new(),
         };
         let inertial_geoms = if matches!(mass, Mass::Volumes { .. }) {
+            // Сравниваем физические объёмы в кадре звена, с учётом кратности.
+            // Маска, настройки контакта и назначение массы не меняют форму.
+            let mut unmatched: Vec<_> = colliders.iter().collect();
+            let same_geometry = volumes.len() == unmatched.len()
+                && volumes.iter().all(|volume| {
+                    unmatched.iter().position(|collision| {
+                        collision.data.shape == volume.data.shape && collision.pose == volume.pose
+                    }).map(|index| unmatched.swap_remove(index)).is_some()
+                });
+            if !same_geometry {
+                self.note(name, "Объёмы массы и коллизии описывают разную физическую геометрию");
+            }
             &volumes
         } else {
             &colliders
@@ -1670,6 +1689,23 @@ fn compile(
         &resolved_options
     };
     let (mjcf, sim) = compile_contact_scene(xml, options, physics, &mut c.simplifications)?;
+    c.collision_geometries.extend(bindings.surfaces.values().cloned());
+    c.collision_geometries.sort();
+    c.collision_geometries.dedup();
+    let omitted = reach::ReachScene::new(&sim, |name| {
+        c.collision_geometries.binary_search_by(|n| n.as_str().cmp(name)).is_ok()
+    })?.suppressed_pairs(&sim);
+    if !omitted.is_empty() {
+        c.note("contact/exclusions", &format!(
+            "Исключения, фильтр соседних звеньев или жёсткие группы подавляют контакт потенциально сближающихся объёмов: {omitted:?}"
+        ));
+    }
+    if c.has_contact_masks || !bindings.surfaces.is_empty() {
+        let pairs = masked_contact_candidates(&sim, &c.collision_geometries)?;
+        if !pairs.is_empty() {
+            c.note("contact", &format!("Маски отключают контакт потенциально сближающихся объёмов: {pairs:?}"));
+        }
+    }
     let out = CompiledWorld {
         name: world.name.clone(),
         seed: world.seed,
@@ -1711,6 +1747,30 @@ fn compile(
         bindings.fingerprint = fragments::stamp(&bindings, &out);
     }
     Ok((out, bindings))
+}
+
+fn masked_contact_candidates(sim: &Sim, collision: &[String]) -> Result<Vec<[String; 2]>, String> {
+    let model = sim.model();
+    let geoms = collision.iter().map(|name| {
+        let id = sim.geom_id(name)?;
+        // Индекс геометрии получен из этой модели. MuJoCo хранит по одному
+        // владельцу и двум маскам на геом, и по одной жёсткой группе на тело.
+        let (weld, kind, affinity) = unsafe {
+            let body = *model.geom_bodyid.add(id) as usize;
+            (*model.body_weldid.add(body), *model.geom_contype.add(id), *model.geom_conaffinity.add(id))
+        };
+        Ok((name, weld, kind, affinity))
+    }).collect::<Result<Vec<_>, String>>()?;
+    let mut pairs = Vec::new();
+    for (index, &(first, weld, kind, affinity)) in geoms.iter().enumerate() {
+        for &(second, other_weld, other_kind, other_affinity) in &geoms[index + 1..] {
+            // Начальное разделение разных подвижных групп не доказывает зазор на всём опыте.
+            if weld != other_weld && ((kind & other_affinity) | (other_kind & affinity)) == 0 {
+                pairs.push([first.clone(), second.clone()]);
+            }
+        }
+    }
+    Ok(pairs)
 }
 
 fn write_options(xml: &mut Xml, world: &World, physics: Rate, solver: Option<ContactSolver>) {

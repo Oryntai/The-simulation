@@ -482,6 +482,27 @@ impl Esp {
         }
     }
 
+    pub(super) fn passive_pin(&self, pin: u32) -> Option<crate::GpioMode> {
+        use crate::GpioMode::*;
+        let mux = *self.mux.get(pin as usize)?;
+        // I²C/SPI в этой модели обмениваются пакетами. Уровни выбранной
+        // линии шины нельзя вывести из состояния обычного GPIO.
+        if self.gpio_mux(pin as usize) && matches!(self.routes[pin as usize] & 255, 6 | 9) {
+            return None;
+        }
+        // ESP32-C3 TRM, IO_MUX_GPIOx_REG: FUN_IE, FUN_WPU и FUN_WPD.
+        match mux & 0x180 {
+            0x100 => Some(PullUp),
+            0x80 => Some(PullDown),
+            0 => Some(if mux & (1 << 9) != 0 {
+                Input
+            } else {
+                HighImpedance
+            }),
+            _ => None,
+        }
+    }
+
     pub fn access(
         &mut self,
         addr: u32,

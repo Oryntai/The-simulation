@@ -169,6 +169,7 @@ pub fn migrate_v2_device(
     Ok(Device {
         format: FORMAT,
         name: original.name.clone(),
+        schematic: None,
         links,
         constraints: Vec::new(),
         transmissions: Vec::new(),

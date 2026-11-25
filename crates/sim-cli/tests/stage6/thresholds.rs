@@ -27,6 +27,112 @@ fn save(path: &Path, contents: &Toml) {
     std::fs::write(path, toml::to_string(contents).unwrap()).unwrap();
 }
 
+#[test]
+fn живые_границы_давления_уровня_и_тока() {
+    let corpus = data().join("stage6/corpus");
+    let tissue = corpus.join("tissue");
+    let screen = corpus.join("screen");
+    let temp = Temp(std::env::temp_dir().join(format!("campaign-limits-{}", std::process::id())));
+    std::fs::create_dir(&temp.0).unwrap();
+    let work = &temp.0;
+    let setup = fixture(&tissue.join("setup.toml"));
+    let enclosure = fixture(&screen.join("enclosure.toml"));
+    let dc = fixture(&screen.join("dc.toml"));
+    let world = tissue.join("world.toml").canonicalize().unwrap();
+    let mut manifest = "version = 1\n".to_owned();
+    let mut expected = Vec::new();
+
+    for (side, sign) in [("outside", 1.0), ("inside", -1.0)] {
+        // Сила по проекции портов и закону F = kx из численного чертежа оснастки.
+        let force_n = 180.0 * (0.003 + 0.031627206877);
+        let limit_pa = setup["limits"][0]["limit"]["value"].as_integer().unwrap() as f64;
+        // 20 Па по обе стороны порога оставляют запас на начало движения и разность сеток.
+        let pressure = limit_pa + sign * 20.0;
+        let area = force_n / pressure;
+        let id = format!("pressure-{side}");
+        let mut pad = setup.clone();
+        for point in pad["pads"]["опора"]["area_curve"].as_array_mut().unwrap() {
+            point["area_m2"]["value"] = area.into();
+            point["area_m2"]["source"]["datasheet"] =
+                "Площадь сменной опоры численного стенда, F / (80 кПа ± 20 Па).".into();
+        }
+        save(&work.join(format!("{id}-setup.toml")), &pad);
+        std::fs::write(work.join(format!("{id}-profile.toml")), format!(
+            "version = 1\nsource = 'Сменная площадь на том же упругом стенде'\nbase = '{id}-setup.toml'\n[[cases]]\nid = '{id}'\n"
+        )).unwrap();
+        std::fs::write(work.join(format!("{id}-task.toml")), format!(
+            "version = 1\ninteraction_profile = '{id}-profile.toml'\n"
+        )).unwrap();
+        let world = Toml::String(world.to_str().unwrap().into());
+        manifest.push_str(&format!(
+            "\n[assemblies.{id}]\nscope = 'Давление плоской опоры'\n[assemblies.{id}.experiments.test]\nkind = 'task'\nworld = {world}\ntask = '{id}-task.toml'\n",
+        ));
+        expected.push((id, "tissue_load", "Pa", limit_pa, pressure, 1.0, sign));
+
+        let id = format!("water-{side}");
+        let mut water = enclosure.clone();
+        let level = water["ingress"]["water_level_m"]["value"].as_float().unwrap();
+        // Разность отметок 1 мкм при неизменном входном проходе на 5 мм.
+        let depth = sign * 1e-6;
+        let crest = &mut water["ingress"]["openings"]["проход"]["crest_m"];
+        crest["value"] = (level - depth).into();
+        crest["source"]["datasheet"] = "Отметка сменного прохода: 20 мм ∓ 1 мкм.".into();
+        add_process_specimen(work, &mut manifest, &id, &id, &water);
+        expected.push((id, "ingress", "m", 0.0, depth, 1e-12, sign));
+        if sign > 0.0 {
+            // Сохраняются та же опасная геометрия и уровень, добавляется только декларация.
+            water["ingress"]["openings"]["проход"].as_table_mut().unwrap().insert(
+                "seal".into(), "Уплотнение по чертежу без испытания".into(),
+            );
+            add_process_specimen(work, &mut manifest, "water-seal", "water-seal", &water);
+        }
+
+        let id = format!("contact-{side}");
+        let mut circuit = dc.clone();
+        let limit_a = circuit["screen"]["limit"].as_float().unwrap();
+        // 1 мкА от порога. По закону Ома U = I·(1 + 1 + 1000 Ом).
+        let current = limit_a + sign * 1e-6;
+        let supply = &mut circuit["models"]["контакт"]["supply_v"];
+        supply["value"] = (current * 1002.0).into();
+        supply["source"]["datasheet"] = "ЭДС численной цепи: (2 мА ± 1 мкА) × 1002 Ом.".into();
+        add_process_specimen(work, &mut manifest, &id, &id, &circuit);
+        expected.push((id, "electric_shock", "A", limit_a, current, 1e-10, sign));
+    }
+    let file = work.join("campaign.toml");
+    std::fs::write(&file, manifest).unwrap();
+    let report = cli(&file, &[], 0);
+    for (id, class, unit, limit, expected, tolerance, sign) in expected {
+        let assembly = &report["assemblies"][&id];
+        let outside = sign > 0.0;
+        assert_eq!(assembly["coverage"]["executed"], 1);
+        assert_eq!(assembly["verdict"], if outside { "Rejected" } else { "NotProven" });
+        let finding = all_findings(assembly).find(|f| {
+            f["key"]["class"] == class && f["unit"] == unit
+        }).unwrap_or_else(|| panic!("нет живого ряда {id}: {assembly}"));
+        assert_eq!(finding["limit"]["upper"], serde_json::json!([limit, limit]));
+        assert_eq!(finding["confirmed_hazard"], outside);
+        assert_eq!(finding["outcome"], if outside { "fail" } else { "not_analyzed" });
+        assert!(finding["journal"].as_u64().is_some_and(|hash| hash != 0));
+        if outside {
+            assert!(finding["event_ns"].is_u64());
+        }
+        let values = rows(&finding["measurement"]);
+        assert_eq!(values.len(), 2);
+        for value in values {
+            let value = value.as_f64().unwrap();
+            assert!((value - expected).abs() <= tolerance, "{id}: {value} / {expected}");
+            assert!((value - limit) * sign > 0.0, "{id}: {value} / {limit}");
+        }
+        println!("{class} {side} · {values:?} {unit}, предел {limit}", side = if outside { "снаружи" } else { "внутри" });
+    }
+    let sealed = &report["assemblies"]["water-seal"];
+    assert_eq!(sealed["coverage"]["executed"], 1);
+    assert_eq!(sealed["verdict"], "NotProven");
+    assert!(all_findings(sealed).any(|f| f["key"]["class"] == "ingress"
+        && f["outcome"] == "not_analyzed"
+        && f["reason"].as_str().is_some_and(|s| s.contains("уплотнения требуют испытания"))));
+}
+
 // Полунеявный Euler, масса 1 кг, исходный зазор 20 мм.
 // Сила магнита на первом шаге ещё не приложена, далее P = 20 − 500x.
 fn retention(load: f64, hz: u64) -> f64 {
@@ -315,8 +421,10 @@ fn корпус_замечает_отключение_десяти_погран�
         );
         let missing = metric(case, &specimen.criterion);
         assert_eq!(missing["outcome"], "not_analyzed", "{}", proof.class);
+        let values = rows(&missing["values"]);
+        assert_eq!(values.len(), trials.len(), "{}", proof.class);
         assert!(
-            rows(&missing["values"]).iter().all(Value::is_null),
+            values.iter().all(Value::is_null),
             "{}",
             proof.class
         );
@@ -328,10 +436,11 @@ fn корпус_замечает_отключение_десяти_погран�
             "{}",
             proof.class
         );
-        assert!(matches!(
-            disabled["verdict"].as_str(),
-            Some("NotProven" | "Rejected")
-        ));
+        assert_eq!(disabled["verdict"], if proof.class == "connection_failure" {
+            "Rejected"
+        } else {
+            "NotProven"
+        }, "{}", proof.class);
         let mut disabled_proof = proof.clone();
         disabled_proof.assembly = id;
         assert!(

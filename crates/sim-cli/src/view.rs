@@ -1,5 +1,6 @@
 //! Переносимый пакет просмотра. В хвосте хранится исходный SIMLOG без изменений.
 
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -7,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use sim_process::{Analysis, attachments::AttachmentOutcome};
 use sim_runtime::{Log, LogKind, Runtime, ViewScene};
 use sim_signal::{ImageFrame, PixelFormat, SignalId, Time, fnv1a};
+use sim_task::{Fingerprint, Outcome, campaign::RunKey, verdict::{Readiness, SimulationVerdict}};
 
 use crate::{Options, export};
 
@@ -162,12 +164,124 @@ impl FrameRecord {
     }
 }
 
+/// Момент из оценщика с указанием роли события в отчёте.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignEvent {
+    pub at_ns: u64,
+    pub label: String,
+    pub violation: bool,
+}
+
+/// Дочерний опыт и расчётная сетка, которым принадлежит курсор.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignPlayback {
+    pub child: RunKey,
+    pub variant: Option<String>,
+    pub physics_hz: u64,
+    pub seed: u64,
+    pub journal: u64,
+    pub end_ns: u64,
+    pub event: Option<CampaignEvent>,
+}
+
+/// Покрытие сборки из того же отчёта, что и вердикт.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignCoverage {
+    pub required: usize,
+    pub executed: usize,
+    pub omitted: usize,
+    pub open: usize,
+}
+
+/// Ссылка на строку отчёта и вердикт конвейера при её повторе.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignBinding {
+    pub key: String,
+    pub input: Fingerprint,
+    pub playback: CampaignPlayback,
+    pub verdict: SimulationVerdict,
+    pub readiness: Readiness,
+    pub coverage: CampaignCoverage,
+}
+
+/// Читает привязки из JSON штатного отчёта, сохраняя точность целых отпечатков.
+pub fn campaign_bindings(report: &str) -> Result<BTreeMap<String, CampaignBinding>, String> {
+    #[derive(Deserialize)]
+    struct FindingKey {
+        run: Option<RunKey>,
+    }
+    #[derive(Deserialize)]
+    struct FindingEvent {
+        key: Option<FindingKey>,
+        outcome: Option<Outcome>,
+        event_ns: Option<u64>,
+        journal: Option<Fingerprint>,
+    }
+    #[derive(Deserialize)]
+    struct Row {
+        input: Option<Fingerprint>,
+        playback: Option<CampaignPlayback>,
+        #[serde(default)]
+        findings: Vec<FindingEvent>,
+    }
+    #[derive(Deserialize)]
+    struct Assembly {
+        verdict: SimulationVerdict,
+        readiness: Option<Readiness>,
+        coverage: Option<CampaignCoverage>,
+        #[serde(default)]
+        runs: BTreeMap<String, Row>,
+    }
+    #[derive(Deserialize)]
+    struct Report {
+        #[serde(default)]
+        assemblies: BTreeMap<String, Assembly>,
+    }
+    let report: Report = serde_json::from_str(report).map_err(|e| e.to_string())?;
+    let mut result = BTreeMap::new();
+    for (id, assembly) in report.assemblies {
+        for (key, row) in assembly.runs {
+            if let Some(mut playback) = row.playback {
+                if key.split_once('/').map(|(id, _)| id) != Some(&id) {
+                    return Err("ключ привязки относится к другой сборке".into());
+                }
+                playback.event = playback.event.filter(|event| event.violation);
+                if let Some(event) = &playback.event
+                    && (event.at_ns > playback.end_ns || !row.findings.iter().any(|finding| {
+                        finding.outcome == Some(Outcome::Fail)
+                            && finding.event_ns == Some(event.at_ns)
+                            && finding.journal == Some(Fingerprint::from_fnv1a(playback.journal))
+                            && finding.key.as_ref().and_then(|key| key.run.as_ref()) == Some(&playback.child)
+                    }))
+                {
+                    return Err("событие просмотра отсутствует в строке отчёта оценщика".into());
+                }
+                result.insert(key.clone(), CampaignBinding {
+                    key,
+                    input: row.input.ok_or("в привязке нет отпечатка входов")?,
+                    playback,
+                    verdict: assembly.verdict,
+                    readiness: assembly.readiness.ok_or("в привязке нет ступени готовности")?,
+                    coverage: assembly.coverage.ok_or("в привязке нет покрытия сборки")?,
+                });
+            }
+        }
+    }
+    Ok(result)
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewMetadata {
     pub scene: SceneRecord,
     pub journal: u64,
     pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign: Option<CampaignBinding>,
     pub case: Option<sim_task::Case>,
     pub physics_hz: f64,
     pub peak: Option<Peak>,
@@ -200,7 +314,7 @@ impl RunView {
             &mut data,
             usize::try_from(header_len).map_err(|e| e.to_string())?,
         )?;
-        let metadata: ViewMetadata = serde_json::from_slice(header).map_err(|e| e.to_string())?;
+        let mut metadata: ViewMetadata = serde_json::from_slice(header).map_err(|e| e.to_string())?;
         let mut frames = Vec::new();
         for spec in &metadata.frames {
             let length = spec.bytes().ok_or("переполнение размера кадра")?;
@@ -222,6 +336,9 @@ impl RunView {
         metadata.validate(&journal, &frames)?;
         if metadata.peak != metadata.select_peak(&journal, metadata.peak_signal.as_deref())? {
             return Err("отметка события не совпадает с экстремумом ряда".into());
+        }
+        if let Some(binding) = &mut metadata.campaign {
+            binding.playback.event = binding.playback.event.take().filter(|event| event.violation);
         }
         Ok(Self {
             metadata,
@@ -252,6 +369,33 @@ fn view_checksum(header: &[u8], frames: &[ImageFrame]) -> u64 {
 impl ViewMetadata {
     fn validate(&self, log: &Log, frames: &[ImageFrame]) -> Result<(), String> {
         let end = log.end().time.0;
+        if let Some(binding) = &self.campaign {
+            let p = &binding.playback;
+            let coverage = binding.coverage;
+            let verdict_matches = match binding.verdict {
+                SimulationVerdict::Rejected => binding.readiness == Readiness::Rejected,
+                SimulationVerdict::NotProven => binding.readiness == Readiness::NeedsWork,
+                SimulationVerdict::PassedSimulation => binding.readiness != Readiness::Rejected
+                    && coverage.executed == coverage.required,
+            };
+            if !binding.key.contains('/') || !verdict_matches
+                || coverage.executed == 0
+                || coverage.executed.checked_add(coverage.omitted)
+                    .and_then(|n| n.checked_add(coverage.open)) != Some(coverage.required)
+                || self.mode.as_deref() != Some(&p.child.mode)
+                || self.physics_hz != p.physics_hz as f64
+                || p.seed != log.header().seed || p.journal != self.journal || p.end_ns != end
+                || p.event.as_ref().is_some_and(|event| {
+                    event.at_ns > end || event.label.trim().is_empty()
+                })
+                || self.case.as_ref().is_some_and(|case| {
+                    case.path != p.child.path
+                        || !case.fault.iter().eq(p.child.faults.iter())
+                })
+            {
+                return Err("пакет просмотра не соответствует дочернему опыту кампании".into());
+            }
+        }
         if self.scene.world_hash() != log.header().world_hash
             || self.journal != log.fingerprint()
             || !self.physics_hz.is_finite()
@@ -348,6 +492,7 @@ impl ViewMetadata {
             },
             journal: runtime.log().fingerprint(),
             mode: mode.map(str::to_owned),
+            campaign: None,
             case: case.cloned(),
             physics_hz: runtime.physics_rate().as_hz(),
             peak: None,
@@ -418,6 +563,74 @@ impl ViewMetadata {
             }
         }
         Ok(peak)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlaybackFormat {
+    Log,
+    View,
+}
+
+impl PlaybackFormat {
+    pub fn for_options(options: &Options) -> Option<Self> {
+        if options.view.is_some() {
+            Some(Self::View)
+        } else {
+            options.log.as_ref().map(|_| Self::Log)
+        }
+    }
+
+    pub fn collect(self, runtime: &Runtime, mode: &str, case: Option<&sim_task::Case>) -> Result<Vec<u8>, String> {
+        let mut bytes = Vec::new();
+        match self {
+            Self::Log => runtime.log().write_binary(&mut bytes).map_err(|e| e.to_string())?,
+            Self::View => write_run_view(runtime, Some(mode), case, None, &mut bytes)?,
+        }
+        Ok(bytes)
+    }
+}
+
+/// При повторе составной строки запись включается только в выбранном опыте.
+#[derive(Clone)]
+pub(crate) struct PlaybackCapture {
+    pub playback: CampaignPlayback,
+    format: PlaybackFormat,
+    bytes: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>,
+}
+
+impl PlaybackCapture {
+    pub fn new(playback: CampaignPlayback, format: PlaybackFormat) -> Self {
+        Self { playback, format, bytes: Default::default() }
+    }
+
+    pub fn records_view(&self) -> bool {
+        self.format == PlaybackFormat::View
+    }
+
+    pub fn grid(&self, variant: Option<&str>, hz: u64) -> bool {
+        self.playback.variant.as_deref() == variant && self.playback.physics_hz == hz
+    }
+
+    pub fn save(&self, runtime: &Runtime, case: Option<&sim_task::Case>) -> Result<(), String> {
+        let p = &self.playback;
+        if runtime.seed() != p.seed || runtime.log().fingerprint() != p.journal
+            || runtime.log().end().time.0 != p.end_ns
+        {
+            return Err("журнал дочернего прогона изменился при повторе".into());
+        }
+        let bytes = self.format.collect(runtime, &p.child.mode, case)?;
+        let mut buffer = self.bytes.lock().map_err(|_| "авария записи пакета")?;
+        if buffer.is_some() {
+            return Err("расчётная сетка повтора исполнена дважды".into());
+        }
+        *buffer = Some(bytes);
+        Ok(())
+    }
+
+    pub fn take(&self) -> Result<Vec<u8>, String> {
+        self.bytes.lock().map_err(|_| "авария записи пакета")?
+            .take().ok_or_else(|| "выбранный дочерний прогон не записан".into())
     }
 }
 
@@ -581,6 +794,28 @@ pub fn write_run_view(
         log.write_binary(out)
     };
     write().map_err(|e| e.to_string())
+}
+
+pub(crate) fn bind_campaign(
+    bytes: &[u8],
+    binding: CampaignBinding,
+    path: &Path,
+) -> Result<(), String> {
+    let mut view = RunView::read(bytes)?;
+    view.metadata.campaign = Some(binding);
+    view.metadata.validate(&view.journal, &view.frames)?;
+    let header = serde_json::to_vec(&view.metadata).map_err(|e| e.to_string())?;
+    let checksum = view_checksum(&header, &view.frames);
+    export(path, |out| {
+        out.write_all(MAGIC)?;
+        out.write_all(&(header.len() as u64).to_le_bytes())?;
+        out.write_all(&checksum.to_le_bytes())?;
+        out.write_all(&header)?;
+        for frame in &view.frames {
+            out.write_all(&frame.data)?;
+        }
+        out.write_all(&view.binary)
+    })
 }
 
 pub(crate) fn save(

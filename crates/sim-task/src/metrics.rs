@@ -3,7 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
-use sim_runtime::{CommandSource, Log, LogKind, Status};
+use sim_runtime::{CommandSource, Log, LogEntry, LogKind, Status};
+use sim_signal::SignalSpec;
 
 use crate::{
     Error, Fault, Fingerprint, Limit, Outcome, Signal, Source,
@@ -249,6 +250,15 @@ impl Series {
             SeriesKind::Truth => &log.header().truth,
             SeriesKind::Observation => &log.header().observations,
         };
+        Self::from_entries(log.entries(), specs, kind, signal)
+    }
+
+    pub(crate) fn from_entries(
+        entries: &[LogEntry],
+        specs: &[SignalSpec],
+        kind: SeriesKind,
+        signal: &Signal,
+    ) -> Result<Self, Error> {
         let mut matching = specs
             .iter()
             .enumerate()
@@ -261,7 +271,7 @@ impl Series {
                         signal.name
                     )));
                 }
-                log.entries()
+                entries
                     .iter()
                     .filter(|entry| {
                         entry.id as usize == index

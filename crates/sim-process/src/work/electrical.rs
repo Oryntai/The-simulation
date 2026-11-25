@@ -175,30 +175,38 @@ impl ElectricalContact {
             reason: reason.into(),
         };
         finite(&[step.supply_v])?;
+        if let Analysis::Analyzed { value, .. } = step.total_load_j {
+            finite(&[value])?;
+        }
+        if let Some(limit) = limit_a {
+            range(limit, "предел тока ветви", |x| x >= 0.0)?;
+        }
+        let segments = match &step.segments {
+            Analysis::Analyzed { value, .. } => {
+                let mut last = None;
+                for segment in value {
+                    continuous(last, segment.interval)?;
+                    last = Some(segment.interval.end);
+                    finite(&[
+                        segment.current_a,
+                        segment.load_v,
+                        segment.contact_v,
+                        segment.load_j,
+                        segment.contact_j,
+                        segment.source_loss_j,
+                        segment.source_j,
+                    ])?;
+                }
+                Some(value)
+            }
+            Analysis::NotAnalyzed { .. } => None,
+        };
         let Some(limit) = limit_a else {
             return Ok(missing("нет применимого предела тока"));
         };
-        range(limit, "предел тока ветви", |x| x >= 0.0)?;
-        let Analysis::Analyzed {
-            value: segments, ..
-        } = &step.segments
-        else {
+        let Some(segments) = segments else {
             return Ok(missing("электрическая ветвь не покрыта измерениями"));
         };
-        let mut last = None;
-        for segment in segments {
-            continuous(last, segment.interval)?;
-            last = Some(segment.interval.end);
-            finite(&[
-                segment.current_a,
-                segment.load_v,
-                segment.contact_v,
-                segment.load_j,
-                segment.contact_j,
-                segment.source_loss_j,
-                segment.source_j,
-            ])?;
-        }
         let spec = &self.spec;
         let timing_confirmed = step.fault != ContactFault::None
             || (proven_point(&spec.release_below_m)
@@ -242,16 +250,14 @@ impl ElectricalContact {
             max_peak = max_peak.max(step.supply_v.abs() / low);
         }
         computed(&[min_peak, max_peak])?;
-        Ok(if min_peak > limit.max {
-            HazardCheck::Violation {
-                reason: format!("пиковый ток ≥ {min_peak} А при пределе {} А", limit.max),
-            }
-        } else if max_peak < limit.min {
-            HazardCheck::WithinLimit {
+        let result = assess_current_envelope([min_peak, max_peak], Some(limit), true, true)?;
+        // Старый путь сохраняет формулировки, используемые в отчёте контакта.
+        Ok(match result {
+            HazardCheck::WithinLimit { .. } => HazardCheck::WithinLimit {
                 scope: format!("пик тока ≤ {max_peak} А для измеренных состояний цепи"),
-            }
-        } else {
-            missing("диапазон тока перекрывается с пределом")
+            },
+            HazardCheck::NotAnalyzed { .. } => missing("диапазон тока перекрывается с пределом"),
+            violation => violation,
         })
     }
 
@@ -421,6 +427,47 @@ impl StepModel for ElectricalContact {
             ),
         })
     }
+}
+
+/// Сравнивает границы абсолютного пика с применимым пределом.
+/// Нижняя граница может быть подтверждённым нарушающим наблюдением.
+/// Для прохождения нужна верхняя граница на всём окне и по всему диапазону.
+pub fn assess_current_envelope(
+    [lower_a, upper_a]: [f64; 2],
+    limit: Option<&SourcedRange>,
+    confirmed_witness: bool,
+    complete_envelope: bool,
+) -> Result<HazardCheck, ProcessError> {
+    finite(&[lower_a, upper_a])?;
+    if lower_a < 0.0 || lower_a > upper_a {
+        return Err(invalid("некорректные границы пикового тока"));
+    }
+    let missing = |reason: &str| HazardCheck::NotAnalyzed {
+        reason: reason.into(),
+    };
+    let Some(limit) = limit else {
+        return Ok(missing("нет применимого предела тока"));
+    };
+    limit.validate()?;
+    if limit.min < 0.0 {
+        return Err(invalid("предел модуля тока отрицателен"));
+    }
+    if !limit.can_prove() {
+        return Ok(missing("предел тока не подтверждён источником"));
+    }
+    Ok(
+        if (confirmed_witness || complete_envelope) && lower_a > limit.max {
+            HazardCheck::Violation {
+                reason: format!("пиковый ток ≥ {lower_a} А при пределе {} А", limit.max),
+            }
+        } else if complete_envelope && upper_a < limit.min {
+            HazardCheck::WithinLimit {
+                scope: format!("пик тока ≤ {upper_a} А в области огибающей"),
+            }
+        } else {
+            missing("пик или применимость предела подтверждены неполностью")
+        },
+    )
 }
 
 fn segment_time(seconds: f64) -> Result<Time, ProcessError> {

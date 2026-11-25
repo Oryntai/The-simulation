@@ -16,7 +16,7 @@ use nalgebra::{Matrix3, Quaternion, UnitQuaternion};
 use sim_human::scene::{self, ParticipantSpec};
 use sim_mujoco::{JointKind, Sim, ffi::mjtObj};
 use sim_runtime::{Log, LogKind, Runtime};
-use sim_cli::view::{MountEvent, Peak, RunView, SceneRecord, SensorMount, ViewMetadata};
+use sim_cli::view::{CampaignBinding, MountEvent, Peak, RunView, SceneRecord, SensorMount, ViewMetadata};
 use sim_sense::Intrinsics;
 use sim_signal::{ImageFrame, Time};
 use sim_world::{CompiledWorld, ContactBuildOptions, DeviceInput, ModelFragment, Pose};
@@ -144,8 +144,9 @@ impl Scene {
         let sim = Sim::from_xml(mjcf)?;
         let geometry = Geometry::build(&sim)?;
         // Для мира без конечных объектов 1 м задаёт обзорную область сетки интерфейса.
-        let (center, radius) =
-            render::bounds(&sim, &geometry, None).unwrap_or((Point::origin(), 1.0));
+        let (center, radius) = render::bounds(&sim, &geometry, None)
+            .or_else(|| render::kinematic_bounds(&sim))
+            .unwrap_or((Point::origin(), 1.0));
         let mut units = vec![""; sim.nq()];
         for joint in sim.joints() {
             let fields: &[_] = match joint.kind {
@@ -174,6 +175,10 @@ impl Scene {
     pub fn sensors(&self) -> impl Iterator<Item = &str> {
         self.sensors.iter().map(|s| s.name.as_str())
     }
+    pub fn uses_kinematics(&self) -> bool {
+        render::needs_kinematics(&self.sim, &self.geometry)
+    }
+
     pub fn geoms(&self) -> Vec<sim_mujoco::GeomInfo> {
         self.sim.geoms()
     }
@@ -266,8 +271,13 @@ impl Scene {
             radial: [0.0; 3],
             tangential: [0.0; 2],
         };
+        let (center, radius) = if matches!(view, View::Overview { .. }) && self.uses_kinematics() {
+            render::kinematic_bounds(&self.sim).ok_or("неконечная кинематическая схема")?
+        } else {
+            (self.center, self.radius)
+        };
         // Плоскость отсечения пропорциональна размеру сцены и служит только рендеру.
-        let near = self.radius / 1024.0;
+        let near = radius / 1024.0;
         let (eye, axes) = match view {
             View::Overview {
                 azimuth,
@@ -288,12 +298,12 @@ impl Scene {
                     elevation.sin(),
                 );
                 // Охватывающая сфера на базе угла обзора и масштаба интерфейса.
-                let distance = self.radius / std::f64::consts::FRAC_PI_8.sin() / zoom;
+                let distance = radius / std::f64::consts::FRAC_PI_8.sin() / zoom;
                 let z = -direction;
                 let x = z.cross(&Vec3::z()).normalize();
                 let y = z.cross(&x);
                 (
-                    self.center + direction * distance,
+                    center + direction * distance,
                     Matrix3::from_columns(&[x, y, z]),
                 )
             }
@@ -394,6 +404,12 @@ impl Series {
     }
 }
 
+#[derive(Default)]
+struct SensorView {
+    channels: Vec<usize>,
+    image: bool,
+}
+
 pub struct Replay {
     pub end: Time,
     pub seed: u64,
@@ -405,6 +421,8 @@ pub struct Replay {
     pub wrench_scale: f64,
     pub recorded_scene: Option<SceneRecord>,
     pub peak: Option<Peak>,
+    pub campaign: Option<CampaignBinding>,
+    sensor_views: BTreeMap<String, SensorView>,
     pub attachments: Vec<MountEvent>,
     pub contact_gap: Option<String>,
     qpos: Vec<usize>,
@@ -490,8 +508,7 @@ impl Replay {
             (forces, wrenches)
         } else {
             let audit = audit::Audit::read(log.process_entries())?;
-            let forces = audit.forces.into_iter().map(|(name, points)| ((name, "N".into()), points)).collect();
-            (forces, audit.wrenches)
+            (audit.measurements, audit.wrenches)
         };
         for ((name, unit), mut points) in forces {
             points.sort_by_key(|p| p.at);
@@ -516,9 +533,35 @@ impl Replay {
         if !wrench_scale.is_finite() {
             return Err("модуль силы вышел за диапазон".into());
         }
-        let (recorded_scene, peak, attachments, contact_gap) = metadata.map(|meta| {
-            (Some(meta.scene), meta.peak, meta.attachments, meta.contact_gap)
+        let (recorded_scene, peak, attachments, contact_gap, campaign) = metadata.map(|meta| {
+            (Some(meta.scene), meta.peak, meta.attachments, meta.contact_gap, meta.campaign)
         }).unwrap_or_default();
+        let mounts = recorded_scene.as_ref().into_iter().flat_map(|s| &s.sensors);
+        let mounts: Vec<_> = mounts.map(|mount| mount.name.as_str()).collect();
+        let mut sensor_views: BTreeMap<String, SensorView> = frames.keys()
+            .map(|name| (name.clone(), SensorView { image: true, ..Default::default() }))
+            .collect();
+        let image_ids: std::collections::BTreeSet<_> = frames.values().flatten()
+            .map(|frame| frame.signal.0 as usize).collect();
+        for (index, signal) in series.iter().enumerate().filter(|(_, signal)| {
+            matches!(signal.kind, SignalKind::Observation | SignalKind::Process)
+        }) {
+            let fallback = signal.name.rsplit_once('/').map_or(signal.name.as_str(), |(name, _)| name);
+            let name = mounts.iter().copied()
+                .filter(|mount| signal.name == *mount
+                    || signal.name.strip_prefix(*mount).is_some_and(|suffix| suffix.starts_with('/')))
+                .max_by_key(|mount| mount.len()).unwrap_or(fallback);
+            let view = sensor_views.entry(name.to_owned()).or_default();
+            // Форматы и окончания имён совпадают с регистрацией камеры в sim-sense.
+            let image = image_ids.contains(&index)
+                || signal.name.ends_with("/image") && signal.unit == "RGB8"
+                || signal.name.ends_with("/depth") && signal.unit == "mm";
+            if image {
+                view.image = true;
+            } else {
+                view.channels.push(index);
+            }
+        }
         Ok(Self {
             end: log.end().time,
             seed: header.seed,
@@ -529,12 +572,27 @@ impl Replay {
             wrenches,
             recorded_scene,
             peak,
+            campaign,
+            sensor_views,
             attachments,
             contact_gap,
             wrench_scale,
             qpos: qpos.into_values().collect(),
             world_hash: header.world_hash,
         })
+    }
+
+    pub fn sensor_names(&self) -> impl Iterator<Item = &str> {
+        self.sensor_views.keys().map(String::as_str)
+    }
+
+    pub fn sensor_series(&self, sensor: &str) -> impl Iterator<Item = &Series> {
+        self.sensor_views.get(sensor).into_iter()
+            .flat_map(|view| view.channels.iter().map(|&i| &self.series[i]))
+    }
+
+    pub fn sensor_has_image(&self, sensor: &str) -> bool {
+        self.sensor_views.get(sensor).is_some_and(|view| view.image)
     }
 
     pub fn image(&self, sensor: &str, at: Time) -> Option<&ImageFrame> {
@@ -574,6 +632,8 @@ pub enum Input {
     Campaign {
         manifest: PathBuf,
         repeat: Option<String>,
+        /// Пакет заверенных рядов в формате `sim-run --measurements`.
+        measurements: Option<PathBuf>,
     },
 }
 
@@ -657,8 +717,15 @@ pub(crate) fn run_with_peak(input: &Input, peak: Option<&str>) -> Result<Output,
                 args.extend([flag("--catalog"), path(p)]);
             }
         }
-        Input::Campaign { manifest, repeat } => {
+        Input::Campaign {
+            manifest,
+            repeat,
+            measurements,
+        } => {
             args.extend([flag("--campaign"), path(manifest)]);
+            if let Some(p) = measurements {
+                args.extend([flag("--measurements"), path(p)]);
+            }
             if let Some(key) = repeat {
                 args.extend([flag("--repeat"), key.into(), flag("--view"), path(&archive)]);
             }
@@ -691,15 +758,14 @@ pub(crate) fn run_with_peak(input: &Input, peak: Option<&str>) -> Result<Output,
             let expected_mode = match input {
                 Input::Task { case, .. } => case.as_deref(),
                 Input::Campaign { repeat: Some(key), .. } => {
-                    let (_, journal, mode, event) = report.playback(key)
+                    let binding = report.playback(key)
                         .ok_or("нет завершённой строки отчёта для пакета просмотра")?;
                     if report.repeat_key() != Some(key.as_str())
-                        || journal != view.journal.fingerprint()
-                        || event.is_some_and(|at| at > view.journal.end().time.0)
+                        || view.metadata.campaign.as_ref() != Some(binding)
                     {
                         return Err("пакет просмотра и отчёт повтора расходятся".into());
                     }
-                    Some(mode)
+                    Some(binding.playback.child.mode.as_str())
                 }
                 _ => None,
             };
@@ -713,8 +779,8 @@ pub(crate) fn run_with_peak(input: &Input, peak: Option<&str>) -> Result<Output,
             )
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if report.repeat_key().and_then(|key| report.playback(key)).is_some() {
-                return Err("для завершённого сценария отсутствует проверенный журнал повтора".into());
+            if report.repeat_key().is_some() && report.view_unavailable().is_none() {
+                return Err("в отчёте повтора отсутствуют журнал и причина пропуска".into());
             }
             (None, BTreeMap::new(), None)
         }

@@ -1,0 +1,6 @@
+version = 1
+source = "Два горизонта одного стержня на направляющей. Моменты 30 и 50 мс дают целое число шагов на всех трёх сетках."
+
+[cases]
+"длинный" = "rod-process.toml"
+"короткий" = { file = "rod-process.toml", overlay = "rod-short.toml" }

@@ -1,0 +1,31 @@
+world = "enclosure-world.toml"
+window_ns = [0, 4000000] # Четыре интервала по 1 мс базовой сетки.
+source = "Стационарная оболочка у блока, неподвижная поверхность воды."
+
+[[criteria]]
+name = "сдвиг оболочки"
+series = { displacement = 2 }
+unit = "m"
+statistic = "end"
+tolerance = { value = 0, source = { datasheet = "Начальная скорость нулевая, корпус сохраняет высоту в оснастке." } }
+remainder = [
+  { value = 0, source = { datasheet = "Нулевое внешнее ускорение и неподвижная начальная поза." } },
+  { value = 0, source = { datasheet = "На корпус не действует контактная нагрузка." } },
+  { value = 0, source = { datasheet = "Постановка с неподвижными отметками." } },
+]
+
+[ingress]
+object = "оболочка блока"
+limit_source = "Запрет открытого подвода воды к узлу изоляции в постановке корпуса этапа 6."
+water_level_m = { value = 0.02, source = { datasheet = "Уровень воды стенда 20 мм над общим нулём." } }
+exterior = "вода"
+zones = ["полость", "узел изоляции"]
+protected = "узел изоляции"
+
+[ingress.openings."ввод"]
+between = ["вода", "полость"]
+crest_m = { value = 0.005, source = { datasheet = "Отметка верха ввода в схеме, 5 мм." } }
+
+[ingress.openings."проход"]
+between = ["полость", "узел изоляции"]
+crest_m = { value = 0.01, source = { datasheet = "Отметка верха внутреннего прохода в схеме, 10 мм." } }

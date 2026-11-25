@@ -52,6 +52,7 @@ fn device(links: Vec<Link>) -> Device {
     Device {
         format: FORMAT,
         name: "Стержень".into(),
+        schematic: None,
         links,
         constraints: Vec::new(),
         transmissions: Vec::new(),
@@ -580,6 +581,74 @@ fn sectional_model_is_only_selected_for_constant_supported_sections() {
 }
 
 #[test]
+fn центробежная_оценка_учитывает_форму_позу_и_плотность() {
+    // Диск из примера приёмки. Нагрузка ρ·(ωR)² = 2025 МПа.
+    let material = crate_material(2500.0);
+    let mut disk = Geometry::new(Shape::Cylinder { radius_m: 0.3, length_m: 0.02 });
+    disk.pose.rpy_deg = Some([0.0, 90.0, 0.0]);
+    let base = std::path::Path::new("");
+    let disk_model = disk.centrifugal_model(Some(&material), base).unwrap().unwrap();
+    let stress = disk_model.stress([-3000.0, 0.0, 0.0]).unwrap();
+    let tol = 2025e6 * 8.0 * f64::EPSILON;
+    // Срез диаметральной плоскостью: центр масс половины диска на 4R/(3π).
+    // Сила половины диска, делённая на площадь сечения 2RL, даёт 675 МПа.
+    near(stress.normal_pa, 675e6, tol);
+    let [radial, hoop] = stress.disk_reference_pa.unwrap();
+    near(radial, 835.3125e6, tol);
+    near(hoop, 835.3125e6, tol);
+    near(stress.disk_envelope_pa.unwrap(), 1012.5e6, tol);
+
+    // Стержень длиной 1 м: каждая половина весит 1 кг и центр
+    // массы на 0,25 м. F/A = mω²r / A при скорости 300 рад/с.
+    let rod = Geometry::new(Shape::Box { size_m: [1.0, 0.02, 0.04] });
+    let model = rod.centrifugal_model(Some(&material), base).unwrap().unwrap();
+    let stress = model.stress([0.0, 0.0, 300.0]).unwrap();
+    near(stress.normal_pa, 300.0_f64.powi(2) * 0.25 / (0.02 * 0.04), tol);
+    assert!(stress.disk_reference_pa.is_none());
+    assert!(rod.centrifugal_model(None, base).unwrap().is_none());
+    assert!(disk_model.stress([f64::NAN, 0.0, 0.0]).is_err());
+    assert!(disk.centrifugal_model(Some(&crate_material(f64::INFINITY)), base).is_err());
+}
+
+#[test]
+fn сетка_даёт_баланс_по_объёму_только_при_замкнутых_гранях() {
+    // Единичный тетраэдр в положительном октанте. Для x и y
+    // E[x]=1/4, E[x²]=1/10, поэтому дисперсия 3/80 м².
+    let mut faces = vec![[1, 2, 3], [0, 2, 1], [0, 1, 3], [0, 3, 2]];
+    let mesh = |faces| Geometry::new(Shape::Triangles {
+        vertices_m: vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        faces,
+    });
+    let base = std::path::Path::new("");
+    let material = crate_material(2500.0);
+    let model = mesh(faces.clone()).centrifugal_model(Some(&material), base).unwrap().unwrap();
+    let expected = 2500.0 * 300.0_f64.powi(2) * 3.0 / 80.0;
+    let stress = model.stress([0.0, 0.0, 300.0]).unwrap();
+    near(stress.normal_pa, expected, expected * 8.0 * f64::EPSILON);
+    faces.pop();
+    assert!(mesh(faces).centrifugal_model(Some(&material), base).unwrap().is_none());
+}
+
+#[test]
+fn местная_ось_и_эксцентриситет_проверяются_в_кадре_формы() {
+    // Стержень вдоль локальной Z повёрнут вокруг Y на 90° и смещён на метр.
+    let mut geometry = Geometry::new(Shape::Cylinder { radius_m: 0.02, length_m: 1.0 });
+    geometry.pose = Pose {
+        position_m: [1.0, 0.0, 0.0],
+        rpy_deg: Some([0.0, 90.0, 0.0]),
+        ..Pose::default()
+    };
+    let [x, y, z] = geometry.local_load_direction([2.0, 0.0, 0.0]).unwrap();
+    near(x.hypot(y), 0.0, f64::EPSILON);
+    near(z, 1.0, f64::EPSILON);
+    // У точки есть смещение вдоль оси и 30 мм поперёк, больше радиуса 20 мм.
+    let radial = geometry.section_radial_arm(SectionAxis::Z, &[[1.5, 0.03, 0.0]]).unwrap();
+    near(radial.unwrap(), 0.03, f64::EPSILON);
+    assert!(geometry.local_load_direction([f64::NAN, 0.0, 0.0]).is_err());
+    assert!(geometry.section_radial_arm(SectionAxis::Z, &[[1.0, f64::INFINITY, 0.0]]).is_err());
+}
+
+#[test]
 fn map_must_match_world_instances() {
     assert!(
         compile_world(Path::new("мир.toml"), &world(), &BTreeMap::new())
@@ -681,7 +750,10 @@ mod parts {
             d.sensors.push(sensor());
             edit(&mut d);
             let e = compile(&world(), d).expect_err(what);
-            assert!(e.contains(what) || what == "params" && e.contains("люфт"), "{what}: {e}");
+            assert!(
+                e.contains(what) || what == "params" && e.contains("люфт"),
+                "{what}: {e}"
+            );
         }
     }
 
@@ -699,4 +771,83 @@ mod parts {
         w.sensors[0].link = Some("стенд/нет".into());
         assert!(compile(&w, with_channel()).is_err());
     }
+}
+
+#[test]
+fn schematic_links_are_resolved_per_instance_without_affecting_physics() {
+    use std::fs;
+
+    struct Temp(PathBuf);
+    impl Drop for Temp {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    let root = std::env::temp_dir().join(format!("sim-world-schematic-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    let temp = Temp(root);
+    let sub = temp.0.join("модели");
+    fs::create_dir(&sub).unwrap();
+    let world_path = temp.0.join("мир.toml");
+    let device_path = sub.join("стержень.toml");
+    let electrical = sub.join("схема.toml");
+    let baseline = device(vec![link("блок", JointType::Fixed, None)]);
+    let mut placement = world();
+    placement.devices[0].file = "модели/стержень.toml".into();
+    placement.devices[0].name = "первый".into();
+    let mut second = placement.devices[0].clone();
+    second.name = "второй".into();
+    placement.devices.push(second);
+    fs::write(&world_path, toml::to_string(&placement).unwrap()).unwrap();
+    fs::write(&device_path, toml::to_string(&baseline).unwrap()).unwrap();
+    let without = load_and_compile_with_schematics(&world_path).unwrap();
+    assert!(without.schematics.is_empty());
+
+    let mut linked = baseline;
+    linked.schematic = Some("схема.toml".into());
+    fs::write(&device_path, toml::to_string(&linked).unwrap()).unwrap();
+    let error = load_and_compile(&world_path).unwrap_err();
+    assert!(
+        error.contains("devices[0].file")
+            && error.contains("schematic")
+            && error.contains("схема.toml")
+    );
+    fs::create_dir(&electrical).unwrap();
+    assert!(
+        load_and_compile_with_schematics(&world_path)
+            .unwrap_err()
+            .contains("обычный файл")
+    );
+    fs::remove_dir(&electrical).unwrap();
+    // Строгая типизация электрического содержимого принадлежит сборщику схемы.
+    fs::write(&electrical, "format = 1\n").unwrap();
+    let with = load_and_compile_with_schematics(&world_path).unwrap();
+    let canonical = electrical.canonicalize().unwrap();
+    assert_eq!(
+        with.schematics,
+        BTreeMap::from([
+            ("первый".into(), canonical.clone()),
+            ("второй".into(), canonical)
+        ])
+    );
+    assert_eq!(with.world, without.world);
+    let physics_only = load_and_compile(&world_path).unwrap();
+    assert_eq!(physics_only.mjcf, with.world.mjcf);
+    for instance in ["первый", "второй"] {
+        assert!(physics_only.simplifications.iter().any(|item| {
+            item.blocks_proof && item.subject == format!("{instance}/электрическая схема")
+        }));
+    }
+
+    fs::write(&electrical, [0xff]).unwrap();
+    assert!(
+        load_and_compile_with_schematics(&world_path)
+            .unwrap_err()
+            .contains("schematic")
+    );
+    linked.schematic = Some(electrical);
+    let source = toml::to_string(&linked).unwrap();
+    let error = parse_device(&device_path, &source).unwrap_err();
+    assert!(error.contains("schematic") && error.contains("относительный путь"));
 }

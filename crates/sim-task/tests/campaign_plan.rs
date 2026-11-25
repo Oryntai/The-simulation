@@ -398,6 +398,18 @@ fn full_matrix_and_samples_are_order_invariant() {
             .count(),
         40
     );
+    let mut inv = sim_task::verdict::ResolvedInventory::default();
+    inv.derivations.insert("синтетический стенд".into(), vec![Source {
+        kind: SourceKind::Measured, reference: "Протокол численного стенда".into(),
+    }]);
+    let req = sim_task::verdict::derive_requirements(&inv, &plan).unwrap();
+    let report = sim_task::verdict::assess_campaign(&req, &sim_task::verdict::CampaignEvidence::new(&req)).unwrap();
+    // Даже с разрешённой цепочкой источника все 40 заявленных исключений
+    // остаются обязательствами до проверки неприменимости по модели.
+    assert!(report.inapplicable_runs.is_empty());
+    assert_eq!(report.findings.iter().filter(|f| f.key.class == sim_task::verdict::HazardClass::Execution
+        && f.outcome == Outcome::NotAnalyzed
+        && f.coverage_gaps.iter().any(|reason| reason.contains("инвентарь стенда"))).count(), 40);
     let find = |sample: &SampleKey, grid: &str| {
         plan.rows()
             .iter()
@@ -496,6 +508,39 @@ fn full_matrix_and_samples_are_order_invariant() {
     files.manifest(8, &sampling);
     let other = files.load().unwrap().plan(&inventory).unwrap();
     assert_ne!(bits(&a)[0], bits(&other.materialize(&a.key).unwrap())[0]);
+}
+
+#[test]
+fn конечный_допуск_отклоняет_смешанный_формат_и_чужие_значения() {
+    use sim_task::sampling::Sampling;
+
+    // Упор синтетической каретки имеет две позиции 0 и 1 мкм.
+    let input = |domain: &str| format!(r#"
+axes = [{{ id = "позиция", parameter = {{ kind = "joint_position", joint = "каретка/стержень" }},
+unit = "m", scope = "run", nominal = 0.0, {domain}, source = {SOURCE} }}]
+"#).replace('\n', " ");
+    for domain in [
+        "values = []",
+        "values = [0.000001]",
+        "values = [0.0, -0.0]",
+        "values = [0.0, nan]",
+        "values = [0.0, inf]",
+        "values = [0.0, 0.000001], min = 0.0, max = 0.000001",
+    ] {
+        assert!(toml::from_str::<Sampling>(&input(domain)).is_err(), "{domain}");
+    }
+    let finite = input("values = [0.000001, 0.0]");
+    let mut valid: Sampling = toml::from_str(&finite).unwrap();
+    valid.validate().unwrap();
+    let keys = valid.keys().unwrap();
+    assert_eq!(keys.len(), 2);
+    assert_eq!(valid.sample(0, &keys[1], &[]).unwrap().values[0].value, 0.000001);
+
+    let invalid = format!(r#"{finite}
+boundaries = [{{ id = "чужая-проставка", values = {{ "позиция" = 0.0000005 }}, source = {SOURCE} }}]
+"#);
+    let mut invalid: Sampling = toml::from_str(&invalid).unwrap();
+    assert!(invalid.validate().is_err());
 }
 
 #[test]

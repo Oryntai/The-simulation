@@ -138,32 +138,32 @@ world = "corpus/free-world.toml"
 task = "corpus/screen/curve-pair-task.toml"
 
 [assemblies.tissue-load]
-scope = "Поверка обработки синтетического измерения"
+scope = "Модельный отсев по живому расчёту"
 [assemblies.tissue-load.experiments.test]
 kind = "task"
-world = "corpus/free-world.toml"
-task = "corpus/screen/tissue-load-task.toml"
+world = "corpus/tissue/world.toml"
+task = "corpus/tissue/tissue-load-task.toml"
 
 [assemblies.tissue-load-pair]
-scope = "Поверка обработки синтетического измерения"
+scope = "Модельный отсев по живому расчёту"
 [assemblies.tissue-load-pair.experiments.test]
 kind = "task"
-world = "corpus/free-world.toml"
-task = "corpus/screen/tissue-load-pair-task.toml"
+world = "corpus/tissue/world.toml"
+task = "corpus/tissue/tissue-load-pair-task.toml"
 
 [assemblies.ingress]
-scope = "Поверка обработки синтетического измерения"
+scope = "Модельный отсев по живому расчёту"
 [assemblies.ingress.experiments.test]
 kind = "task"
-world = "corpus/free-world.toml"
-task = "corpus/screen/ingress-task.toml"
+world = "corpus/screen/enclosure-world.toml"
+task = "corpus/screen/ingress-live-task.toml"
 
 [assemblies.ingress-pair]
-scope = "Поверка обработки синтетического измерения"
+scope = "Модельный отсев по живому расчёту"
 [assemblies.ingress-pair.experiments.test]
 kind = "task"
-world = "corpus/free-world.toml"
-task = "corpus/screen/ingress-pair-task.toml"
+world = "corpus/screen/enclosure-world.toml"
+task = "corpus/screen/ingress-pair-live-task.toml"
 
 [assemblies.dc-border]
 scope = "Парный порог DC-1, ток на 1 мкА выше границы при ЭДС ниже обоих порогов напряжения"

@@ -381,6 +381,21 @@ impl Avr {
         self.ports[port].output(bit)
     }
 
+    pub(super) fn gpio_mode(&self, pin: u32) -> Option<crate::GpioMode> {
+        use crate::GpioMode::*;
+        let (port, bit) = pin_location(pin)?;
+        // 7810D, GPIO: PORTxn при DDRxn = 0 включает внутреннюю подтяжку.
+        let pins = self.ports[port];
+        if pins.enable & (1 << bit) != 0 {
+            return self.output(pin).map(Output);
+        }
+        Some(if pins.out & (1 << bit) != 0 {
+            PullUp
+        } else {
+            Input
+        })
+    }
+
     pub fn pwm_period(&self, pin: u32) -> Option<f64> {
         let (timer, ch, id) = self.pwm_pin(pin)?;
         let (mode, _) = timer.pwm_params(ch, id)?;

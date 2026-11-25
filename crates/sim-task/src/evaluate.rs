@@ -32,6 +32,10 @@ pub struct Metric {
     pub limit: Limit,
     pub min: f64,
     pub max: f64,
+    #[serde(default)]
+    pub min_at_ns: Option<u64>,
+    #[serde(default)]
+    pub max_at_ns: Option<u64>,
     pub last: f64,
     pub rms: f64,
     pub first_ns: u64,
@@ -121,6 +125,8 @@ pub struct CaseReport {
     pub applied_ns: Option<u64>,
     pub excitation_ns: Option<u64>,
     pub metrics: Vec<Metric>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub process_metrics: BTreeMap<String, [f64; 2]>,
     pub reaction: Option<Reaction>,
     pub before_loop: Option<LoopTiming>,
     pub after_loop: Option<LoopTiming>,
@@ -165,6 +171,7 @@ impl CaseReport {
             applied_ns: None,
             excitation_ns: None,
             metrics: Vec::new(),
+            process_metrics: BTreeMap::new(),
             reaction: None,
             before_loop: None,
             after_loop: None,
@@ -1021,6 +1028,8 @@ fn check_limit(
         limit: limit.clone(),
         min,
         max,
+        min_at_ns: entries.iter().find(|e| e.value == min).map(|e| e.at.0),
+        max_at_ns: entries.iter().find(|e| e.value == max).map(|e| e.at.0),
         last: last.value,
         rms,
         first_ns: first.at.0,

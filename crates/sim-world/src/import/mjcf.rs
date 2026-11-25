@@ -64,7 +64,7 @@ pub fn import_mjcf_world(
             }],
             objects: Vec::new(),
             attachments: Vec::new(),
-        sensors: Vec::new(),
+            sensors: Vec::new(),
         };
         Ok((
             world,
@@ -284,6 +284,7 @@ fn convert(path: &Path, root: &Node, include_world: bool) -> Result<Device, Stri
     Ok(Device {
         format: FORMAT,
         name: root.get("model").unwrap_or("модель MJCF").into(),
+        schematic: None,
         links: model.links,
         constraints,
         transmissions,

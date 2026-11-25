@@ -1,0 +1,35 @@
+format = 1
+scope = "reference"
+name = "Блок: возврат через сигнальную жилу"
+nets = ["g", "p", "ret", "signal"]
+
+[components.block]
+part = "backfeed_low"
+nets = { p = "p", g = "g", ret = "ret", s = "signal" }
+
+[components.driver]
+part = "signal_sink"
+nets = { pad = "signal", g = "g" }
+
+[connections.signal]
+kind = "solder"
+ends = ["block/s", "driver/pad"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.return]
+kind = "solder"
+ends = ["driver/g", "block/g"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[[modes.cases]]
+mode = { kind = "main_only" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/ret", "block/g"] }, { kind = "voltage", ends = ["block/s", "driver/pad"] }, { kind = "current", branch = { kind = "connection", id = "signal" } }]
+
+# Стационарное состояние с подключённым источником и выключенным ключом.
+[[modes.cases]]
+mode = { kind = "load_off" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/ret", "block/g"] }, { kind = "voltage", ends = ["block/s", "driver/pad"] }, { kind = "current", branch = { kind = "connection", id = "signal" } }]

@@ -103,6 +103,7 @@ fn build_with_xml(
     let device = Device {
         format: FORMAT,
         name: "блок".into(),
+        schematic: None,
         links: vec![Link {
             name: "блок".into(),
             parent: None,

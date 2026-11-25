@@ -330,6 +330,19 @@ impl Stm {
         }
     }
 
+    pub(super) fn passive_pin(&self, pin: u32) -> Option<crate::GpioMode> {
+        use crate::GpioMode::*;
+        let port = self.ports.get((pin / 16) as usize)?;
+        let bit = pin % 16;
+        // RM0008, GPIOx_CRx: аналоговый вход отключает цифровой буфер.
+        Some(match port.mode(bit) {
+            0 => HighImpedance,
+            8 if port.pins.out & (1 << bit) != 0 => PullUp,
+            8 => PullDown,
+            _ => Input,
+        })
+    }
+
     pub fn access(
         &mut self,
         addr: u32,

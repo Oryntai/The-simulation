@@ -3,9 +3,10 @@ mod control_witness;
 mod interaction;
 mod matrix;
 mod measurements;
-mod processes;
+pub(crate) mod processes;
 mod readouts;
 mod reference;
+pub(crate) mod workers;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -32,6 +33,14 @@ pub(super) fn run_campaign(
     options: &Options,
     out: &mut impl Write,
 ) -> Result<u8, String> {
+    let mut files = processes::Inputs::default();
+    let document: toml::Value = files.toml(path)?;
+    if document.get("electrical_format").is_some() {
+        let manifest: crate::electrical::report::Campaign = document.try_into()
+            .map_err(|err: toml::de::Error| err.to_string())?;
+        files.verify()?;
+        return manifest.run(path, options, out);
+    }
     campaign::run(path, options, out)
 }
 
@@ -43,6 +52,8 @@ struct Profile {
     paths: BTreeMap<String, PathProfile>,
     #[serde(default)]
     mode_control: BTreeMap<String, String>,
+    #[serde(default)]
+    mode_physics: BTreeMap<String, ModePhysicsRef>,
     #[serde(default)]
     limitation_paths: BTreeMap<String, BTreeSet<String>>,
     #[serde(default)]
@@ -66,6 +77,13 @@ struct Profile {
 struct SampledMode {
     ambient_c: Option<f64>,
     fixture_enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModePhysicsRef {
+    case: PathBuf,
+    witness: String,
 }
 
 #[derive(Deserialize)]
@@ -175,14 +193,14 @@ fn resolved_wiring(run: &control::ControlRun<'_>) -> Vec<ResolvedWire> {
         .collect()
 }
 
-struct Models {
-    drives: sim_drive::DriveCatalog,
-    sensors: sim_sense::SensorCatalog,
-    bytes: Vec<u8>,
+pub(crate) struct Models {
+    pub(crate) drives: sim_drive::DriveCatalog,
+    pub(crate) sensors: sim_sense::SensorCatalog,
+    pub(crate) bytes: Vec<u8>,
 }
 
 impl Models {
-    fn load(base: &Path) -> Result<Self, String> {
+    pub(crate) fn load(base: &Path) -> Result<Self, String> {
         let mut bytes = Vec::new();
         for dirname in ["drives", "sensors", "boards"] {
             let dir = base.join(dirname);
@@ -209,7 +227,7 @@ impl Models {
     }
 }
 
-fn model_ports(handles: &[sim_drive::DriveHandle]) -> Vec<ModelPort> {
+pub(crate) fn model_ports(handles: &[sim_drive::DriveHandle]) -> Vec<ModelPort> {
     handles
         .iter()
         .flat_map(|handle| {
@@ -225,6 +243,24 @@ fn model_ports(handles: &[sim_drive::DriveHandle]) -> Vec<ModelPort> {
             ))
         })
         .collect()
+}
+
+pub(crate) fn install_live_measurements(
+    path: &Path,
+    rt: &mut Runtime,
+    world: &CompiledWorld,
+    sampled: &BTreeMap<String, sim_drive::sampled::Spec>,
+) -> Result<Vec<u8>, String> {
+    #[derive(Deserialize)]
+    struct Measurements {
+        measurements: Vec<measurements::Measurement>,
+    }
+    let text = read_text(path)?;
+    let data: Measurements = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    for measurement in data.measurements {
+        measurement.install(rt, world, sampled)?;
+    }
+    Ok(text.into_bytes())
 }
 
 struct Setup<'a> {
@@ -291,7 +327,18 @@ impl Setup<'_> {
         horizon: u64,
         config: &ControlConfig,
     ) -> Result<Vec<sim_sense::SensorHandle>, String> {
-        let mut world = self.world.clone();
+        self.install_config_on(rt, mode, horizon, config, self.world)
+    }
+
+    fn install_config_on(
+        &self,
+        rt: &mut Runtime,
+        mode: &str,
+        horizon: u64,
+        config: &ControlConfig,
+        compiled: &CompiledWorld,
+    ) -> Result<Vec<sim_sense::SensorHandle>, String> {
+        let mut world = compiled.clone();
         world
             .drives
             .retain(|drive| !self.sampled.contains_key(&drive.name));
@@ -309,14 +356,14 @@ impl Setup<'_> {
             }
             ports.extend(sim_drive::sampled::install(
                 rt,
-                self.world,
+                compiled,
                 name,
                 spec.clone(),
             )?);
         }
-        let sensors = sim_sense::install(rt, self.world, &self.models.sensors)?;
+        let sensors = sim_sense::install(rt, compiled, &self.models.sensors)?;
         for measurement in self.measurements {
-            measurement.install(rt, self.world, &sampled)?;
+            measurement.install(rt, compiled, &sampled)?;
         }
         rt.record_joint_state("запись состояния")?;
         for readout in self.readouts {
@@ -327,7 +374,11 @@ impl Setup<'_> {
             config,
             &FileAssets { base: &self.base },
             RunSpec {
-                world: &self.world_bytes,
+                world: if std::ptr::eq(compiled, self.world) {
+                    &self.world_bytes
+                } else {
+                    compiled.mjcf.as_bytes()
+                },
                 catalog: &self.models.bytes,
                 task: &self.task_bytes,
                 criteria: &self.task_bytes,
@@ -545,6 +596,14 @@ struct Execution<'a> {
     reference_texts: &'a BTreeMap<String, String>,
     sample: Option<(LinkedSample<'a>, &'a WorldInputs, &'a ModelSettings)>,
     witnesses: &'a [control_witness::Spec],
+    physics: &'a BTreeMap<String, processes::ModePhysics>,
+}
+
+struct ExecutedCase {
+    run: RunResult,
+    comparison: Option<reference::Comparison>,
+    observations: Vec<control_witness::Observation>,
+    process_metrics: BTreeMap<String, [f64; 2]>,
 }
 
 impl Execution<'_> {
@@ -553,10 +612,11 @@ impl Execution<'_> {
         case: &Case,
         record_view: bool,
         mut export_live: impl FnMut(&Runtime) -> Result<(), String>,
-    ) -> Result<(RunResult, Option<reference::Comparison>, Vec<control_witness::Observation>), String> {
+    ) -> Result<ExecutedCase, String> {
         let mut comparison = None;
         let mut archive_error = None;
         let mut observations = Vec::new();
+        let mut process_metrics = BTreeMap::new();
         let plan = self.assessor.plan(case).ok_or("нет плана опыта")?;
         let result = self
             .assessor
@@ -570,9 +630,18 @@ impl Execution<'_> {
                         Some(text) => ControlConfig::parse(&format!("{text}\n{events}"))?,
                         None => self.setup.config(mode, &events)?,
                     };
-                    self.setup.install_config(rt, mode, plan.mode.horizon_ns, &config)?;
+                    if let Some(physics) = self.physics.get(mode) {
+                        self.setup.install_config_on(rt, mode, plan.mode.horizon_ns, &config, &physics.world)?;
+                        physics.install(rt)?;
+                    } else {
+                        self.setup.install_config(rt, mode, plan.mode.horizon_ns, &config)?;
+                    }
                     if let Some((sample, world, settings)) = self.sample {
-                        sample.install(rt, self.setup.world, world, settings)?;
+                        if let Some(physics) = self.physics.get(mode) {
+                            sample.install(rt, &physics.world, &physics.resolved, &physics.settings)?;
+                        } else {
+                            sample.install(rt, self.setup.world, world, settings)?;
+                        }
                     }
                     let run = control::run(rt).ok_or("контур не установлен")?;
                     if run.identity().assets != self.assets[&plan.mode.id] {
@@ -583,6 +652,8 @@ impl Execution<'_> {
                 },
                 |kind, rt, _| {
                     if let Some((_, _, settings)) = self.sample {
+                        let settings = self.physics.get(&case.mode)
+                            .map_or(settings, |physics| &physics.settings);
                         for channel in settings.channel_delay_ns.keys() {
                             if !rt.channel_delay_observed(channel) {
                                 return Err(format!("нет живой доставки с задержкой «{channel}»"));
@@ -590,6 +661,10 @@ impl Execution<'_> {
                         }
                     }
                     if kind == RunKind::Live {
+                        if let Some(physics) = self.physics.get(&case.mode) {
+                            let (name, bounds) = physics.observe(rt)?;
+                            process_metrics.insert(name.to_owned(), bounds);
+                        }
                         match control_witness::collect(self.witnesses, &plan, rt) {
                             Ok(values) => observations = values,
                             Err(error) => {
@@ -598,12 +673,15 @@ impl Execution<'_> {
                             }
                         }
                     }
-                    if kind != RunKind::Live || case.fault.is_some() {
+                    if kind != RunKind::Live {
                         return Ok(());
                     }
                     if let Err(error) = export_live(rt) {
                         archive_error = Some(error.clone());
                         return Err(error);
+                    }
+                    if case.fault.is_some() {
+                        return Ok(());
                     }
                     if let Some(reference) = self.references.get(&case.mode) {
                         match reference.compare(&self.reference_texts[&case.mode], rt) {
@@ -627,7 +705,12 @@ impl Execution<'_> {
         observations.retain(|value| {
             control_witness::valid_report(&self.witnesses[value.spec], result.report())
         });
-        Ok((result, comparison, observations))
+        Ok(ExecutedCase {
+            run: result,
+            comparison,
+            observations,
+            process_metrics,
+        })
     }
 }
 
@@ -816,6 +899,23 @@ fn run_control(
     let installation = sampled_world
         .as_ref()
         .map(|(sample, world, _, settings)| (*sample, world, settings));
+    let mut physics_files = processes::Inputs::default();
+    let physics = profile.mode_physics.iter().map(|(id, reference)| {
+        let mode = task.modes().iter().find(|mode| &mode.id == id)
+            .ok_or_else(|| format!("физика объявлена для неизвестного режима «{id}»"))?;
+        let mut value = processes::ModePhysics::load(
+            &task_dir.join(&reference.case), &reference.witness,
+            &options.world, world.seed, world.physics, mode.horizon_ns, &mut physics_files,
+        )?;
+        if let Some(sample) = sample {
+            let wires = setup.config(id, "")?.wired_delays()?;
+            value.apply_sample(sample, &setup.models, &wires)?;
+        }
+        Ok((id.clone(), value))
+    }).collect::<Result<BTreeMap<_, _>, String>>()?;
+    if !physics.is_empty() {
+        frame(&mut wiring, format!("{:?}", physics_files.fingerprints()).as_bytes());
+    }
     let mut resource_bytes = Vec::new();
     let mut expected = BTreeMap::new();
     let mut resolved_topology = None;
@@ -838,27 +938,40 @@ fn run_control(
         None
     };
     for mode in task.modes() {
-        let mut probe = Runtime::load(world.clone())?;
-        setup.install(&mut probe, &mode.id, mode.horizon_ns, "")?;
+        let mode_physics = physics.get(&mode.id);
+        let mode_world = mode_physics.map_or(world, |p| &p.world);
+        let mut probe = Runtime::load(mode_world.clone())?;
+        if let Some(physics) = mode_physics {
+            let config = setup.config(&mode.id, "")?;
+            setup.install_config_on(&mut probe, &mode.id, mode.horizon_ns, &config, mode_world)?;
+            physics.install(&mut probe)?;
+        } else {
+            setup.install(&mut probe, &mode.id, mode.horizon_ns, "")?;
+        }
         let receipt = installation
             .map(|(sample, resolved, settings)| {
-                sample.install(&mut probe, world, resolved, settings)
+                let (resolved, settings) = mode_physics
+                    .map_or((resolved, settings), |p| (&p.resolved, &p.settings));
+                sample.install(&mut probe, mode_world, resolved, settings)
             })
             .transpose()?;
-        if let (Some(audit), Some(source_world)) = (audit.as_mut(), &inventory_world) {
+        let inventory_source = mode_physics.map(|p| &p.resolved).or(inventory_world.as_ref());
+        if let (Some(audit), Some(source_world)) = (audit.as_mut(), inventory_source) {
             audit.inventory(
                 mode.id.clone(),
                 campaign::installation::inventory(
-                    world,
+                    mode_world,
                     source_world,
                     &probe,
                     serde_json::Value::Null,
-                    [],
+                    setup.sampled.keys().map(|name| {
+                        (sim_task::verdict::ComponentKind::Battery, name.clone())
+                    }),
                 ),
             )?;
         }
         let control = control::run(&probe).ok_or("контур не установлен")?;
-        let candidate = topology(world, &control, &profile)?;
+        let candidate = topology(mode_world, &control, &profile)?;
         let encoded = serde_json::to_vec(&candidate).map_err(|error| error.to_string())?;
         if resolved_topology
             .as_ref()
@@ -914,7 +1027,9 @@ fn run_control(
         legacy_design: None,
     };
     let assessor = Assessor::new(task, topology, world.clone(), inputs.clone())
-        .map_err(|error| error.to_string())?;
+        .and_then(|assessor| assessor.with_mode_worlds(
+            physics.iter().map(|(mode, entry)| (mode.clone(), entry.world.clone())).collect()
+        )).map_err(|error| error.to_string())?;
     if !profile.hazard_witnesses.is_empty() && !options.matrix_full {
         return Err("предметные свидетели контура требуют --matrix full".into());
     }
@@ -940,6 +1055,7 @@ fn run_control(
         reference_texts: &reference_texts,
         sample: installation,
         witnesses: &profile.hazard_witnesses,
+        physics: &physics,
     };
     if options.matrix_full {
         let plan = matrix::Plan::new(&execution, &profile, &mode_wires, options.selected_control_case.as_ref())?;
@@ -952,6 +1068,8 @@ fn run_control(
         let (evidence, complete, comparisons, coverage, observations) =
             plan.run(&execution, &installed_inputs, options)?;
         if let Some(audit) = audit.as_mut() {
+            physics_files.verify()?;
+            audit.record_files(&physics_files)?;
             audit.record_inputs((assessor.identity(), &installed_inputs, &reference_texts))?;
             audit.control(&evidence.cases, evidence.outcome, execution.witnesses, &observations, &comparisons, &assessor, world.seed, world.physics.as_hz() as u64)?;
         }
@@ -978,8 +1096,8 @@ fn run_control(
     for case in assessor.required_cases().iter().filter(|case| {
         options.case.as_ref().is_none_or(|mode| mode == &case.mode) && assessor.plan(case).is_some()
     }) {
-        let (result, comparison, _) = execution.run_case(case, options.view.is_some() && !exported, |runtime| {
-            if !exported {
+        let result = execution.run_case(case, options.view.is_some() && !exported, |runtime| {
+            if !exported && case.fault.is_none() {
                 crate::view::save(options, runtime, Some(&case.mode), Some(case))?;
                 let log = runtime.log();
                 if let Some(path) = &options.log {
@@ -992,10 +1110,10 @@ fn run_control(
             }
             Ok(())
         })?;
-        if let Some(comparison) = comparison {
+        if let Some(comparison) = result.comparison {
             comparisons.insert(case.mode.clone(), comparison);
         }
-        runs.push(result);
+        runs.push(result.run);
     }
     if options.view.is_some() && !exported {
         return Err("для просмотра нет завершившего наблюдение штатного прогона".into());

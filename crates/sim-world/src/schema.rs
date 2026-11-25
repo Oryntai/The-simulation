@@ -93,6 +93,9 @@ pub struct Object {
 pub struct Device {
     pub format: u32,
     pub name: String,
+    /// Отдельный TOML электрической схемы относительно файла устройства.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schematic: Option<PathBuf>,
     pub links: Vec<Link>,
     #[serde(default)]
     pub constraints: Vec<Constraint>,
@@ -105,6 +108,17 @@ pub struct Device {
     pub sensors: Vec<SensorUse>,
     pub legacy_v2: Option<LegacyV2>,
 }
+
+/// Электрические ссылки хранятся по именам экземпляров, вне физического контракта.
+#[derive(Debug)]
+pub struct WorldWithSchematics {
+    pub world: crate::CompiledWorld,
+    pub schematics: BTreeMap<String, PathBuf>,
+}
+
+pub use crate::loader::{
+    load_and_compile_with_schematics, load_and_compile_with_schematics_and_options,
+};
 
 /// Привод из каталога на входе усилия. Его физику считает модель привода.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -185,6 +185,12 @@ pub struct MetricReport {
     /// Время максимума ряда на каждой сетке, если критерий проверяет максимум.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maxima_at_ns: Option<Vec<Option<u64>>>,
+    #[serde(skip)]
+    pub extrema_at_ns: Vec<Option<[u64; 2]>>,
+    #[serde(skip)]
+    pub statistic: Statistic,
+    #[serde(skip)]
+    pub extrema_values: Vec<Option<[f64; 2]>>,
     pub tolerance: ParameterAudit,
     pub input_bounds: BTreeMap<String, ParameterAudit>,
     pub discretization: Option<f64>,
@@ -414,6 +420,10 @@ impl ConvergenceReport {
                     audit.reason.clone(),
                 );
                 finding.outcome = audit.outcome;
+                if audit.class == HazardClass::Ingress && finding.outcome == Outcome::Pass {
+                    finding.outcome = Outcome::NotAnalyzed;
+                    finding.missing_data.push("требуется заверенный замер этой ревизии".into());
+                }
                 if finding.outcome == Outcome::Pass
                     && !self.trials.iter().all(|trial| {
                         trial
@@ -1479,6 +1489,33 @@ impl Curve {
     }
 }
 
+/// Снимает метрику процесса из полного окна уже исполненного рантайма.
+pub fn sample_criterion(
+    runtime: &Runtime,
+    window: Interval,
+    criterion: &Criterion,
+) -> Result<Option<[f64; 2]>, Error> {
+    let journal = runtime.process_journal();
+    let Some(rows) = journal.iter().position(|row| row.at == window.start)
+        .zip(journal.iter().position(|row| row.at == window.end))
+        .and_then(|(first, last)| journal.get(first..=last))
+        .filter(|rows| rows.len() > 1 && complete(rows))
+    else {
+        return Ok(None);
+    };
+    let known_pair = match &criterion.series {
+        Series::NormalForce(pair) | Series::Penetration(pair) => runtime
+            .process_contact_pairs()
+            .any(|p| ordered(p.pair.geometries.clone()) == ordered(pair.clone())),
+        _ => false,
+    };
+    let value = make_curve(rows, criterion, known_pair)?.map(|curve| curve.value(criterion.statistic));
+    if value.is_some_and(|bounds| bounds.iter().any(|v| !v.is_finite())) {
+        return Err(invalid("переполнение оценки метрики процесса"));
+    }
+    Ok(value)
+}
+
 fn compare_metric(
     plan: &ConvergencePlan,
     c: &Criterion,
@@ -1507,6 +1544,14 @@ fn compare_metric(
         .collect(),
         adjacent_differences: Vec::new(),
         observed_orders: Vec::new(),
+        statistic: c.statistic,
+        extrema_values: curves.iter().map(|curve| curve.map(|curve| curve.value(Statistic::Continuous))).collect(),
+        extrema_at_ns: curves.iter().map(|curve| {
+            let points = &curve.as_ref()?.0;
+            let min = points.iter().min_by(|(_, a), (_, b)| a.total_cmp(b))?;
+            let max = points.iter().rev().max_by(|(_, a), (_, b)| a.total_cmp(b))?;
+            Some([min.0.0, max.0.0])
+        }).collect(),
         maxima_at_ns: (c.statistic == Statistic::Maximum).then(|| {
             curves
                 .iter()

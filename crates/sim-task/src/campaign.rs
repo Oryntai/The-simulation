@@ -93,6 +93,23 @@ impl WorldInputs {
         )
         .map_err(invalid)
     }
+
+    fn open_powered_mounts(&self) -> impl Iterator<Item = String> + '_ {
+        // Связь, которую можно снять в прогоне, не подтверждает изоляцию.
+        let bound: BTreeSet<_> = self.world.attachments.iter()
+            .chain(&self.contact.added_attachments)
+            .filter(|attachment| attachment.mode == sim_world::AttachmentMode::Design)
+            .flat_map(|attachment| [&attachment.first, &attachment.second])
+            .collect();
+        self.devices.iter()
+            .filter(|(_, input)| input.device.links.iter().any(|link| !link.joint.efforts.is_empty()))
+            .flat_map(|(placement, input)| input.device.links.iter().flat_map(move |link| {
+                link.mounts.iter()
+                    .filter(|mount| mount.kind == sim_world::MountKind::Mechanical)
+                    .map(move |mount| format!("{placement}/{}/{}", link.name, mount.name))
+            }))
+            .filter(move |mount| !bound.contains(mount))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -885,12 +902,13 @@ impl Campaign {
             )
             .as_bytes(),
         );
-        let plan = CampaignPlan {
+        let mut plan = CampaignPlan {
             rows,
             campaign: self.clone(),
             inputs,
             nominal,
             fingerprint,
+            participant_candidates: BTreeSet::new(),
         };
         plan.validate_materialized_worlds()?;
         Ok(plan)
@@ -1332,6 +1350,7 @@ impl Campaign {
                 nominal: value.value,
                 min: value.value,
                 max: value.value,
+                values: None,
                 source: value.source.clone(),
                 scope: Scope::Run,
             };
@@ -1611,6 +1630,7 @@ pub struct CampaignPlan {
     inputs: ResolvedInputs,
     nominal: CompiledWorld,
     fingerprint: Fingerprint,
+    participant_candidates: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1639,12 +1659,11 @@ impl CampaignPlan {
     }
 
     pub(crate) fn varying_axes(&self) -> impl Iterator<Item = &str> {
-        self.campaign
-            .sampling
-            .axes
-            .iter()
-            .filter(|axis| self.campaign.sampling.discrete.is_none() && axis.min < axis.max)
-            .map(|axis| axis.id.as_str())
+        self.campaign.sampling.axes().iter().filter(|a| a.min < a.max).map(|a| a.id.as_str())
+    }
+
+    pub(crate) fn has_discrete_envelope(&self, sourced: impl Fn(&Source) -> bool) -> bool {
+        self.campaign.sampling.discrete_envelope_with(sourced)
     }
 
     pub fn rows(&self) -> &[PlanRow] {
@@ -1662,7 +1681,34 @@ impl CampaignPlan {
         self.fingerprint
     }
 
-    fn validate_materialized_worlds(&self) -> Result<(), Error> {
+    pub(crate) fn participant_candidates(&self) -> &BTreeSet<String> {
+        &self.participant_candidates
+    }
+
+    pub(crate) fn cyclic_efforts(&self) -> BTreeSet<&str> {
+        use std::cmp::Ordering::{self, Equal};
+        let mut cyclic = BTreeSet::new();
+        for mode in self.campaign.stations.values().flat_map(|station| station.modes.values()) {
+            let mut last = BTreeMap::<&str, (f64, Ordering)>::new();
+            for step in &mode.steps {
+                let Target::Effort { name } = &step.target else { continue };
+                // До команды действует нулевой вход. Смена знака приращения
+                // образует нагружение и разгрузку даже без реверса оси.
+                let (previous, slope) = last.entry(name).or_insert((0.0, Equal));
+                let change = step.value.partial_cmp(previous).expect("команда проверена");
+                if change != Equal {
+                    if *slope != Equal && *slope != change {
+                        cyclic.insert(name.as_str());
+                    }
+                    *slope = change;
+                }
+                *previous = step.value;
+            }
+        }
+        cyclic
+    }
+
+    fn validate_materialized_worlds(&mut self) -> Result<(), Error> {
         let mut checked = BTreeSet::new();
         for row in &self.rows {
             // Путь контура, состав отказов и зерно не меняют компиляцию мира.
@@ -1673,10 +1719,13 @@ impl CampaignPlan {
                 (!self.campaign.sampling.axes.is_empty()).then_some(&row.key.sample),
             );
             if checked.insert(setup) {
-                self.materialize(&row.key)?
-                    .world
-                    .compile()
+                let sampled = self.materialize(&row.key)?;
+                let compiled = sampled.world.compile()
                     .map_err(|e| invalid(format!("matrix.{:?}: {e}", row.key)))?;
+                self.participant_candidates.extend(
+                    compiled.powered_contact_candidates().map_err(invalid)?,
+                );
+                self.participant_candidates.extend(sampled.world.open_powered_mounts());
             }
         }
         Ok(())
@@ -1746,6 +1795,10 @@ impl CampaignPlan {
             .get(&key.station)?
             .modes
             .get(&key.mode)
+    }
+
+    pub(crate) fn has_linked_stations(&self) -> bool {
+        self.campaign.stations.values().any(|station| station.experiment.kind.is_some())
     }
 
     pub(crate) fn probability(&self) -> Option<&crate::sampling::Probability> {

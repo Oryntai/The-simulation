@@ -5,7 +5,8 @@ mod pico;
 mod stm;
 
 use crate::{
-    BoardFault, BoardId, BoardInput, BoardOutput, InputOutcome, OutputEvent, PwmOutput, ResetCause,
+    BoardFault, BoardId, BoardInput, BoardOutput, GpioMode, InputOutcome, OutputEvent, PwmOutput,
+    ResetCause,
 };
 
 type Access = Result<Option<u32>, BoardFault>;
@@ -426,6 +427,24 @@ impl Hardware {
             Chip::Stm(p) => p.output(pin),
             Chip::Avr(p) => p.output(pin),
             Chip::Esp(p) => p.output(pin),
+        }
+    }
+
+    pub fn gpio_mode(&self, pin: u32) -> Option<GpioMode> {
+        if !crate::pin_spec(self.id, pin).is_some_and(|spec| spec.gpio) {
+            return None;
+        }
+        if let Chip::Avr(cpu) = &self.chip {
+            return cpu.gpio_mode(pin);
+        }
+        if let Some(high) = self.output(pin) {
+            return Some(GpioMode::Output(high));
+        }
+        match &self.chip {
+            Chip::Pico(p) => p.passive_pin(pin),
+            Chip::Stm(p) => p.passive_pin(pin),
+            Chip::Avr(_) => unreachable!(),
+            Chip::Esp(p) => p.passive_pin(pin),
         }
     }
 

@@ -134,7 +134,7 @@ pub enum Limit {
 }
 
 impl Limit {
-    pub(crate) fn signal(&self) -> &Signal {
+    pub fn signal(&self) -> &Signal {
         match self {
             Self::Range { signal, .. } | Self::Forbidden { signal, .. } => signal,
         }

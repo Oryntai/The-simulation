@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 
 use serde::Deserialize;
+use sim_process::work::ingress::Enclosure;
 
 use crate::{
     Error, Fingerprint, Outcome,
@@ -10,6 +11,66 @@ use crate::{
     invalid,
     verdict::{Finding, HazardClass, Level, LimitValue, RequirementKey},
 };
+
+/// Записывает в общий вердикт результат проверки открытого пути во время погружения.
+pub fn assess_ingress(
+    enclosure: &Enclosure,
+    object: &str,
+    limit_source: &str,
+    run: &RunKey,
+    window_ns: [u64; 2],
+    completed_journal: Option<Fingerprint>,
+) -> Result<Finding, Error> {
+    use sim_process::work::ingress::IngressScreen;
+
+    if !named(object) || !named(limit_source) || window_ns[0] >= window_ns[1] {
+        return Err(invalid("неверный объект, источник предела или окно погружения"));
+    }
+    let result = enclosure.assess().map_err(|e| invalid(e.to_string()))?;
+    let key = RequirementKey {
+        class: HazardClass::Ingress,
+        object: object.into(),
+        extension: None,
+        run: Some(run.clone()),
+        window_ns: Some(window_ns),
+        level: Level::Simulation,
+    };
+    let mut finding = Finding::open(&key, "нет завершённого окна погружения");
+    finding.code = "глубина открытого пути".into();
+    finding.unit = Some("m".into());
+    // Нуль соответствует границе неподвижной воды. Положительная глубина запрещена.
+    finding.limit = Some(LimitValue::upper([0.0; 2]));
+    finding.limit_sources.push(limit_source.into());
+    finding.model_scope = Some(format!(
+        "Плоский уровень в системе неподвижной оболочки, защищаемая зона «{}»",
+        enclosure.protected
+    ));
+    let Some(journal) = completed_journal else {
+        return Ok(finding);
+    };
+    finding.journal = Some(journal);
+    finding.missing_data.clear();
+    let path = match result {
+        IngressScreen::Fail(path) => {
+            finding.outcome = Outcome::Fail;
+            finding.confirmed_hazard = true;
+            // Уровень постоянен во всём окне, поэтому путь открыт с начала.
+            finding.event_ns = Some(window_ns[0]);
+            finding.reason = format!("открытый путь ниже уровня воды: {}", path.openings.join(" → "));
+            Some(path)
+        }
+        IngressScreen::NotAnalyzed { reason, path } => {
+            finding.reason = reason;
+            finding.missing_data.push("нужно испытание погружением и проверка изоляции этой ревизии".into());
+            path
+        }
+    };
+    if let Some(path) = path {
+        finding.measurement = Some(path.depth_m);
+        finding.measurement_sources = path.sources;
+    }
+    Ok(finding)
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

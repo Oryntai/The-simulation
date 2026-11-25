@@ -1,0 +1,20 @@
+format = 1
+scope = "reference"
+name = "Блок: выброс при снятии тока"
+nets = ["g", "p"]
+
+[components.block]
+part = "coil_open"
+nets = { p = "p", g = "g" }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/g", "block/p"] }, { kind = "current", branch = { kind = "element", component = "block", element = "coil" } }]
+
+[[modes.cases]]
+mode = { kind = "load_off" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/g", "block/p"] }, { kind = "current", branch = { kind = "element", component = "block", element = "coil" } }]
+window = { step_ns = 100, end_ns = 400000 }
+sources = [{ branch = { kind = "element", component = "block", element = "supply" }, points = [[0, 1.0], [20000, 1.0], [21000, 0.0]], source = { derived = "Линейный фронт и плато по условиям корпуса Э2" } }]

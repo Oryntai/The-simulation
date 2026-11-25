@@ -1,17 +1,26 @@
-//! Перебор полей от полностью проходящего контроля: что остаётся «прошёл» при порче значения.
+//! Перебор полей от контроля, где открыта только расчётная прочность.
 
 use sim_device::measure::Measurement;
 use sim_device::*;
 use sim_scenarios::blueprint::BuildVerdict;
 use sim_scenarios::device_assess::{
-    Group, Outcome, Readiness, assess_device, assess_device_in, measurement_stamp,
+    DeviceReport, Group, Outcome, Readiness, assess_device, assess_device_in, measurement_stamp, verdict,
 };
 use sim_scenarios::device_templates::{template, templates};
 
 mod support;
 use support::*;
 
-fn passing(dir: &std::path::Path) -> Device {
+fn only_strength_open(report: &DeviceReport) -> bool {
+    let independent: Vec<_> = report.findings.iter().filter(|f| {
+        !(f.outcome == Outcome::NotAnalyzed
+            && matches!(f.code, "static_strength" | "bending_stress")
+            && f.detail.contains(sim_world::STRENGTH_REQUIRES_BENCH))
+    }).cloned().collect();
+    verdict(&independent) == BuildVerdict::PassedSimulation
+}
+
+fn reference(dir: &std::path::Path) -> Device {
     let mut d = device();
     firmware(&mut d, dir);
     let first = assess_device_in(&d, dir);
@@ -25,7 +34,9 @@ fn passing(dir: &std::path::Path) -> Device {
             design: Some(stamp),
         });
     }
-    assert_eq!(assess_device_in(&d, dir).verdict(), BuildVerdict::PassedSimulation);
+    let report = assess_device_in(&d, dir);
+    assert_eq!(report.verdict(), BuildVerdict::NotProven);
+    assert!(only_strength_open(&report), "{:#?}", report.findings);
     d
 }
 
@@ -44,7 +55,7 @@ const LEGITIMATE: [&str; 7] = [
 #[test]
 fn no_corrupted_value_keeps_the_pass() {
     let dir = TempDir::new();
-    let base = passing(&dir.0);
+    let base = reference(&dir.0);
     let values = ["0", "-1", "0.000001", "1000000000"];
     let mut alive = Vec::new();
     macro_rules! sweep {
@@ -54,7 +65,7 @@ fn no_corrupted_value_keeps_the_pass() {
                     let mut d = base.clone();
                     let get: fn(&mut Device) -> &mut $ty = $get;
                     get(&mut d).set(f.key, v).unwrap();
-                    if assess_device_in(&d, &dir.0).verdict() == BuildVerdict::PassedSimulation {
+                    if only_strength_open(&assess_device_in(&d, &dir.0)) {
                         alive.push(format!("{}.{} = {v}", $name, f.key));
                     }
                 }
@@ -81,7 +92,7 @@ fn no_corrupted_value_keeps_the_pass() {
         for x in [0.0, -1.0, 1e-6, 1e9] {
             let mut d = base.clone();
             edit(&mut d, x);
-            if assess_device_in(&d, &dir.0).verdict() == BuildVerdict::PassedSimulation {
+            if only_strength_open(&assess_device_in(&d, &dir.0)) {
                 alive.push(format!("{name} = {x}"));
             }
         }
@@ -90,14 +101,14 @@ fn no_corrupted_value_keeps_the_pass() {
         for factor in [0.0, 0.5] {
             let mut d = base.clone();
             d.measurements[m].value *= factor;
-            if assess_device_in(&d, &dir.0).verdict() == BuildVerdict::PassedSimulation {
+            if only_strength_open(&assess_device_in(&d, &dir.0)) {
                 alive.push(format!("замер {} × {factor}", d.measurements[m].quantity.key()));
             }
         }
     }
     let mut heavier = base.clone();
     heavier.links[0].end_mass_kg *= 3.0;
-    if assess_device_in(&heavier, &dir.0).verdict() == BuildVerdict::PassedSimulation {
+    if only_strength_open(&assess_device_in(&heavier, &dir.0)) {
         alive.push("старые замеры после утяжеления ×3".into());
     }
     alive.retain(|a| !LEGITIMATE.contains(&a.as_str()));
@@ -111,26 +122,25 @@ fn has(r: &sim_scenarios::device_assess::DeviceReport, code: &str, outcome: Outc
 #[test]
 fn stale_measurement_proves_nothing() {
     let dir = TempDir::new();
-    let mut d = passing(&dir.0);
+    let mut d = reference(&dir.0);
     d.links[0].end_mass_kg *= 1.5;
     d.settings.accessory_mass_kg = Some(0.2);
     let r = assess_device_in(&d, &dir.0);
-    assert_ne!(r.verdict(), BuildVerdict::PassedSimulation);
+    assert!(!only_strength_open(&r));
     assert!(r.measures.iter().any(|m| m.detail.contains("другой версии")));
 }
 
 #[test]
 fn replaced_firmware_invalidates_measurements() {
     let dir = TempDir::new();
-    let d = passing(&dir.0);
+    let d = reference(&dir.0);
     let path = dir.0.join("pico.elf");
     let mut image = std::fs::read(&path).unwrap();
     *image.last_mut().unwrap() ^= 0xff;
     std::fs::write(&path, image).unwrap();
-    assert_ne!(
-        assess_device_in(&d, &dir.0).verdict(),
-        BuildVerdict::PassedSimulation
-    );
+    let report = assess_device_in(&d, &dir.0);
+    assert!(!only_strength_open(&report));
+    assert!(report.measures.iter().any(|m| m.detail.contains("другой версии")));
 }
 
 #[test]
@@ -244,9 +254,9 @@ fn bench_stage_never_hides_a_defect() {
     assert_eq!(assess_device_in(&no_firmware, &dir.0).readiness(), Readiness::NeedsWork);
 }
 
-/// Путь пользователя: готовая схема без нарушений, но «на стенд» только после своих протоколов.
+/// Протоколы массы и питания не закрывают нагрузку подвижных звеньев.
 #[test]
-fn working_template_reaches_the_bench_only_with_evidence() {
+fn working_template_keeps_rotational_load_open() {
     let index = templates().iter().position(|t| t.id == "elbow-24v").unwrap();
     let mut d = template(index);
     let r = assess_device(&d);
@@ -265,8 +275,9 @@ fn working_template_reaches_the_bench_only_with_evidence() {
         .filter(|f| f.outcome == Outcome::NotAnalyzed && f.group != Group::Measurements)
         .map(|f| format!("{} {} {}", f.group, f.code, f.title))
         .collect();
-    assert_eq!(r.readiness(), Readiness::BenchOnly, "{left:#?}");
-    // Стенд не равен допуску на человека.
+    assert_eq!(r.readiness(), Readiness::NeedsWork, "{left:#?}");
+    assert!(has(&r, "rotational_inertia", Outcome::NotAnalyzed));
+    assert!(has(&r, "static_strength", Outcome::NotAnalyzed));
     assert_eq!(r.verdict(), BuildVerdict::NotProven);
     let mut hot = d.clone();
     hot.links[1].joint.speed_limit_dps = 2000.0;

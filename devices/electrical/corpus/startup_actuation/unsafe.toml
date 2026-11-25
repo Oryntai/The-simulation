@@ -1,0 +1,46 @@
+format = 1
+scope = "reference"
+name = "Блок: состояние в сбросе"
+nets = ["g", "logic", "sense", "signal", "supply"]
+
+[components.board]
+part = "output_pad"
+nets = { io = "signal", p = "logic", g = "g" }
+
+[components.load]
+part = "load_gate"
+nets = { gate = "signal", g = "g", sense = "sense", supply = "supply" }
+
+[connections.signal]
+kind = "solder"
+ends = ["board/io", "load/gate"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.return]
+kind = "solder"
+ends = ["board/g", "load/g"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[[bindings]]
+ends = ["board/p", "board/g"]
+target = { kind = "board_power", board = "fixture", rail = "io" }
+
+[[bindings]]
+ends = ["board/io"]
+target = { kind = "board_pin", board = "fixture", pin = "p0", function = "gpio_output" }
+
+[[modes.cases]]
+mode = { kind = "reset" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["load/gate", "load/g"] }, { kind = "voltage", ends = ["load/supply", "load/sense"] }, { kind = "current", branch = { kind = "element", component = "load", element = "load" } }]
+
+[[modes.cases.pins]]
+board = "fixture"
+pin = "p0"
+rail = "io"
+phase = { kind = "reset" }
+reset = { state = "pull_up", source = { derived = "Электрическое состояние задано стендом Э2" } }
+boot = [{ duration_s = { measurement = "Условие стенда: загрузка 1 мс", range = { min = 0.001, nominal = 0.001, max = 0.001, source = { derived = "Условие стенда: загрузка 1 мс" } } }, pin = { state = "pull_up", source = { derived = "Электрическое состояние задано стендом Э2" } } }]
+model = { input_ohm = { measurement = "Условие стенда: входное сопротивление 1 МОм", range = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { derived = "Условие стенда: входное сопротивление 1 МОм" } } }, pull_up_ohm = { measurement = "Условие стенда: подтяжка к шине 10 кОм", range = { min = 10000.0, nominal = 10000.0, max = 10000.0, source = { derived = "Условие стенда: подтяжка к шине 10 кОм" } } }, upper_clamp = { kind = "absent", source = { derived = "В эквиваленте стенда эта защитная ветвь отсутствует" } }, lower_clamp = { kind = "absent", source = { derived = "В эквиваленте стенда эта защитная ветвь отсутствует" } } }

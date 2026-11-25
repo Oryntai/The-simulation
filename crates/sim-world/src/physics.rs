@@ -242,7 +242,7 @@ impl<'a> Geom<'a> {
     }
 }
 
-fn mesh_inertia(mesh: &Mesh, density: f64) -> Result<Inertial, String> {
+pub(crate) fn mesh_inertia(mesh: &Mesh, density: f64) -> Result<Inertial, String> {
     mesh.require_closed()?;
     // Интегрирование по ориентированным тетраэдрам (0,a,b,c). Перенос начала
     // к вершине уменьшает потерю точности на многоугольниках со смещёнными координатами.

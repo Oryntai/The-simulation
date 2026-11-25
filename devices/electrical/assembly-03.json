@@ -1,0 +1,2835 @@
+{
+  "устройство": {
+    "proof_scope": "сборка",
+    "schematic": 7984739704853145732,
+    "sheet": {
+      "bindings": [
+        {
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "target": "SensorPower { sensor: \"импульсы\" }"
+        }
+      ],
+      "inspections": [
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "pack",
+              "pin": "g"
+            },
+            {
+              "component": "ground",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "ground_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "ground",
+              "pin": "b"
+            },
+            {
+              "component": "ldo",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "ground_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "ldo",
+              "pin": "g"
+            },
+            {
+              "component": "cap",
+              "pin": "minus"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "cap_ground",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "camera_ground",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "camera_ground_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "camera_ground",
+              "pin": "b"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "camera_ground_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "ldo",
+              "pin": "output"
+            },
+            {
+              "component": "cap",
+              "pin": "plus"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "cap_feed",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "camera_power",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "camera_power_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "camera_power",
+              "pin": "b"
+            },
+            {
+              "component": "camera",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "camera_power_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "pack",
+              "pin": "p"
+            },
+            {
+              "component": "feed_raw",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feed_raw_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feed_raw",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feed_raw_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "feed_protected",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feed_protected_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feed_protected",
+              "pin": "b"
+            },
+            {
+              "component": "ldo",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feed_protected_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "host_ground",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "host_ground_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "host_ground",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "host_ground_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "bus"
+            },
+            {
+              "component": "camera_link",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "camera_link_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "camera_link",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "camera_bus"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "camera_link_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "host_power",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "host_power_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "host_power",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "host_power_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "imu_ground",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "g"
+            },
+            {
+              "component": "bypass_vdd",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bypass_vdd_return",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "bypass_vdd",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bypass_vdd_plus",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "imu_ground_io",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "gndio"
+            },
+            {
+              "component": "bypass_vddio",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bypass_vddio_return",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vddio"
+            },
+            {
+              "component": "bypass_vddio",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bypass_vddio_plus",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "sdo"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "i2c_address",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "vdd"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "imu_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "vddio"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "imu_supply_io",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "csb"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "i2c_select",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "pull_scl",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "scl_pull_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "pull_scl",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "scl_pull_signal",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "scl"
+            },
+            {
+              "component": "scl",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "scl_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "scl",
+              "pin": "b"
+            },
+            {
+              "component": "imu",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "scl_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "pull_sda",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sda_pull_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "pull_sda",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sda_pull_signal",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "sda"
+            },
+            {
+              "component": "sda",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sda_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sda",
+              "pin": "b"
+            },
+            {
+              "component": "imu",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sda_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "cap",
+              "pin": "minus"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "cap/reverse",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "cap",
+              "pin": "minus"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "cap/reverse",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vdd»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vdd»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vddio"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vddio»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vddio"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vddio»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "p"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «питание камеры»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "p"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «питание камеры»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "g"
+            },
+            {
+              "component": "host",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "camera/bus → host/camera_bus",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "g"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "host/camera_bus → camera/bus",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "g"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "host/scl → imu/scl",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "g"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "host/sda → imu/sda",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "gndio"
+            },
+            {
+              "component": "host",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "imu/scl → host/scl",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "gndio"
+            },
+            {
+              "component": "host",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "imu/sda → host/sda",
+          "test": "continuity"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "pack",
+              "pin": "g"
+            },
+            {
+              "component": "ground",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "ground_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "ground",
+              "pin": "b"
+            },
+            {
+              "component": "ldo",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "ground_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "ldo",
+              "pin": "g"
+            },
+            {
+              "component": "cap",
+              "pin": "minus"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "cap_ground",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "camera_ground",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "camera_ground_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "camera_ground",
+              "pin": "b"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "camera_ground_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "ldo",
+              "pin": "output"
+            },
+            {
+              "component": "cap",
+              "pin": "plus"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "cap_feed",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "camera_power",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "camera_power_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "camera_power",
+              "pin": "b"
+            },
+            {
+              "component": "camera",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "camera_power_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "pack",
+              "pin": "p"
+            },
+            {
+              "component": "feed_raw",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feed_raw_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feed_raw",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feed_raw_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "feed_protected",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feed_protected_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feed_protected",
+              "pin": "b"
+            },
+            {
+              "component": "ldo",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feed_protected_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "host_ground",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "host_ground_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "host_ground",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "host_ground_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "bus"
+            },
+            {
+              "component": "camera_link",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "camera_link_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "camera_link",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "camera_bus"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "camera_link_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "host_power",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "host_power_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "host_power",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "host_power_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "imu_ground",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "g"
+            },
+            {
+              "component": "bypass_vdd",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bypass_vdd_return",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "bypass_vdd",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bypass_vdd_plus",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "imu_ground_io",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "gndio"
+            },
+            {
+              "component": "bypass_vddio",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bypass_vddio_return",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vddio"
+            },
+            {
+              "component": "bypass_vddio",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bypass_vddio_plus",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "sdo"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "i2c_address",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "vdd"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "imu_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "vddio"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "imu_supply_io",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "csb"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "i2c_select",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "pull_scl",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "scl_pull_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "pull_scl",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "scl_pull_signal",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "scl"
+            },
+            {
+              "component": "scl",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "scl_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "scl",
+              "pin": "b"
+            },
+            {
+              "component": "imu",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "scl_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "pull_sda",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sda_pull_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "pull_sda",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sda_pull_signal",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "host",
+              "pin": "sda"
+            },
+            {
+              "component": "sda",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sda_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sda",
+              "pin": "b"
+            },
+            {
+              "component": "imu",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sda_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; Выбранный конденсатор",
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "cap",
+              "pin": "minus"
+            }
+          ],
+          "limit": {
+            "measurement": "Взять обратный предел из паспорта детали.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "cap/reverse",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить обратное напряжение и предел защиты экземпляра.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «vdd»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vddio"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить обратное напряжение и предел защиты экземпляра.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «vddio»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "p"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить обратное напряжение и предел защиты экземпляра.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «питание камеры»",
+          "test": "reverse_voltage"
+        }
+      ],
+      "operations": [
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "pack",
+              "pin": "g"
+            },
+            {
+              "component": "ground",
+              "pin": "a"
+            }
+          ],
+          "id": "ground_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "ground_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "ground",
+              "pin": "b"
+            },
+            {
+              "component": "ldo",
+              "pin": "g"
+            }
+          ],
+          "id": "ground_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "ground_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "ldo",
+              "pin": "g"
+            },
+            {
+              "component": "cap",
+              "pin": "minus"
+            }
+          ],
+          "id": "cap_ground",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "cap_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "camera_ground",
+              "pin": "a"
+            }
+          ],
+          "id": "camera_ground_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "camera_ground_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "camera_ground",
+              "pin": "b"
+            },
+            {
+              "component": "camera",
+              "pin": "g"
+            }
+          ],
+          "id": "camera_ground_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "cap_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "ldo",
+              "pin": "output"
+            },
+            {
+              "component": "cap",
+              "pin": "plus"
+            }
+          ],
+          "id": "cap_feed",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "camera_ground_finish",
+            "cap_feed"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "camera_power",
+              "pin": "a"
+            }
+          ],
+          "id": "camera_power_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "camera_power_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "camera_power",
+              "pin": "b"
+            },
+            {
+              "component": "camera",
+              "pin": "p"
+            }
+          ],
+          "id": "camera_power_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "ground_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "pack",
+              "pin": "p"
+            },
+            {
+              "component": "feed_raw",
+              "pin": "a"
+            }
+          ],
+          "id": "feed_raw_start",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "feed_raw_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feed_raw",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "id": "feed_raw_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "feed_raw_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "feed_protected",
+              "pin": "a"
+            }
+          ],
+          "id": "feed_protected_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "feed_protected_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feed_protected",
+              "pin": "b"
+            },
+            {
+              "component": "ldo",
+              "pin": "input"
+            }
+          ],
+          "id": "feed_protected_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "cap_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "host_ground",
+              "pin": "a"
+            }
+          ],
+          "id": "host_ground_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "host_ground_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "host_ground",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "g"
+            }
+          ],
+          "id": "host_ground_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "camera_ground_finish",
+            "host_ground_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "camera",
+              "pin": "bus"
+            },
+            {
+              "component": "camera_link",
+              "pin": "a"
+            }
+          ],
+          "id": "camera_link_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "camera_link_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "camera_link",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "camera_bus"
+            }
+          ],
+          "id": "camera_link_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "cap_feed",
+            "host_ground_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "host_power",
+              "pin": "a"
+            }
+          ],
+          "id": "host_power_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "host_power_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "host_power",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "p"
+            }
+          ],
+          "id": "host_power_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "cap_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "g"
+            }
+          ],
+          "id": "imu_ground",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "imu_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "g"
+            },
+            {
+              "component": "bypass_vdd",
+              "pin": "b"
+            }
+          ],
+          "id": "bypass_vdd_return",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "bypass_vdd_return"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vdd"
+            },
+            {
+              "component": "bypass_vdd",
+              "pin": "a"
+            }
+          ],
+          "id": "bypass_vdd_plus",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "cap_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "gndio"
+            }
+          ],
+          "id": "imu_ground_io",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "imu_ground_io"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "gndio"
+            },
+            {
+              "component": "bypass_vddio",
+              "pin": "b"
+            }
+          ],
+          "id": "bypass_vddio_return",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "bypass_vddio_return"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "imu",
+              "pin": "vddio"
+            },
+            {
+              "component": "bypass_vddio",
+              "pin": "a"
+            }
+          ],
+          "id": "bypass_vddio_plus",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "imu_ground_io"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "minus"
+            },
+            {
+              "component": "imu",
+              "pin": "sdo"
+            }
+          ],
+          "id": "i2c_address",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "cap_feed",
+            "imu_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "vdd"
+            }
+          ],
+          "id": "imu_supply",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "cap_feed",
+            "imu_ground_io"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "vddio"
+            }
+          ],
+          "id": "imu_supply_io",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "imu_supply_io"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "imu",
+              "pin": "csb"
+            }
+          ],
+          "id": "i2c_select",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "cap_feed"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "pull_scl",
+              "pin": "a"
+            }
+          ],
+          "id": "scl_pull_supply",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "scl_pull_supply"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "pull_scl",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "scl"
+            }
+          ],
+          "id": "scl_pull_signal",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "i2c_address",
+            "i2c_select",
+            "scl_pull_signal"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "host",
+              "pin": "scl"
+            },
+            {
+              "component": "scl",
+              "pin": "a"
+            }
+          ],
+          "id": "scl_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "scl_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "scl",
+              "pin": "b"
+            },
+            {
+              "component": "imu",
+              "pin": "scl"
+            }
+          ],
+          "id": "scl_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "cap_feed"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cap",
+              "pin": "plus"
+            },
+            {
+              "component": "pull_sda",
+              "pin": "a"
+            }
+          ],
+          "id": "sda_pull_supply",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "sda_pull_supply"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "pull_sda",
+              "pin": "b"
+            },
+            {
+              "component": "host",
+              "pin": "sda"
+            }
+          ],
+          "id": "sda_pull_signal",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "i2c_address",
+            "i2c_select",
+            "sda_pull_signal"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "host",
+              "pin": "sda"
+            },
+            {
+              "component": "sda",
+              "pin": "a"
+            }
+          ],
+          "id": "sda_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "sda_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sda",
+              "pin": "b"
+            },
+            {
+              "component": "imu",
+              "pin": "sda"
+            }
+          ],
+          "id": "sda_finish",
+          "kind": "Solder"
+        }
+      ],
+      "parts": [
+        {
+          "component": "bypass_vdd",
+          "kind": "Capacitor",
+          "missing_parameters": {},
+          "model_gap": "Уточнить артикул, допуск ёмкости с DC bias, ESR и допустимое напряжение.",
+          "part": "bmi270_bypass",
+          "pins": {
+            "a": "vdd",
+            "b": "g"
+          },
+          "source": "Bosch BMI270, BST-BMI270-DS000-07, §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+        },
+        {
+          "component": "bypass_vddio",
+          "kind": "Capacitor",
+          "missing_parameters": {},
+          "model_gap": "Уточнить артикул, допуск ёмкости с DC bias, ESR и допустимое напряжение.",
+          "part": "bmi270_bypass",
+          "pins": {
+            "a": "vdd",
+            "b": "g"
+          },
+          "source": "Bosch BMI270, BST-BMI270-DS000-07, §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+        },
+        {
+          "component": "camera",
+          "kind": "Other",
+          "missing_parameters": {},
+          "model_gap": "Установить модуль, напряжение, ток и распиновку. Контакт bus резервирует маркировку жгута; разводку шины выполнить по паспорту модуля.",
+          "part": "rgb_module_unspecified",
+          "pins": {
+            "bus": "video",
+            "g": "g",
+            "p": "vdd"
+          },
+          "source": "device.toml: reference-rgb задаёт модель камеры. Физический модуль не определён."
+        },
+        {
+          "component": "camera_ground",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "g",
+            "b": "g"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "camera_link",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "video",
+            "b": "video"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "camera_power",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "vdd",
+            "b": "vdd"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "cap",
+          "kind": "PolarCapacitor",
+          "missing_parameters": {
+            "elements/cap/farad": "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1.",
+            "ratings/reverse": "Взять обратный предел из паспорта детали."
+          },
+          "model_gap": "Установить номинал, ESR, напряжение и полярность фактической детали.",
+          "part": "imu_decoupling",
+          "pins": {
+            "minus": "g",
+            "plus": "vdd"
+          },
+          "source": "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf; смонтированная ёмкость неизвестна."
+        },
+        {
+          "component": "feed_protected",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "protected",
+            "b": "protected"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "feed_raw",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "raw",
+            "b": "raw"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "fuse",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/closed/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Определить номинал и кривую времени отключения держателя."
+          },
+          "model_gap": "Замерить холодное сопротивление. Выбрать артикул по напряжению, отключающей способности, кривой I²t и жгуту.",
+          "part": "fuse_series",
+          "pins": {
+            "input": "raw",
+            "output": "protected"
+          },
+          "source": "Littelfuse 0451/0453 NANO², кривые отключения https://www.littelfuse.com/assetdocs/451-series-time-curve-data?assetguid=e50cd9d4-cfe0-4341-ba60-73b19722a700; семейство кандидатов. Номинал и артикул экземпляра не установлены."
+        },
+        {
+          "component": "ground",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "g",
+            "b": "g"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "host",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/camera_input/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах."
+          },
+          "model_gap": "Установить плату BLE, допуски входов, питание, прошивку и интерфейс камеры. В опыте BLE остаётся пакетным.",
+          "part": "ble_host_unspecified",
+          "pins": {
+            "camera_bus": "video",
+            "g": "g",
+            "p": "vdd",
+            "scl": "scl",
+            "sda": "sda"
+          },
+          "source": "Пакетный BLE из control.toml. Плата и физический интерфейс камеры не определены."
+        },
+        {
+          "component": "host_ground",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "g",
+            "b": "g"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "host_power",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "vdd",
+            "b": "vdd"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "imu",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/csb/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/scl/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/sda/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/sdo/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/sensor/ohm": "Диагностический эквивалент R=3.3 В / 685 мкА. Просадка меняет ток в модели. Фактическая ВАХ BMI270 и его VDDIO требуют измерения."
+          },
+          "model_gap": "Снять раздельные токи VDD и VDDIO, входные уровни, переход питания и время первой достоверной выборки. Подключение I²C по §7.2.3.",
+          "part": "bmi270_i2c",
+          "pins": {
+            "csb": "vdd",
+            "g": "g",
+            "gndio": "g",
+            "scl": "scl",
+            "sda": "sda",
+            "sdo": "g",
+            "vdd": "vdd",
+            "vddio": "vdd"
+          },
+          "source": "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+        },
+        {
+          "component": "ldo",
+          "kind": "LinearRegulator",
+          "missing_parameters": {
+            "elements/emf/volt": "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1.",
+            "elements/input/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/series/ohm": "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1."
+          },
+          "model_gap": "Диагностический Тевенин не воспроизводит ток входа, dropout и пуск. Измерить на фактическом модуле.",
+          "part": "wearable_ldo_33",
+          "pins": {
+            "g": "g",
+            "input": "protected",
+            "output": "vdd"
+          },
+          "source": "TI TPS7A4533, §6.5 https://www.ti.com/lit/ds/symlink/tps7a45.pdf; кандидат. Входное напряжение и корпус модуля уточнить."
+        },
+        {
+          "component": "pack",
+          "kind": "Battery",
+          "missing_parameters": {
+            "elements/emf/volt": "LG INR21700-M50: sampled-drive.toml, модель Chen 2020, https://doi.org/10.1149/1945-7111/ab9050; ОCV одной ячейки как диагностическое условие."
+          },
+          "model_gap": "Определить химию, конфигурацию, выходную ВАХ и пороги защиты экземпляра.",
+          "part": "cell_pack_unspecified",
+          "pins": {
+            "g": "g",
+            "p": "raw"
+          },
+          "source": "Батарейный источник носимого узла. Конкретные ячейки и защита требуют идентификации."
+        },
+        {
+          "component": "pull_scl",
+          "kind": "Resistor",
+          "missing_parameters": {
+            "elements/pull/ohm": "Номинал 1 кОм из модели подтяжки Э3, диагностическая нагрузка."
+          },
+          "model_gap": "Подтвердить номинал по ёмкости шины, фронтам и допустимому току выводов.",
+          "part": "i2c_pullup",
+          "pins": {
+            "a": "vdd",
+            "b": "scl"
+          },
+          "source": "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf; подтяжки I²C. Номинал и ёмкость жгута требуют расчёта."
+        },
+        {
+          "component": "pull_sda",
+          "kind": "Resistor",
+          "missing_parameters": {
+            "elements/pull/ohm": "Номинал 1 кОм из модели подтяжки Э3, диагностическая нагрузка."
+          },
+          "model_gap": "Подтвердить номинал по ёмкости шины, фронтам и допустимому току выводов.",
+          "part": "i2c_pullup",
+          "pins": {
+            "a": "vdd",
+            "b": "sda"
+          },
+          "source": "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf; подтяжки I²C. Номинал и ёмкость жгута требуют расчёта."
+        },
+        {
+          "component": "scl",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "scl",
+            "b": "scl"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "sda",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "sda",
+            "b": "sda"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        }
+      ]
+    }
+  }
+}

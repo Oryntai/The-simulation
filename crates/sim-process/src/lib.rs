@@ -3,6 +3,7 @@
 
 pub mod attachments;
 pub mod contact;
+pub mod schematic;
 pub mod work;
 
 use sim_signal::{Rng, Time};

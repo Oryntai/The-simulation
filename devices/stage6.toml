@@ -6,7 +6,7 @@ scope = "Силовая рама, сравнение с эталоном и ко
 [assemblies.01.experiments.control]
 kind = "task"
 world = "01-elbow-assist/closed-world.toml"
-task = "01-elbow-assist/tasks/acceptance.toml"
+task = "01-elbow-assist/tasks/stage6.toml"
 
 [assemblies.01.experiments.process]
 kind = "task"

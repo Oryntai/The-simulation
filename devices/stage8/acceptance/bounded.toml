@@ -1,0 +1,27 @@
+version = 1
+world = "../../stage6/corpus/world.toml"
+catalog = "../../stage6/corpus/catalog.toml"
+seed = 7 # Номер серии, зафиксированный в приёмке A.
+
+[sampling]
+# План синтетического стенда окна: две фиксированные посадки жёсткой проставки.
+discrete = { source = { kind = "datasheet", reference = "Оснастка проверки окна имеет две установки: без проставки и с жёсткой проставкой 1 мкм." }, boundary_ids = ["смещение"] }
+axes = [{ id = "начальная координата", parameter = { kind = "joint_position", joint = "каретка/стержень" }, scope = "run", unit = "m", nominal = 0.0, values = [0.0, 0.000001], source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
+boundaries = [{ id = "смещение", values = { "начальная координата" = 0.000001 }, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
+
+[stations.stand]
+experiment = { kind = "scenario" }
+
+[stations.stand.modes.loaded]
+horizon_ns = 4000000
+source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }
+steps = [
+  { id = "load", target = { kind = "effort", name = "каретка/сила" }, at_ns = 0, value = 1.0, unit = "N", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } },
+  { id = "change", target = { kind = "effort", name = "каретка/сила" }, at_ns = 2000000, value = 1.0, unit = "N", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } },
+]
+criteria = [{ id = "направление", window = "whole", limit = { kind = "range", signal = { name = "qpos[0]", unit = "m" }, min = 0.0, source = { kind = "datasheet", reference = "Движение начинается в неотрицательной координате, скорости и силы направлены по оси." } } }]
+metrics = [{ id = "конечный ход", signal = { name = "qpos[0]", unit = "m" }, series = "truth", reference = { kind = "constant", value = 0.0, unit = "m" }, window = "whole", interpolation = "linear", operation = { kind = "absolute", at_ns = 4000000 }, worse = "higher", source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
+[stations.stand.modes.loaded.windows.whole]
+start_ns = 0
+end_ns = 4000000
+max_gap_ns = 1000000

@@ -213,6 +213,22 @@ impl Pico {
         }
     }
 
+    pub(super) fn passive_pin(&self, pin: u32) -> Option<crate::GpioMode> {
+        use crate::GpioMode::*;
+        let pad = *self.pads.get(pin as usize)?;
+        // RP2040, PADS_BANK0 GPIO: IE, PUE и PDE действуют отдельно от мультиплексора.
+        match pad & 0x0c {
+            8 => Some(PullUp),
+            4 => Some(PullDown),
+            0 => Some(if pad & 0x40 != 0 {
+                Input
+            } else {
+                HighImpedance
+            }),
+            _ => None, // Bus keep требует отдельной модели со своей памятью.
+        }
+    }
+
     pub fn pwm_period(&self, pin: u32) -> Option<f64> {
         self.pwm(pin)?;
         let p = &self.pwm[((pin / 2) % 8) as usize];

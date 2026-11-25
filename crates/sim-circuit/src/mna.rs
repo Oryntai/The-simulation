@@ -18,9 +18,10 @@
 
 use nalgebra::{DMatrix, DVector, Dyn, LU};
 
-use crate::circuit::{Circuit, Kind, Node};
+use crate::circuit::{Circuit, Kind, MosDev, Node};
 use crate::devices::{fetlim, junction_iv, limvds, mos_linearize, pnjlim, thermal_voltage};
 use crate::error::SimError;
+use crate::netlist::Waveform;
 
 /// Настройки решателя.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -116,6 +117,20 @@ pub(crate) struct ExtState {
     pub from: f64,
     /// Значение в конце шага (его задаёт хост).
     pub to: f64,
+    /// Значение в принятом решении MNA, независимо от новых команд хоста.
+    used: f64,
+}
+
+impl ExtState {
+    fn at(self, fraction: f64) -> f64 {
+        if fraction == 0.0 || self.from == self.to {
+            self.from
+        } else if fraction == 1.0 {
+            self.to
+        } else {
+            self.from * (1.0 - fraction) + self.to * fraction
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +141,7 @@ struct CacheKey {
     switches: Vec<bool>,
 }
 
+#[derive(Clone)]
 struct CacheEntry {
     key: CacheKey,
     base: DMatrix<f64>,
@@ -133,8 +149,6 @@ struct CacheEntry {
 }
 
 const CACHE_SIZE: usize = 16;
-/// Через сколько итераций Ньютона «замораживаются» состояния ключей (защита от дребезга).
-const SWITCH_FREEZE_ITER: usize = 25;
 
 /// Ошибка расчёта точки: вырожденность — структурная (дробление шага не поможет).
 #[derive(Debug)]
@@ -144,6 +158,7 @@ pub(crate) enum PointFail {
 }
 
 /// Движок: схема, её состояние и кэш матриц. Общий для `.op` и переходного процесса.
+#[derive(Clone)]
 pub(crate) struct Engine {
     pub ckt: Circuit,
     pub opts: SimOptions,
@@ -154,6 +169,7 @@ pub(crate) struct Engine {
     pub cap: Vec<CapState>,
     pub ind: Vec<IndState>,
     pub sw_on: Vec<bool>,
+    used_switches: Vec<bool>,
     pub junc: Vec<f64>,
     pub mos: Vec<MosState>,
     pub ext: Vec<ExtState>,
@@ -164,6 +180,18 @@ pub(crate) struct Engine {
     pub has_vc_switches: bool,
     /// Режим отдельного `.op`: источники берут DC-значения.
     pub standalone_dc: bool,
+}
+
+/// Изменяемая часть решения. Кэш LU не влияет на результат повторного шага.
+pub(crate) struct EngineState {
+    x: DVector<f64>,
+    cap: Vec<CapState>,
+    ind: Vec<IndState>,
+    sw_on: Vec<bool>,
+    used_switches: Vec<bool>,
+    junc: Vec<f64>,
+    mos: Vec<MosState>,
+    ext: Vec<ExtState>,
 }
 
 #[inline]
@@ -219,7 +247,16 @@ pub(crate) fn switch_decide(vc: f64, vt: f64, vh: f64, prev: bool) -> bool {
 }
 
 impl Engine {
-    pub fn new(ckt: &Circuit, opts: SimOptions) -> Engine {
+    pub fn new(ckt: &Circuit, opts: SimOptions) -> Result<Engine, SimError> {
+        validate_circuit(ckt)?;
+        if [opts.reltol, opts.vntol, opts.abstol, opts.gmin, opts.gshunt]
+            .iter()
+            .any(|&x| !x.is_finite() || x < 0.0)
+        {
+            return Err(SimError::Invalid(
+                "допуски и проводимости MNA должны быть конечными и неотрицательными".into(),
+            ));
+        }
         let nn = ckt.nodes.len() - 1;
         let n = nn + ckt.n_branches;
         let mut sw_on = vec![false; ckt.n_switches];
@@ -234,6 +271,7 @@ impl Engine {
                         ext[k] = ExtState {
                             from: *initial,
                             to: *initial,
+                            used: *initial,
                         };
                     }
                 }
@@ -245,7 +283,7 @@ impl Engine {
             .elems
             .iter()
             .any(|e| matches!(&e.kind, Kind::Switch(s) if s.ctrl.is_some()));
-        Engine {
+        Ok(Engine {
             ckt: ckt.clone(),
             opts,
             nn,
@@ -253,6 +291,7 @@ impl Engine {
             x: DVector::zeros(n),
             cap: vec![CapState::default(); ckt.n_caps],
             ind: vec![IndState::default(); ckt.n_inds],
+            used_switches: sw_on.clone(),
             sw_on,
             junc: vec![0.0; ckt.n_junctions],
             mos: vec![MosState::default(); ckt.n_mos],
@@ -262,6 +301,38 @@ impl Engine {
             linear,
             has_vc_switches,
             standalone_dc: false,
+        })
+    }
+
+    pub fn save_state(&self) -> EngineState {
+        EngineState {
+            x: self.x.clone(),
+            cap: self.cap.clone(),
+            ind: self.ind.clone(),
+            sw_on: self.sw_on.clone(),
+            used_switches: self.used_switches.clone(),
+            junc: self.junc.clone(),
+            mos: self.mos.clone(),
+            ext: self.ext.clone(),
+        }
+    }
+
+    pub fn restore_state(&mut self, state: EngineState) {
+        self.x = state.x;
+        self.cap = state.cap;
+        self.ind = state.ind;
+        self.sw_on = state.sw_on;
+        self.used_switches = state.used_switches;
+        self.junc = state.junc;
+        self.mos = state.mos;
+        self.ext = state.ext;
+    }
+
+    /// Входы, использованные в принятой точке, в том числе на левой стороне скачка.
+    pub fn record_inputs(&mut self, ext_frac: f64, switches: &[bool]) {
+        self.used_switches.copy_from_slice(switches);
+        for e in &mut self.ext {
+            e.used = e.at(ext_frac);
         }
     }
 
@@ -350,8 +421,7 @@ impl Engine {
     /// Значение независимого источника в контексте `ctx`.
     pub fn src_value(&self, src: &crate::circuit::SrcFn, ctx: &PointCtx) -> f64 {
         let v = if let Some(k) = src.ext {
-            let e = self.ext[k];
-            e.from + (e.to - e.from) * ctx.ext_frac
+            self.ext[k].at(ctx.ext_frac)
         } else if ctx.standalone_dc {
             src.op_value()
         } else {
@@ -640,9 +710,7 @@ impl Engine {
                     .filter(Self::solution_ok)
                     .ok_or(PointFail::Singular)?;
                 x = sol;
-                let sw_changed = !ctx.freeze_switches
-                    && iter < SWITCH_FREEZE_ITER
-                    && self.update_switches(&x, sw_trial);
+                let sw_changed = !ctx.freeze_switches && self.update_switches(&x, sw_trial);
                 if !sw_changed {
                     self.x = x;
                     return Ok(());
@@ -661,9 +729,7 @@ impl Engine {
             }
             let conv = !limited && iter > 0 && self.converged(&x, &sol);
             x = sol;
-            let sw_changed = !ctx.freeze_switches
-                && iter < SWITCH_FREEZE_ITER
-                && self.update_switches(&x, sw_trial);
+            let sw_changed = !ctx.freeze_switches && self.update_switches(&x, sw_trial);
             if conv && !sw_changed {
                 self.x = x;
                 return Ok(());
@@ -692,6 +758,7 @@ impl Engine {
         self.x.fill(0.0);
         match self.solve_point(&base, &mut trial) {
             Ok(()) => {
+                self.record_inputs(base.ext_frac, &trial);
                 self.sw_on = trial;
                 return Ok(());
             }
@@ -724,6 +791,7 @@ impl Engine {
                 ..base
             };
             if self.solve_point(&ctx, &mut trial).is_ok() {
+                self.record_inputs(ctx.ext_frac, &trial);
                 self.sw_on = trial;
                 return Ok(());
             }
@@ -768,6 +836,7 @@ impl Engine {
                 }
             }
         }
+        self.record_inputs(base.ext_frac, &trial);
         self.sw_on = trial;
         Ok(())
     }
@@ -798,26 +867,56 @@ impl Engine {
     // ───────────── Величины элементов ─────────────
 
     /// Ток через элемент, А: из первого узла через элемент во второй (для МОП — втекающий в сток).
-    pub fn element_current(&self, name: &str, ctx_t: f64) -> Result<f64, SimError> {
+    pub fn element_current(&self, name: &str, t: f64) -> Result<f64, SimError> {
         let e = self.ckt.find_elem(name)?;
+        let current = self.currents(&e.kind, t).0[0];
+        finite_reading(name, current)
+    }
+
+    pub fn terminal_currents(&self, name: &str, t: f64) -> Result<Vec<f64>, SimError> {
+        let e = self.ckt.find_elem(name)?;
+        let (currents, count) = self.currents(&e.kind, t);
+        currents[..count]
+            .iter()
+            .map(|&i| finite_reading(name, i))
+            .collect()
+    }
+
+    /// Токи в порядке выводов нетлиста, положительные в сторону элемента.
+    fn currents(&self, kind: &Kind, t: f64) -> ([f64; 4], usize) {
         let x = &self.x;
         let nn = self.nn;
-        Ok(match &e.kind {
+        let current = match kind {
             Kind::Res { a, b, g } => g * (self.v(x, *a) - self.v(x, *b)),
             Kind::Cap { k, .. } => self.cap[*k].i,
             Kind::Ind { br, .. } | Kind::Vsrc { br, .. } | Kind::Vcvs { br, .. } => x[nn + br],
-            Kind::Isrc { src, .. } => self.src_value(src, &self.value_ctx(ctx_t)),
+            Kind::Isrc { src, .. } => match src.ext {
+                Some(k) => self.ext[k].used,
+                None if self.standalone_dc => src.op_value(),
+                None => src.tran_value(t),
+            },
+            Kind::Diode(d) if d.a != d.ja => (1.0 / d.p.rs) * (self.v(x, d.a) - self.v(x, d.ja)),
             Kind::Diode(d) => {
                 let vj = self.v(x, d.ja) - self.v(x, d.k);
-                junction_iv(d.p.is, d.p.nvt(), vj).0 + self.opts.gmin * vj
+                self.junction_current(d.p.is, d.p.nvt(), self.junc[d.j], vj)
             }
             Kind::Switch(s) => {
-                let r = if self.sw_on[s.s] { s.ron } else { s.roff };
-                (self.v(x, s.a) - self.v(x, s.b)) / r
+                let r = if self.used_switches[s.s] {
+                    s.ron
+                } else {
+                    s.roff
+                };
+                (1.0 / r) * (self.v(x, s.a) - self.v(x, s.b))
             }
-            Kind::Mos(_) => self.mos_terminal_currents(e)[0],
+            Kind::Mos(mo) => return (self.mos_terminal_currents(mo), 4),
             Kind::Vccs { ca, cb, gm, .. } => gm * (self.v(x, *ca) - self.v(x, *cb)),
-        })
+        };
+        let count = match kind {
+            Kind::Vcvs { .. } | Kind::Vccs { .. } => 4,
+            Kind::Switch(s) if s.ctrl.is_some() => 4,
+            _ => 2,
+        };
+        ([current, -current, 0.0, 0.0], count)
     }
 
     /// Мгновенная поглощаемая мощность элемента, Вт (пассивное правило знаков: > 0 —
@@ -836,20 +935,24 @@ impl Engine {
             Kind::Diode(d) => (d.a, d.k),
             Kind::Switch(s) => (s.a, s.b),
             Kind::Mos(mo) => {
-                let [i_d, i_s, i_b] = self.mos_terminal_currents(e);
-                return Ok(self.v(x, mo.d) * i_d + self.v(x, mo.s) * i_s + self.v(x, mo.b) * i_b);
+                let [i_d, _, i_s, i_b] = self.mos_terminal_currents(mo);
+                return finite_reading(
+                    name,
+                    self.v(x, mo.d) * i_d + self.v(x, mo.s) * i_s + self.v(x, mo.b) * i_b,
+                );
             }
         };
-        let i = self.element_current(name, ctx_t)?;
-        // Ток источника тока течёт из n+ через источник в n-, то есть «вверх» по напряжению.
-        Ok((self.v(x, a) - self.v(x, b)) * i)
+        let i = self.currents(&e.kind, ctx_t).0[0];
+        finite_reading(name, (self.v(x, a) - self.v(x, b)) * i)
     }
 
-    /// Токи, втекающие в сток, исток и подложку МОП.
-    fn mos_terminal_currents(&self, e: &crate::circuit::Elem) -> [f64; 3] {
-        let Kind::Mos(mo) = &e.kind else {
-            return [0.0; 3];
-        };
+    /// Ток по тому же аффинному штампу, с которым была решена система.
+    fn junction_current(&self, is: f64, nvt: f64, linearized_at: f64, v: f64) -> f64 {
+        let (i, g) = junction_iv(is, nvt, linearized_at);
+        i + g * (v - linearized_at) + self.opts.gmin * v
+    }
+
+    fn mos_terminal_currents(&self, mo: &MosDev) -> [f64; 4] {
         let x = &self.x;
         let sg = mo.p.kind.sign();
         let vt = thermal_voltage();
@@ -859,29 +962,13 @@ impl Engine {
             self.v(x, mo.s),
             self.v(x, mo.b),
         );
-        let ids = mos_linearize(&mo.p, sg * (vg - vs), sg * (vd - vs)).ids;
-        let gmin = self.opts.gmin;
-        let vbd = sg * (vb - vd);
-        let vbs = sg * (vb - vs);
-        let ibd = junction_iv(mo.is, vt, vbd).0 + gmin * vbd;
-        let ibs = junction_iv(mo.is, vt, vbs).0 + gmin * vbs;
+        let st = self.mos[mo.m];
+        let lin = mos_linearize(&mo.p, st.vgs, st.vds);
+        let ids = lin.ids + lin.dg * (vg - vs - sg * st.vgs) + lin.dd * (vd - vs - sg * st.vds);
+        let ibd = self.junction_current(mo.is, vt, st.vbd, sg * (vb - vd));
+        let ibs = self.junction_current(mo.is, vt, st.vbs, sg * (vb - vs));
         // Ток перехода течёт от «анода» к «катоду»: для NMOS из подложки в сток/исток.
-        [ids - sg * ibd, -ids - sg * ibs, sg * (ibd + ibs)]
-    }
-
-    pub fn value_ctx(&self, t: f64) -> PointCtx {
-        PointCtx {
-            t,
-            method: Method::Trap,
-            h: 0.0,
-            src_scale: 1.0,
-            gmin_extra: 0.0,
-            ext_frac: 1.0,
-            standalone_dc: self.standalone_dc,
-            init_junctions: false,
-            freeze_switches: false,
-            max_iter: 0,
-        }
+        [ids - sg * ibd, 0.0, -ids - sg * ibs, sg * (ibd + ibs)]
     }
 
     pub fn node_voltage(&self, name: &str) -> Result<f64, SimError> {
@@ -921,6 +1008,83 @@ impl Engine {
     }
 }
 
+fn finite_reading(name: &str, value: f64) -> Result<f64, SimError> {
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(SimError::Invalid(format!(
+            "неконечная величина элемента «{name}»"
+        )))
+    }
+}
+
+pub(crate) fn validate_circuit(ckt: &Circuit) -> Result<(), SimError> {
+    for e in &ckt.elems {
+        let finite = match &e.kind {
+            Kind::Res { g, .. } => *g != 0.0 && g.is_finite(),
+            Kind::Cap { c, ic, .. } => *c > 0.0 && c.is_finite() && ic.is_none_or(f64::is_finite),
+            Kind::Ind { l, ic, .. } => *l > 0.0 && l.is_finite() && ic.is_none_or(f64::is_finite),
+            Kind::Vsrc { src, .. } | Kind::Isrc { src, .. } => {
+                src.dc.is_none_or(f64::is_finite) && src.wave.as_ref().is_none_or(finite_wave)
+            }
+            Kind::Diode(d) => [d.p.is, d.p.n, d.p.rs, d.vcrit]
+                .into_iter()
+                .all(f64::is_finite),
+            Kind::Switch(s) => [s.ron, s.roff, s.vt + s.vh, s.vt - s.vh]
+                .into_iter()
+                .all(f64::is_finite),
+            Kind::Mos(m) => {
+                m.p.beta > 0.0
+                    && [m.p.vto, m.p.beta, m.p.lambda, m.is, m.vcrit]
+                        .into_iter()
+                        .all(f64::is_finite)
+            }
+            Kind::Vcvs { gain, .. } => gain.is_finite(),
+            Kind::Vccs { gm, .. } => gm.is_finite(),
+        };
+        if !finite {
+            return Err(SimError::Invalid(format!(
+                "недопустимый параметр элемента «{}»",
+                e.name
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn finite_wave(wave: &Waveform) -> bool {
+    match *wave {
+        Waveform::Ext { initial } => initial.is_finite(),
+        Waveform::Pulse {
+            v1,
+            v2,
+            td,
+            tr,
+            tf,
+            pw,
+            per,
+        } => {
+            // +∞ в pw/per — внутреннее обозначение опущенных параметров PULSE.
+            [v1, v2, td, tr, tf].into_iter().all(f64::is_finite) && pw >= 0.0 && per > 0.0
+        }
+        Waveform::Sin {
+            vo,
+            va,
+            freq,
+            td,
+            theta,
+            phase_deg,
+        } => [vo, va, freq, td, theta, phase_deg]
+            .into_iter()
+            .all(f64::is_finite),
+        Waveform::Pwl(ref points) => {
+            !points.is_empty()
+                && points.iter().all(|(t, v)| t.is_finite() && v.is_finite())
+                && points.windows(2).all(|w| w[0].0 < w[1].0)
+        }
+    }
+}
+
 pub(crate) fn singular_error() -> SimError {
     SimError::Singular(
         "проверьте, что у каждого узла есть путь к земле и нет контуров только из источников \
@@ -945,6 +1109,11 @@ impl OperatingPoint {
         self.eng.element_current(element, 0.0)
     }
 
+    /// Токи из принятого MNA, в порядке выводов и со знаком входа в элемент.
+    pub fn terminal_currents(&self, element: &str) -> Result<Vec<f64>, SimError> {
+        self.eng.terminal_currents(element, 0.0)
+    }
+
     /// Поглощаемая мощность элемента, Вт.
     pub fn power(&self, element: &str) -> Result<f64, SimError> {
         self.eng.element_power(element, 0.0)
@@ -964,7 +1133,7 @@ pub fn operating_point(ckt: &Circuit) -> Result<OperatingPoint, SimError> {
 }
 
 pub fn operating_point_with(ckt: &Circuit, opts: SimOptions) -> Result<OperatingPoint, SimError> {
-    let mut eng = Engine::new(ckt, opts);
+    let mut eng = Engine::new(ckt, opts)?;
     eng.standalone_dc = true;
     eng.solve_dc(true, 0.0)?;
     Ok(OperatingPoint { eng })

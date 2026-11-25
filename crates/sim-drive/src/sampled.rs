@@ -3,10 +3,12 @@
 
 use serde::Deserialize;
 use sim_circuit::battery::{CellParams, Pack};
-use sim_em::motor::{DatasheetValues, GearParams, Motor, MotorParams, ThermalParams};
+use sim_em::motor::{DatasheetValues, GearParams, Motor, MotorParams, ThermalNet, ThermalParams};
 use sim_runtime::{Forces, Object, Runtime, Truth, TruthId, control::ModelPort};
-use sim_signal::{ChannelId, Command, Rng};
+use sim_signal::{ChannelId, Clock, Command, Rng, Time};
 use sim_world::{CompiledJointKind, CompiledWorld, Simplification};
+
+use crate::electric::{Bridge, bus_interval, winding};
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -15,7 +17,7 @@ pub struct Spec {
     bridge_effort: String,
     pub ambient_c: f64,
     pub fixture_enabled: bool,
-    supply: Supply,
+    supply: Option<Supply>,
     motor: Electrical,
     gear: Gear,
     thermal: Thermal,
@@ -147,21 +149,33 @@ impl Fixture {
 }
 
 impl Spec {
-    fn pack(&self) -> Pack {
-        let supply = &self.supply;
+    fn internal_supply(&self) -> Result<&Supply, String> {
+        self.supply
+            .as_ref()
+            .ok_or_else(|| "нет параметров внутреннего источника".into())
+    }
+
+    fn pack(&self) -> Result<Pack, String> {
+        let supply = self.internal_supply()?;
         let cell = match supply.cell {
             Cell::LgM50 => CellParams::lg_m50(),
         };
-        Pack::with_soc(cell, supply.series, supply.parallel, supply.soc)
+        Ok(Pack::with_soc(
+            cell,
+            supply.series,
+            supply.parallel,
+            supply.soc,
+        ))
     }
 
     /// Показание до первого электрического шага из начального состояния модели.
     pub fn initial_measurement(&self, measurement: Measurement) -> Result<f64, String> {
         self.params()?;
+        self.internal_supply()?;
         let value = match measurement {
             Measurement::WindingCurrent => 0.0, // Motor::new начинает с обесточенной обмотки.
             Measurement::HousingTemperature => self.ambient_c,
-            Measurement::SupplyVoltage => self.pack().terminal_voltage(),
+            Measurement::SupplyVoltage => self.pack()?.terminal_voltage(),
         };
         if !value.is_finite() {
             return Err("неконечное начальное показание привода".into());
@@ -169,8 +183,23 @@ impl Spec {
         Ok(value)
     }
 
+    /// Начальное показание с напряжением между клеммами из начального решения схемы.
+    pub fn initial_measurement_with_circuit(
+        &self,
+        measurement: Measurement,
+        bus_voltage_v: f64,
+    ) -> Result<f64, String> {
+        self.params()?;
+        let bus_voltage_v = circuit_voltage(Some(bus_voltage_v))?;
+        Ok(match measurement {
+            Measurement::WindingCurrent => 0.0, // Начальное состояние обмотки модели.
+            Measurement::HousingTemperature => self.ambient_c,
+            Measurement::SupplyVoltage => bus_voltage_v,
+        })
+    }
+
     fn params(&self) -> Result<MotorParams, String> {
-        let (e, g, t, s) = (&self.motor, &self.gear, &self.thermal, &self.supply);
+        let (e, g, t) = (&self.motor, &self.gear, &self.thermal);
         let positive = [
             e.nominal_v,
             e.r_ohm,
@@ -188,16 +217,8 @@ impl Spec {
             t.r_ha,
             t.tau_w,
             t.tau_h,
-            s.conversion_floor_v,
         ];
-        let nonnegative = [
-            e.coulomb,
-            e.viscous,
-            g.friction,
-            g.j,
-            s.electronics_a,
-            s.max_regen_a,
-        ];
+        let nonnegative = [e.coulomb, e.viscous, g.friction, g.j];
         if !positive.into_iter().all(|v| v.is_finite() && v > 0.0)
             || !nonnegative.into_iter().all(|v| v.is_finite() && v >= 0.0)
             || ![self.ambient_c, e.r_ref_c, t.max_c]
@@ -207,10 +228,17 @@ impl Spec {
                 .into_iter()
                 .all(|v| v > 0.0 && v <= 1.0)
             || !(0.0..=1.0).contains(&t.fraction)
-            || !(0.0..=1.0).contains(&s.soc)
-            || s.series == 0
-            || s.parallel == 0
-            || s.series.checked_mul(s.parallel).is_none()
+            || self.supply.as_ref().is_some_and(|s| {
+                !(0.0..=1.0).contains(&s.soc)
+                    || s.series == 0
+                    || s.parallel == 0
+                    || s.series.checked_mul(s.parallel).is_none()
+                    || ![s.electronics_a, s.max_regen_a]
+                        .into_iter()
+                        .all(|v| v.is_finite() && v >= 0.0)
+                    || !s.conversion_floor_v.is_finite()
+                    || s.conversion_floor_v <= 0.0
+            })
             || (self.fixture_enabled && self.fixture.is_none())
             || self.fixture.as_ref().is_some_and(|f| !f.valid())
             || self.source.trim().is_empty()
@@ -265,14 +293,54 @@ impl Spec {
 #[derive(Clone)]
 struct Plant {
     spec: Spec,
-    motor: Motor,
-    pack: Pack,
+    supply: PlantSupply,
     joint: String,
     command: ChannelId,
     power: ChannelId,
     ids: [TruthId; 12],
     integral: f64,
     previous: Option<u64>,
+}
+
+#[derive(Clone)]
+enum PlantSupply {
+    Internal { motor: Motor, pack: Pack },
+    Circuit(CircuitMotor),
+}
+
+#[derive(Clone)]
+struct CircuitMotor {
+    params: MotorParams,
+    voltage: ChannelId,
+    ids: [TruthId; 7],
+    clock: Clock,
+    current: f64,
+    temperature: (f64, f64),
+    charge: f64,
+    energy: f64,
+    last_power: Option<f64>,
+    copper: f64,
+    conversion: f64,
+}
+
+#[derive(Clone, Copy)]
+struct Sample {
+    current: f64,
+    voltage: f64,
+    bus: f64,
+    bus_next: f64,
+    temperature: (f64, f64),
+    torque: f64,
+    mean_torque: f64,
+    enabled: bool,
+}
+
+fn circuit_voltage(input: Option<f64>) -> Result<f64, String> {
+    let value = input.ok_or("к такту дискретного привода не поступило напряжение из схемы")?;
+    if !value.is_finite() || value < 0.0 {
+        return Err("некорректное напряжение шины дискретного привода".into());
+    }
+    Ok(value)
 }
 
 fn mean_output_torque(
@@ -303,6 +371,208 @@ fn mean_output_torque(
         }
     }
     params.gear_output_torque(total, speed) / h
+}
+
+struct Step {
+    at: Time,
+    dt: f64,
+    speed: f64,
+    duty: f64,
+    enabled: bool,
+    thermal: (f64, f64),
+}
+
+impl CircuitMotor {
+    fn step(&mut self, bus: f64, step: Step, out: &mut Forces) -> Result<Sample, String> {
+        let Step {
+            at,
+            dt,
+            speed,
+            duty,
+            enabled,
+            thermal: (r_ha, ambient),
+        } = step;
+        let seconds = bus_interval(&mut self.clock, at)?;
+        let p = &self.params;
+        let r = p.resistance_at(self.temperature.0);
+        let l = p.inductance_h;
+        let k = p.torque_constant_nm_per_a;
+        let wm = p.gear.ratio * speed;
+        let emf = k * wm;
+        let enabled = enabled && bus > 0.0;
+        let bridge = if enabled {
+            Bridge::UnregulatedDuty(duty)
+        } else {
+            Bridge::Coast
+        };
+        let response = winding(
+            crate::config::Electrical {
+                supply: bus,
+                resistance: r,
+                inductance: l,
+                k,
+                limit: p.max_current_a,
+            },
+            r,
+            self.current,
+            emf,
+            bridge,
+            0,
+            dt,
+        )?;
+        let torque = p.gear_output_torque(k * response.current - p.friction_torque_motor(wm), wm);
+        let mean = |start, voltage, duration| {
+            mean_output_torque(p, wm, start, (voltage - emf) / r, duration, l / r)
+        };
+        let mean_torque = response.commutation.map_or_else(
+            || mean(self.current, response.voltage, dt),
+            |(split, first, second)| {
+                (split * mean(self.current, first, split)
+                    + (dt - split) * mean(0.0, second, dt - split))
+                    / dt
+            },
+        );
+        // Конденсаторы тепловой сети получены из C = τ/R, как в sim-em.
+        let t = &p.thermal;
+        let net = ThermalNet {
+            r_wh: t.r_winding_housing_k_per_w,
+            r_ha,
+            c_w: t.tau_winding_s / t.r_winding_housing_k_per_w,
+            c_h: t.tau_housing_s / t.r_housing_ambient_k_per_w,
+        };
+        let taus = [net.r_wh * net.c_w, net.r_wh * net.c_h, net.r_ha * net.c_h];
+        // Как для мокрой границы: разрешаем не более одной постоянной
+        // времени за такт. Тем самым внутренний RK4 укладывается в 20 подшагов.
+        if ![net.c_w, net.c_h]
+            .into_iter()
+            .all(|c| c.is_finite() && c > 0.0)
+            || !taus.into_iter().all(|tau| tau.is_finite() && dt <= tau)
+        {
+            return Err(
+                "тепловая сеть дискретной нагрузки требует меньшего шага или корректных параметров"
+                    .into(),
+            );
+        }
+        let friction_w = p.motor_friction_nm(wm) * wm;
+        let fraction = t.no_load_loss_to_winding;
+        let temperature = net.integrate(self.temperature, dt, ambient, |_| {
+            (
+                response.copper_j / dt + fraction * friction_w,
+                (1.0 - fraction) * friction_w,
+            )
+        });
+        let magnetic = 0.5 * l * self.current * self.current;
+        let bus_current = response.bus_charge_c / seconds;
+        for (id, value) in self.ids.into_iter().zip([
+            bus_current,
+            self.charge,
+            self.energy,
+            self.copper,
+            magnetic,
+            self.energy - self.copper - self.conversion - magnetic,
+        ]) {
+            out.publish(id, value);
+        }
+        if let Some(power) = self.last_power {
+            out.publish(self.ids[6], power);
+        }
+        let power = response.electrical_j / seconds;
+        self.last_power = Some(power);
+        self.current = response.current;
+        self.temperature = temperature;
+        self.charge += response.bus_charge_c;
+        self.energy += response.electrical_j;
+        self.copper += response.copper_j;
+        self.conversion += dt * (emf * response.mean);
+        if ![
+            power,
+            self.charge,
+            self.energy,
+            self.copper,
+            self.conversion,
+            temperature.0,
+            temperature.1,
+            torque,
+            mean_torque,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+        {
+            return Err("состояние или баланс дискретного привода вне численного диапазона".into());
+        }
+        Ok(Sample {
+            current: self.current,
+            voltage: response.voltage,
+            bus,
+            bus_next: bus,
+            temperature,
+            torque,
+            mean_torque,
+            enabled,
+        })
+    }
+}
+
+fn internal_step(
+    motor: &mut Motor,
+    pack: &mut Pack,
+    spec: &Spec,
+    step: Step,
+) -> Result<Sample, String> {
+    let Step {
+        dt: h,
+        speed: v,
+        duty,
+        enabled,
+        thermal: (thermal_resistance, thermal_ambient),
+        ..
+    } = step;
+    let bus_v = pack.terminal_voltage();
+    if !bus_v.is_finite() || bus_v <= 0.0 {
+        return Err("напряжение шины дискретного привода вне рабочего диапазона".into());
+    }
+    let i0 = motor.current();
+    let p = &motor.params;
+    let r = motor.winding_resistance_ohm();
+    let tau = p.inductance_h / r;
+    let old_emf = motor.back_emf_v();
+    let a = (-h / tau).exp();
+    let voltage = if enabled {
+        duty * bus_v
+    } else {
+        // Прежняя квадратура гашения с противо-ЭДС предыдущего такта.
+        let zero = old_emf + r * (-i0 * a / (1.0 - a));
+        if zero.abs() <= bus_v {
+            zero
+        } else {
+            -i0.signum() * bus_v
+        }
+    };
+    let wm = p.gear.ratio * v;
+    let steady = (voltage - p.torque_constant_nm_per_a * wm) / r;
+    let mean_torque = mean_output_torque(p, wm, i0, steady, h, tau);
+    motor.step_electrical(voltage, v, h);
+    let torque = motor.joint_torque();
+    motor.set_housing_to_ambient_k_per_w(thermal_resistance);
+    motor.step_thermal(h, thermal_ambient);
+    let end_i = motor.current();
+    let supply = spec.internal_supply()?;
+    let battery_i = if bus_v > supply.conversion_floor_v {
+        (voltage * end_i).max(-supply.max_regen_a * bus_v) / bus_v + supply.electronics_a
+    } else {
+        supply.electronics_a
+    };
+    pack.step(battery_i, h, spec.ambient_c);
+    Ok(Sample {
+        current: end_i,
+        voltage,
+        bus: bus_v,
+        bus_next: pack.terminal_voltage(),
+        temperature: (motor.winding_temp_c(), motor.housing_temp_c()),
+        torque,
+        mean_torque,
+        enabled,
+    })
 }
 
 impl Object for Plant {
@@ -337,33 +607,20 @@ impl Object for Plant {
             None | Some(0.0) => false,
             _ => return Err("разрешение моста должно равняться 0 или 1".into()),
         };
-        let bus_v = self.pack.terminal_voltage();
-        if !bus_v.is_finite() || bus_v <= 0.0 {
-            return Err("напряжение шины дискретного привода вне рабочего диапазона".into());
-        }
-        let i0 = self.motor.current();
-        let p = &self.motor.params;
-        let r = self.motor.winding_resistance_ohm();
-        let tau = p.inductance_h / r;
-        let old_emf = self.motor.back_emf_v();
-        let a = (-h / tau).exp();
-        let voltage = if enabled {
-            duty * bus_v
-        } else {
-            // Диодный выбег. Величина подобрана на конечное значение тока 0
-            // при сохранении противо-ЭДС предыдущего такта регулятора моста.
-            let zero = old_emf + r * (-i0 * a / (1.0 - a));
-            if zero.abs() <= bus_v {
-                zero
-            } else {
-                -i0.signum() * bus_v
+        let step = Step {
+            at: truth.time(),
+            dt: h,
+            speed: v,
+            duty,
+            enabled,
+            thermal: (thermal_resistance, thermal_ambient),
+        };
+        let sample = match &mut self.supply {
+            PlantSupply::Internal { motor, pack } => internal_step(motor, pack, &self.spec, step)?,
+            PlantSupply::Circuit(motor) => {
+                motor.step(circuit_voltage(input(motor.voltage))?, step, out)?
             }
         };
-        let wm = p.gear.ratio * v;
-        let steady = (voltage - p.torque_constant_nm_per_a * wm) / r;
-        let mean_torque = mean_output_torque(p, wm, i0, steady, h, tau);
-        self.motor.step_electrical(voltage, v, h);
-        let torque = self.motor.joint_torque();
         let (load, stop, damping) = self
             .spec
             .fixture
@@ -376,35 +633,24 @@ impl Object for Plant {
                     self.spec.fixture_enabled.then_some(&mut self.integral),
                 )
             });
-        out.set(self.command, torque + load + stop - damping);
-        self.motor
-            .set_housing_to_ambient_k_per_w(thermal_resistance);
-        self.motor.step_thermal(h, thermal_ambient);
-        let end_i = self.motor.current();
-        let supply = &self.spec.supply;
-        let battery_i = if bus_v > supply.conversion_floor_v {
-            (voltage * end_i).max(-supply.max_regen_a * bus_v) / bus_v + supply.electronics_a
-        } else {
-            supply.electronics_a
-        };
-        self.pack.step(battery_i, h, self.spec.ambient_c);
+        out.set(self.command, sample.torque + load + stop - damping);
         for (id, value) in self.ids.into_iter().zip([
             duty,
-            end_i,
-            voltage,
-            bus_v,
-            self.pack.terminal_voltage(),
-            self.motor.winding_temp_c(),
-            self.motor.housing_temp_c(),
-            torque,
-            mean_torque,
-            f64::from(enabled),
+            sample.current,
+            sample.voltage,
+            sample.bus,
+            sample.bus_next,
+            sample.temperature.0,
+            sample.temperature.1,
+            sample.torque,
+            sample.mean_torque,
+            f64::from(sample.enabled),
             stop,
             load,
         ]) {
             out.publish(id, value);
         }
-        if enabled
+        if sample.enabled
             && let Some(sequence) = truth.command_sequence(self.command)
             && self.previous.replace(sequence) != Some(sequence)
         {
@@ -469,6 +715,29 @@ pub fn install(
     drive_name: &str,
     spec: Spec,
 ) -> Result<[ModelPort; 2], String> {
+    install_plant(runtime, world, drive_name, spec, false).map(|(ports, _)| ports)
+}
+
+/// Установить дискретный привод с шиной из схемы. Возвращает порты управления
+/// и пару (вход напряжения, средний ток для следующего интервала физики).
+/// Внутренняя батарея не создаётся. Потребление другой электроники задаётся в схеме.
+pub fn install_with_circuit(
+    runtime: &mut Runtime,
+    world: &CompiledWorld,
+    drive_name: &str,
+    spec: Spec,
+) -> Result<([ModelPort; 2], (ChannelId, TruthId)), String> {
+    let (ports, bus) = install_plant(runtime, world, drive_name, spec, true)?;
+    Ok((ports, bus.expect("порт шины зарегистрирован")))
+}
+
+fn install_plant(
+    runtime: &mut Runtime,
+    world: &CompiledWorld,
+    drive_name: &str,
+    spec: Spec,
+    circuit: bool,
+) -> Result<([ModelPort; 2], Option<(ChannelId, TruthId)>), String> {
     let drive = world
         .drives
         .iter()
@@ -492,8 +761,6 @@ pub fn install(
     {
         return Err("armature не соответствует приведённой инерции мотора и передачи".into());
     }
-    let pack = spec.pack();
-    let motor = Motor::new(params).with_temperatures(spec.ambient_c, spec.ambient_c);
     let command = runtime.channel(&drive.effort).ok_or("нет канала привода")?;
     let power_name = format!("{}/{}", drive.owner, spec.bridge_effort);
     if !world
@@ -505,6 +772,22 @@ pub fn install(
         return Err("вход моста должен относиться к той же оси".into());
     }
     let power = runtime.channel(&power_name).ok_or("нет входа моста")?;
+    let voltage = if circuit {
+        let name = format!("{}-bus-v", drive.effort);
+        if name == power_name
+            || !world
+                .efforts
+                .iter()
+                .any(|effort| effort.name == name && effort.joint == drive.joint && effort.dof == 0)
+        {
+            return Err(format!(
+                "для схемы нужен отдельный вход «{name}» на оси привода"
+            ));
+        }
+        Some(runtime.channel(&name).ok_or("нет входа напряжения схемы")?)
+    } else {
+        None
+    };
     let before = runtime.try_snapshot()?;
     let result = (|| {
         let ids: [TruthId; 12] = [
@@ -531,14 +814,55 @@ pub fn install(
             text: format!("{} Механика использует момент по конечному току вместо интеграла импульса. Модель питания и упоров требует стендовой сверки.", spec.source),
             blocks_proof: true,
         })?;
+        let mut port = None;
+        let supply = if let Some(voltage) = voltage {
+            let bus_ids: [TruthId; 7] = [
+                ("next_bus_current_a", "A"),
+                ("bus_charge_c", "C"),
+                ("bus_energy_j", "J"),
+                ("copper_loss_j", "J"),
+                ("stored_energy_j", "J"),
+                ("motor_energy_residual_j", "J"),
+                ("bus_power_w", "W"),
+            ]
+            .map(|(name, unit)| runtime.register_truth(&format!("{drive_name}/{name}"), unit))
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .expect("фиксированный список");
+            port = Some((voltage, bus_ids[0]));
+            runtime.add_simplification(Simplification {
+                subject: drive_name.into(),
+                text: "дискретный мост имеет идеальные обратные диоды и использует скорость в начале такта. Обмен со схемой идёт удержанными значениями. Порог отключения и коммутационные выбросы реального моста требуют стенда".into(),
+                blocks_proof: true,
+            })?;
+            PlantSupply::Circuit(CircuitMotor {
+                params,
+                voltage,
+                ids: bus_ids,
+                clock: Clock::new(world.physics),
+                current: 0.0,
+                temperature: (spec.ambient_c, spec.ambient_c),
+                charge: 0.0,
+                energy: 0.0,
+                last_power: None,
+                copper: 0.0,
+                conversion: 0.0,
+            })
+        } else {
+            PlantSupply::Internal {
+                pack: spec.pack()?,
+                motor: Motor::new(params).with_temperatures(spec.ambient_c, spec.ambient_c),
+            }
+        };
+        let claimed: Vec<_> = [command, power].into_iter().chain(voltage).collect();
         runtime.register_object(
             &format!("{drive_name}/дискретная модель"),
             world.physics,
-            &[command, power],
+            &claimed,
             Plant {
                 spec,
-                motor,
-                pack,
+                supply,
                 joint: drive.joint.clone(),
                 command,
                 power,
@@ -547,16 +871,19 @@ pub fn install(
                 previous: None,
             },
         )?;
-        Ok([
-            ModelPort::Drive {
-                channel: command,
-                accepted: ids[0],
-            },
-            ModelPort::DrivePower {
-                channel: power,
-                drive: command,
-            },
-        ])
+        Ok((
+            [
+                ModelPort::Drive {
+                    channel: command,
+                    accepted: ids[0],
+                },
+                ModelPort::DrivePower {
+                    channel: power,
+                    drive: command,
+                },
+            ],
+            port,
+        ))
     })();
     if result.is_err() {
         runtime.restore(&before)?;

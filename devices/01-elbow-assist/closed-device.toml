@@ -1,5 +1,6 @@
 # Предплечье с кистью на оси, груз в кисти. Положительный угол поднимает звено.
 format = 3
+schematic = "electrical-scheme.toml"
 name = "Экзоскелет локтя"
 
 [[links]]
@@ -16,7 +17,7 @@ damping = 0.0
 friction_loss = 0.0
 # Ротор через редуктор: maxon EC 90 flat + Harmonic Drive 50:1, J·N².
 armature = 1.36825
-efforts = [{ name = "момент", dof = 0 }, { name = "момент-bridge", dof = 0 }, { name = "проверочное_усилие", dof = 0 }]
+efforts = [{ name = "момент", dof = 0 }, { name = "момент-bus-v", dof = 0 }, { name = "момент-bridge", dof = 0 }, { name = "проверочное_усилие", dof = 0 }]
 
 [links.mass]
 kind = "explicit"

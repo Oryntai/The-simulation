@@ -292,6 +292,9 @@ pub(in crate::tasks) fn inventory(
             components.insert((ComponentKind::Program, path.producer.clone()));
             components.insert((ComponentKind::Output, path.target.clone()));
             for target in &path.fault_targets {
+                if target.mechanisms.contains(&sim_runtime::control::FaultMechanism::PowerOff) {
+                    components.insert((ComponentKind::Protection, target.name.clone()));
+                }
                 let Ok(node) = super::super::node_kind(&target.name, path) else {
                     continue;
                 };

@@ -1,0 +1,13 @@
+format = 1
+scope = "reference"
+name = "Блок: потери канала ключа"
+nets = ["d", "g", "gate", "p"]
+
+[components.block]
+part = "gate_logic"
+nets = { gate = "gate", g = "g", drain = "d", p = "p" }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["block/gate", "block/g"] }, { kind = "voltage", ends = ["block/drain", "block/g"] }, { kind = "voltage", ends = ["block/p", "block/drain"] }, { kind = "current", branch = { kind = "element", component = "block", element = "channel" } }]

@@ -290,11 +290,21 @@ fn rig(b: &ExoBuild) -> Result<ExoLoop, String> {
 }
 
 fn check_structure(b: &ExoBuild) -> Finding {
+    if ![b.strut_b_mm, b.strut_h_mm, b.payload_kg].into_iter().all(f64::is_finite) {
+        return Finding::failed(H_STRUCT, "неконечный размер сечения или масса нагрузки");
+    }
     let mut s = BeamStrut::default();
     s.set_param("b", b.strut_b_mm);
     s.set_param("h", b.strut_h_mm);
     s.set_param("load", b.payload_kg);
-    Finding::at_least(H_STRUCT, s.static_safety(), SAFETY_FACTOR.0, "×", "запас по текучести σт/σ, весь груз на штанге")
+    let mut finding = Finding::at_least(H_STRUCT, s.static_safety(), SAFETY_FACTOR.0, "×",
+        "запас по текучести σт/σ, весь груз на штанге");
+    if finding.outcome == Outcome::Pass {
+        finding.outcome = Outcome::NotAnalyzed;
+        finding.detail.push_str(". ");
+        finding.detail.push_str(sim_world::STRENGTH_REQUIRES_BENCH);
+    }
+    finding
 }
 
 fn check_board(b: &ExoBuild) -> Vec<Finding> {

@@ -1,5 +1,27 @@
 use crate::config::{Electrical, Thermal};
 use crate::input::BridgeCommand;
+use sim_signal::{Clock, Time};
+
+/// Длительность удержания заряда в цепи задаётся целыми наносекундами.
+pub(crate) fn bus_interval(clock: &mut Clock, at: Time) -> Result<f64, String> {
+    const NS_PER_SECOND: u64 = 1_000_000_000;
+    let index = clock
+        .index()
+        .checked_add(1)
+        .ok_or("исчерпана сетка нагрузки")?;
+    let rate = clock.rate();
+    let estimate = index as f64 / rate.as_hz() * NS_PER_SECOND as f64;
+    // Те же границы переполнения u128/u64 и округления, что в sim-runtime::time_at.
+    if index > u64::MAX / NS_PER_SECOND || estimate >= u64::MAX as f64 * (1.0 - 4.0 * f64::EPSILON)
+    {
+        return Err("исчерпана сетка нагрузки схемы".into());
+    }
+    if clock.due() != at {
+        return Err("пропущен такт нагрузки схемы".into());
+    }
+    clock.advance();
+    Ok(Time(clock.due().0 - at.0).as_secs())
+}
 
 /// Цель моста. Ток каждой фазы задаётся отдельно, у коллекторного двигателя фаза одна.
 #[derive(Clone, Copy)]
@@ -8,6 +30,8 @@ pub(crate) enum Bridge {
     Coast,
     Short,
     Duty(f64),
+    /// Дискретный мост без токового регулятора. Предел остаётся диагностическим.
+    UnregulatedDuty(f64),
     Current([f64; 2]),
     /// Напряжение проводящих диодов, без активного ограничения тока.
     Diode(f64),
@@ -18,7 +42,7 @@ impl Bridge {
         match self {
             Self::Open | Self::Coast | Self::Diode(_) => BridgeCommand::Coast,
             Self::Short => BridgeCommand::Short,
-            Self::Duty(_) | Self::Current(_) => BridgeCommand::Drive,
+            Self::Duty(_) | Self::UnregulatedDuty(_) | Self::Current(_) => BridgeCommand::Drive,
         }
     }
 }
@@ -28,9 +52,12 @@ pub(crate) struct Winding {
     pub current: f64,
     pub voltage: f64,
     pub mean: f64,
+    pub bus_charge_c: f64,
     pub electrical_j: f64,
     pub copper_j: f64,
     pub limit_exceeded: bool,
+    /// Момент перехода через ноль и напряжения до/после него.
+    pub commutation: Option<(f64, f64, f64)>,
 }
 
 pub(crate) fn winding(
@@ -42,6 +69,15 @@ pub(crate) fn winding(
     phase: usize,
     dt: f64,
 ) -> Result<Winding, String> {
+    if ![p.supply, resistance, initial, emf, dt]
+        .into_iter()
+        .all(f64::is_finite)
+        || p.supply < 0.0
+        || resistance <= 0.0
+        || dt < 0.0
+    {
+        return Err("некорректный вход расчёта обмотки".into());
+    }
     if matches!(bridge, Bridge::Open) {
         // Разомкнутый мост: энергия остаточного поля рассеивается в цепи гашения.
         return Ok(Winding::default());
@@ -63,7 +99,7 @@ pub(crate) fn winding(
     let hold = initial.mul_add(resistance, emf);
     let inverse = |target: f64| (target - initial).mul_add(1.0 / gain, hold);
     let mut voltage = match bridge {
-        Bridge::Duty(duty) => duty * p.supply,
+        Bridge::Duty(duty) | Bridge::UnregulatedDuty(duty) => duty * p.supply,
         Bridge::Current(target) => inverse(target[phase].clamp(-p.limit, p.limit)),
         Bridge::Short => 0.0,
         Bridge::Diode(rail) => rail,
@@ -71,7 +107,11 @@ pub(crate) fn winding(
     }
     .clamp(-p.supply, p.supply);
     let prediction = (voltage - hold).mul_add(gain, initial);
-    if !matches!(bridge, Bridge::Short | Bridge::Diode(_)) && prediction.abs() > p.limit {
+    if !matches!(
+        bridge,
+        Bridge::Short | Bridge::Diode(_) | Bridge::UnregulatedDuty(_)
+    ) && prediction.abs() > p.limit
+    {
         // Если ЭДС вышла за возможности моста, ограничить ток таким напряжением
         // невозможно. Ток продолжает эволюцию по R–L, публикуется признак выхода.
         voltage = inverse(prediction.clamp(-p.limit, p.limit)).clamp(-p.supply, p.supply);
@@ -110,9 +150,22 @@ pub(crate) fn winding(
             mean * mean + amplitude * amplitude * (gamma - beta * beta),
         )
     };
+    // Для идеального моста i_ш = m·i_обм. Диоды соединяют обмотку с
+    // шиной с коэффициентом ±1 даже при нуле вольт. В ветви регулятора
+    // ниже делится только ограниченное напряжение команды на напряжение
+    // шины, чтобы найти безразмерную скважность, а не мощность на вольты.
+    let transfer = match bridge {
+        Bridge::Diode(rail) => rail.signum(),
+        Bridge::Duty(duty) | Bridge::UnregulatedDuty(duty) if voltage == duty * p.supply => duty,
+        Bridge::Short => 0.0,
+        _ if p.supply == 0.0 => 0.0,
+        _ if voltage.abs() == p.supply => voltage.signum(),
+        _ => voltage / p.supply,
+    };
+    let bus_charge_c = dt * (transfer * mean);
     let electrical_j = dt * voltage * mean;
     let copper_j = dt * resistance * square;
-    if ![current, mean, electrical_j, copper_j]
+    if ![current, mean, bus_charge_c, electrical_j, copper_j]
         .into_iter()
         .all(f64::is_finite)
         || copper_j < 0.0
@@ -125,18 +178,17 @@ pub(crate) fn winding(
         current,
         voltage,
         mean,
+        bus_charge_c,
         electrical_j,
         copper_j,
         limit_exceeded: initial.abs().max(current.abs()) - p.limit > tolerance,
+        commutation: None,
     })
 }
 
 /// Идеальные обратные диоды моста. При ненулевом токе проводит противоположная
 /// шина. В нуле обмотка разомкнута, пока модуль ЭДС не превысит напряжение шины.
 fn coast(p: Electrical, r: f64, initial: f64, emf: f64, dt: f64) -> Result<Winding, String> {
-    if !emf.is_finite() {
-        return Err("противо-ЭДС вне численного диапазона".into());
-    }
     let from_zero = |dt| {
         if emf.abs() > p.supply {
             winding(p, r, 0.0, emf, Bridge::Diode(p.supply.copysign(emf)), 0, dt)
@@ -179,9 +231,11 @@ fn coast(p: Electrical, r: f64, initial: f64, emf: f64, dt: f64) -> Result<Windi
         current: second.current,
         voltage: first.voltage * weight + second.voltage * (after / dt),
         mean: first.mean * weight + second.mean * (after / dt),
+        bus_charge_c: first.bus_charge_c + second.bus_charge_c,
         electrical_j: first.electrical_j + second.electrical_j,
         copper_j: first.copper_j + second.copper_j,
         limit_exceeded: first.limit_exceeded || second.limit_exceeded,
+        commutation: Some((to_zero, first.voltage, second.voltage)),
     })
 }
 
@@ -211,5 +265,44 @@ impl Thermal {
         } else {
             Err("температуры двухузловой модели вне численного диапазона".into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn заряд_моста_учитывает_ограничение_тока_и_знаки_фаз() {
+        // Синтетическая обмотка: R=2 Ом, L=2 мГн, Vш=8 В, предел 1 А.
+        // На шаге τ ln 2 ток меняется на половину разности с установившимся.
+        let p = Electrical {
+            supply: 8.0,
+            resistance: 2.0,
+            inductance: 0.002,
+            k: 1.0,
+            limit: 1.0,
+        };
+        let tau = p.inductance / p.resistance;
+        let dt = tau * std::f64::consts::LN_2;
+        let limited = winding(p, p.resistance, 0.0, 0.0, Bridge::Duty(0.75), 0, dt).unwrap();
+        // U=4 В выводит ток на 1 А ровно к границе. Интеграл тока в
+        // обмотке = (U/R)(dt−τ/2). Ток второй фазы течёт обратно,
+        // но её отрицательная скважность также даёт потребление шины.
+        let expected = 0.5 * 2.0 * (dt - tau / 2.0);
+        let bridge = Bridge::Current([1.0, -0.5]);
+        let a = winding(p, p.resistance, 0.0, 0.0, bridge, 0, dt).unwrap();
+        let b = winding(p, p.resistance, 0.0, 0.0, bridge, 1, dt).unwrap();
+        let shorted = winding(p, p.resistance, 0.0, 1.0, Bridge::Short, 0, dt).unwrap();
+        for result in [limited, a] {
+            assert_eq!(result.current, 1.0);
+            assert_eq!(result.voltage, 4.0);
+            // Допуск на округление логарифма и экспоненциального момента.
+            assert!((result.bus_charge_c - expected).abs() < 1e-17);
+        }
+        assert_eq!(b.current, -0.5);
+        assert!((a.bus_charge_c + b.bus_charge_c - 1.25 * expected).abs() < 1e-17);
+        assert_eq!(shorted.bus_charge_c, 0.0);
+        assert!(shorted.copper_j > 0.0);
     }
 }

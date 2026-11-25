@@ -25,7 +25,7 @@ applicability = { kind = "datasheet", reference = "Синтетический б
 scope = "Независимая статическая нагрузка поперёк прямоугольного блока длиной 0,2 м."
 inputs = [{ kind = "datasheet", reference = "Синтетический блок 1 кг, ход до 8 мкм по зазору стенда. Два интервала по 2 мс, ускорения 1 и 2 м/с² от усилий 1 и 2 Н." }]
 # M = 5 Н · 0,2 м. Расчётный предел синтетического материала взят из корпуса этапа 6.
-verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [1.0, 1.0], allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Стенд статической нагрузки: 5 Н на плече 0,2 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }
+verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [1.0, 1.0], live_load = { effort = "каретка/сила", moment_per_effort = 0.2 }, allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Стенд статической нагрузки: 5 Н на плече 0,2 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }
 
 [inventory]
 off_participant = { kind = "datasheet", reference = "Модель ограничена изолированным расчётным стендом без участника и доступного пути к человеку." }

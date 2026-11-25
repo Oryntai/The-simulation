@@ -190,6 +190,21 @@ pub enum EventKind {
         event: OutputEvent,
         produced_at: Time,
     },
+    ElectricalRail {
+        board: String,
+        voltage_v: f64,
+        current_a: f64,
+        phase: crate::electrical::PowerPhase,
+    },
+    ElectricalReset {
+        board: String,
+        asserted: bool,
+    },
+    ElectricalPin {
+        board: String,
+        pin: u32,
+        state: sim_process::schematic::PinState,
+    },
     PacketSent {
         route: String,
         id: u64,

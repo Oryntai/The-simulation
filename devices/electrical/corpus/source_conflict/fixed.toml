@@ -1,0 +1,23 @@
+format = 1
+scope = "reference"
+name = "Блок: два источника"
+nets = ["g", "main", "usb"]
+
+[components.main]
+part = "supply_5"
+nets = { p = "main", g = "g" }
+
+[components.usb]
+part = "usb_4"
+nets = { p = "usb", g = "g" }
+
+[connections.return]
+kind = "solder"
+ends = ["main/g", "usb/g"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[[modes.cases]]
+mode = { kind = "both" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["main/p", "main/g"] }, { kind = "voltage", ends = ["usb/p", "usb/g"] }, { kind = "current", branch = { kind = "element", component = "usb", element = "series" } }]

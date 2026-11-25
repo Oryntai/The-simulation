@@ -277,6 +277,9 @@ fn build(
             end_sample: item.end_sample,
             boot: None,
             epoch: Time::ZERO,
+            epoch_cycle: 0,
+            electrical: None,
+            electrical_restart: None,
             driven_gpio: BTreeMap::new(),
         });
     }
@@ -957,6 +960,50 @@ fn build(
     }
     transmissions.sort_by_key(|t| (t.at, t.route));
     let faults = schedule_faults(config, &targets, spec.horizon)?;
+    if let Some(electrical) = &runtime.state.electrical {
+        electrical.check_horizon(spec.horizon)?;
+        for (slot, connection) in electrical.boards.iter().enumerate() {
+            let index = board_id(&boards, &connection.name)?;
+            let board = &mut boards[index];
+            if board.end_sample {
+                return Err(format!(
+                    "плата «{}»: цепь несовместима с выборкой конца шага",
+                    board.name
+                ));
+            }
+            if faults.iter().any(|fault| {
+                fault.target == format!("board:{}", board.name)
+                    && fault.action == FaultAction::PowerOff
+            }) {
+                return Err(format!(
+                    "плата «{}»: отключение должно задаваться через цепь",
+                    board.name
+                ));
+            }
+            for pin in connection.contacts() {
+                if !pin_spec(board.sim.board(), pin).is_some_and(|p| p.gpio && !p.internal_only) {
+                    return Err(format!(
+                        "плата «{}»: GPIO {pin} недоступен для схемы",
+                        board.name
+                    ));
+                }
+                if board.outputs.iter().any(|&id| {
+                    let output = &outputs[id];
+                    output.kind == TargetKind::Power
+                        && output.driver.as_ref().is_some_and(|driver| {
+                            [Some(driver.pin), driver.enable_pin, driver.direction_pin]
+                                .contains(&Some(pin))
+                        })
+                }) {
+                    return Err(format!(
+                        "плата «{}», GPIO {pin}: ключом уже владеет цепь",
+                        board.name
+                    ));
+                }
+            }
+            board.electrical = Some(slot);
+        }
+    }
     let mut fault_edges = Vec::new();
     for (index, fault) in faults.iter().enumerate() {
         fault_edges.push(FaultEdge {
@@ -986,6 +1033,7 @@ fn build(
                 .copied(),
         ),
     );
+    let control_hash = fnv1a(config.text.bytes());
     let identity = RunIdentity {
         build: format!(
             "sim-runtime {} ({}) / MuJoCo {}",
@@ -1001,7 +1049,18 @@ fn build(
                 .chain(spec.world.iter().copied()),
         ),
         catalog: catalog_hash,
-        control: fnv1a(config.text.bytes()),
+        control: runtime
+            .state
+            .electrical
+            .as_ref()
+            .map_or(control_hash, |circuit| {
+                fnv1a(
+                    control_hash
+                        .to_le_bytes()
+                        .into_iter()
+                        .chain(circuit.identity.to_le_bytes()),
+                )
+            }),
         paired_setup: config.paired_setup(),
         assets: by_path.into_iter().collect(),
         task: fnv1a(spec.task.iter().copied()),

@@ -318,7 +318,7 @@ impl CompliantPad {
                 .status
                 .with_transition(release, InterfaceState::Unavailable);
             step.transition = release;
-            step.unavailable("сжатие вне характеристики площадки");
+            step.unavailable(&format!("сжатие {compression} м вне характеристики площадки"));
             return Ok((step, self.shear_m));
         };
 

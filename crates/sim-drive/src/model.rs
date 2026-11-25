@@ -18,6 +18,7 @@ pub(crate) struct Motion {
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Work {
     pub electrical: f64,
+    pub bus_charge_c: f64,
     pub copper: f64,
     pub friction: f64,
     pub gear: f64,
@@ -49,6 +50,7 @@ pub(crate) struct Interval {
     pub supply: f64,
     pub bridge: Bridge,
     pub bus_power_w: f64,
+    pub bus_charge_c: f64,
     pub end_effort: Option<f64>,
 }
 
@@ -69,6 +71,7 @@ pub(crate) struct Model {
     pub lost_steps: f64,
     pub power: Option<bool>,
     pub bus_voltage: Option<f64>,
+    pub circuit: bool,
     pub bridge_request: Option<BridgeCommand>,
     pub interval: Option<Interval>,
     bridge: Bridge,
@@ -98,6 +101,7 @@ impl Model {
             lost_steps: 0.0,
             power: None,
             bus_voltage: None,
+            circuit: false,
             bridge_request: None,
             interval: None,
             bridge: Bridge::Open,
@@ -204,6 +208,14 @@ impl Model {
                 return Err("период физики должен быть конечным и положительным".into());
             }
             self.integrate(dt, old, joint)?;
+            if self.circuit {
+                // Мощность в общем журнале относится к границам цепи в наносекундах.
+                let interval = self.interval.as_mut().expect("интервал рассчитан");
+                interval.bus_power_w *= dt / Time(ns).as_secs();
+                if !interval.bus_power_w.is_finite() {
+                    return Err("средняя мощность шины вне численного диапазона".into());
+                }
+            }
         } else {
             self.motor = Motion {
                 q: joint.q * m.ratio,
@@ -226,9 +238,13 @@ impl Model {
         target: Option<f64>,
         sequence: Option<u64>,
     ) -> Result<(), String> {
-        let regulator_power = self.bridge_request.map_or(self.power, |request| {
-            Some(self.power != Some(false) && request == BridgeCommand::Drive)
-        });
+        let regulator_power = if self.circuit_off() {
+            Some(false)
+        } else {
+            self.bridge_request.map_or(self.power, |request| {
+                Some(self.power != Some(false) && request == BridgeCommand::Drive)
+            })
+        };
         self.control.update(
             self.config,
             time,
@@ -238,12 +254,14 @@ impl Model {
             regulator_power,
         )?;
         self.bridge = match self.bridge_request {
+            _ if self.circuit && (self.circuit_off() || self.power == Some(false)) => Bridge::Coast,
             Some(_) if self.power == Some(false) => Bridge::Coast,
             Some(BridgeCommand::Coast) => Bridge::Coast,
             Some(BridgeCommand::Short) => Bridge::Short,
             Some(BridgeCommand::Drive) if matches!(self.control.bridge, Bridge::Open) => {
                 Bridge::Coast
             }
+            _ if self.circuit && matches!(self.control.bridge, Bridge::Open) => Bridge::Coast,
             _ => self.control.bridge,
         };
         if matches!(self.bridge, Bridge::Open) {
@@ -272,15 +290,34 @@ impl Model {
     }
 
     pub(crate) fn unpowered(&self) -> bool {
-        self.power.map_or_else(
-            || matches!(self.bridge, Bridge::Open | Bridge::Coast),
-            |on| !on,
-        )
+        self.circuit_off()
+            || self.power.map_or_else(
+                || matches!(self.bridge, Bridge::Open | Bridge::Coast),
+                |on| !on,
+            )
     }
 
     pub(crate) fn electrical_feedback(&self) -> bool {
         // При снятом разрешении мост с диодами ещё передаёт ток и момент.
-        self.bridge_request.is_some() || !self.unpowered()
+        self.circuit || self.bridge_request.is_some() || !self.unpowered()
+    }
+
+    fn circuit_off(&self) -> bool {
+        self.circuit
+            && self.bus_voltage.is_some_and(|v| {
+                v == 0.0 || v < self.config.bus_range.expect("границы шины проверены")[0]
+            })
+    }
+
+    pub(crate) fn forecast_charge(&self, dt: f64, end_speed: f64) -> Result<f64, String> {
+        let (_, from) = self.previous.ok_or("нет начала интервала нагрузки")?;
+        let to = Motion {
+            q: end_speed.mul_add(dt, from.q),
+            v: end_speed,
+        };
+        let mut next = self.clone();
+        next.integrate(dt, from, to)?;
+        Ok(next.interval.expect("интервал рассчитан").bus_charge_c)
     }
 
     fn electrical(&self) -> Electrical {
@@ -410,6 +447,7 @@ impl Model {
             self.motor.q = (-0.5 * dt).mul_add(self.motor.v, self.motor.q);
         }
         let mut bus_energy = 0.0;
+        let mut bus_charge_c = 0.0;
         let mut last_midpoint = from;
         for index in 0..steps as u32 {
             let alpha = (f64::from(index) + 0.5) / steps;
@@ -422,7 +460,9 @@ impl Model {
                     (to.v - from.v).mul_add(alpha, from.v)
                 },
             };
-            bus_energy += self.substep(h, midpoint)?;
+            let (energy, charge) = self.substep(h, midpoint)?;
+            bus_energy += energy;
+            bus_charge_c += charge;
             last_midpoint = midpoint;
         }
         if m.coupling.is_some() {
@@ -433,10 +473,24 @@ impl Model {
                 v: to.v * m.ratio,
             };
         }
+        let bus_power_w = bus_energy / dt;
+        self.work.bus_charge_c += bus_charge_c;
+        if ![
+            bus_power_w,
+            bus_charge_c,
+            self.work.bus_charge_c,
+            self.work.electrical,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+        {
+            return Err("заряд или энергия шины вне численного диапазона".into());
+        }
         self.interval = Some(Interval {
             supply: self.electrical().supply,
             bridge: self.bridge,
-            bus_power_w: bus_energy / dt,
+            bus_power_w,
+            bus_charge_c,
             end_effort: m.coupling.is_none().then(|| {
                 let speed = last_midpoint.v * m.ratio;
                 let shaft =
@@ -447,7 +501,7 @@ impl Model {
         Ok(())
     }
 
-    fn substep(&mut self, h: f64, joint: Motion) -> Result<f64, String> {
+    fn substep(&mut self, h: f64, joint: Motion) -> Result<(f64, f64), String> {
         let m = self.config.mechanical;
         let start = self.motor;
         let resistance = self.resistance()?;
@@ -508,6 +562,7 @@ impl Model {
         self.voltage = phases.map(|p| p.voltage);
         self.limit_exceeded |= phases.iter().any(|p| p.limit_exceeded);
         let electrical = phases.iter().map(|p| p.electrical_j).sum::<f64>();
+        let bus_charge_c = phases.iter().map(|p| p.bus_charge_c).sum::<f64>();
         self.work.electrical += electrical;
         self.work.copper += copper;
         self.work.gear += gear;
@@ -526,7 +581,7 @@ impl Model {
             .into_iter()
             .all(f64::is_finite)
         {
-            Ok(electrical)
+            Ok((electrical, bus_charge_c))
         } else {
             Err("состояние ротора или работа вне численного диапазона".into())
         }

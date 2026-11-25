@@ -3,10 +3,12 @@
 pub(super) mod installation;
 mod native;
 mod bench;
+pub(super) mod playback;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use sim_task::campaign::RunKey;
@@ -18,7 +20,11 @@ use sim_task::verdict::{
 use sim_task::{Case, CaseReport, Fault, Fingerprint, Limit, Outcome};
 
 use super::{control_witness, interaction, matrix::Checkpoint, processes, read, run_control};
-use crate::Options;
+use super::workers::Workers;
+use crate::{
+    Options,
+    view::{CampaignBinding, CampaignCoverage as Coverage, CampaignPlayback, PlaybackCapture, PlaybackFormat},
+};
 use installation::LinkedSample;
 
 const VERSION: u32 = 1;
@@ -63,6 +69,8 @@ struct Report {
     status: &'static str,
     scope: &'static str,
     repeat: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    view_unavailable: Option<String>,
     worst_run_key: Option<String>,
     resumed: usize,
     assemblies: BTreeMap<String, AssemblyReport>,
@@ -79,12 +87,13 @@ struct AssemblyReport {
     statistics: BTreeMap<String, sim_task::metrics::CampaignStats>,
 }
 
-#[derive(Default, Serialize)]
-struct Coverage {
-    required: usize,
-    executed: usize,
-    omitted: usize,
-    open: usize,
+fn covered_outcome(coverage: &Coverage, outcomes: impl IntoIterator<Item = Outcome>) -> Outcome {
+    Outcome::aggregate(
+        outcomes.into_iter().chain(
+            (coverage.required == 0 || coverage.executed != coverage.required)
+                .then_some(Outcome::NotAnalyzed),
+        ),
+    )
 }
 
 #[derive(Deserialize, Serialize)]
@@ -97,6 +106,8 @@ struct RowReport {
     executed: usize,
     findings: Vec<serde_json::Value>,
     detail: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    playback: Option<CampaignPlayback>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -122,6 +133,7 @@ impl RowReport {
             executed: 0,
             findings: Vec::new(),
             detail: serde_json::Value::Null,
+            playback: None,
         }
     }
 }
@@ -180,6 +192,7 @@ pub(super) struct LinkedAudit {
     omitted: Option<usize>,
     unavailable: Option<String>,
     children: Vec<Child>,
+    playback: Option<(Outcome, CampaignPlayback)>,
     findings: Vec<Finding>,
     installed: Vec<Fingerprint>,
     files: BTreeMap<PathBuf, processes::FileStamp>,
@@ -246,28 +259,15 @@ impl LinkedAudit {
         }
     }
 
-    pub(super) fn observe<'a>(
+    pub(super) fn observe(
         &mut self,
         key: RunKey,
         outcome: Outcome,
         executed: bool,
         execution: ExecutionStamp,
         findings: Vec<Finding>,
-        violations: impl IntoIterator<Item = (&'a str, Option<[f64; 2]>, Option<([f64; 2], &'a str)>)>,
     ) -> Result<(), String> {
         self.findings.extend(findings);
-        for (name, measured, limit) in violations {
-            let mut finding = criterion(&key, name, "нарушение критерия постановки");
-            finding.measurement = measured;
-            if let Some(([lo, hi], source)) = limit {
-                finding.limit = Some(LimitValue {
-                    lower: Some([lo; 2]),
-                    upper: Some([hi; 2]),
-                });
-                finding.limit_sources.push(source.into());
-            }
-            self.findings.push(finding);
-        }
         if outcome == Outcome::Fail
             && !self
                 .findings
@@ -341,6 +341,26 @@ impl LinkedAudit {
             execution,
         });
         Ok(())
+    }
+
+    pub(super) fn consider_playback(&mut self, grids: impl IntoIterator<Item = playback::Grid>) {
+        let child = self.children.last().expect("опыт уже зарегистрирован");
+        if !child.executed {
+            return;
+        }
+        let Some(candidate) = playback::select(
+            &child.key, child.execution.seed, grids, &self.findings.iter().collect::<Vec<_>>(),
+        ) else {
+            return;
+        };
+        let rank = |outcome, p: &CampaignPlayback| {
+            (outcome, p.event.as_ref().is_some_and(|e| e.violation), p.event.is_some())
+        };
+        if self.playback.as_ref().is_none_or(|(outcome, p)| {
+            rank(child.outcome, &candidate) > rank(*outcome, p)
+        }) {
+            self.playback = Some((child.outcome, candidate));
+        }
     }
 
     pub(super) fn control(
@@ -460,9 +480,11 @@ impl LinkedAudit {
                         .and_then(|fault| fault.extra_delay_ns),
                 },
                 findings,
-                [],
             )?;
             if case.was_executed() {
+                self.consider_playback(case.journal.zip(case.reached_ns).map(|(journal, end_ns)| {
+                    playback::Grid { variant: None, hz, journal, end_ns }
+                }));
                 let child = self
                     .children
                     .last_mut()
@@ -551,6 +573,31 @@ fn criterion(key: &RunKey, name: &str, reason: &str) -> Finding {
     finding
 }
 
+pub(super) fn check_violation(
+    key: &RunKey,
+    name: &str,
+    measured: Option<[f64; 2]>,
+    limit: Option<([f64; 2], &str)>,
+    window_ns: [u64; 2],
+    event: Option<(u64, Fingerprint)>,
+) -> Finding {
+    let mut finding = criterion(key, name, "нарушение критерия постановки");
+    finding.measurement = measured;
+    if let Some(([lo, hi], source)) = limit {
+        finding.limit = Some(LimitValue {
+            lower: Some([lo; 2]),
+            upper: Some([hi; 2]),
+        });
+        finding.limit_sources.push(source.into());
+    }
+    finding.key.window_ns = Some(window_ns);
+    if let Some((at_ns, journal)) = event {
+        finding.event_ns = Some(at_ns);
+        finding.journal = Some(journal);
+    }
+    finding
+}
+
 fn requirement(key: &RunKey, class: HazardClass, object: &str) -> RequirementKey {
     RequirementKey {
         class,
@@ -570,6 +617,46 @@ fn encode(thing: impl Serialize) -> Result<Vec<u8>, String> {
     serde_json::to_vec(&thing).map_err(|e| e.to_string())
 }
 
+fn run_linked_profile(
+    world: &Path,
+    task: &Path,
+    options: &mut Options,
+    audit: &mut LinkedAudit,
+    sample: Option<LinkedSample<'_>>,
+    stdout: &mut Vec<u8>,
+) -> Result<bool, String> {
+    // Старый контур имеет собственные точки завершённых строк.
+    let mut cache_profile = false;
+    if let Some(file) = interaction::TaskFile::load(task)? {
+        cache_profile = true;
+        options.checkpoint = None;
+        interaction::run_observed(file, task, options, stdout, Some(audit), sample)?;
+    } else if let Some(file) = processes::TaskFile::load(task)? {
+        cache_profile = true;
+        options.checkpoint = None;
+        processes::run_observed(file, task, options, stdout, Some(audit), sample)?;
+    } else {
+        options.matrix_full = true;
+        let compiled = if let Some(hz) = options.linked_grid_hz {
+            let mut inputs =
+                sim_task::campaign::WorldInputs::load(world).map_err(|e| e.to_string())?;
+            inputs.world.physics_hz = hz;
+            inputs.compile().map_err(|e| e.to_string())?
+        } else {
+            sim_world::load_and_compile(world)?
+        };
+        run_control(
+            compiled,
+            task,
+            options,
+            stdout,
+            Some(audit),
+            sample,
+        )?;
+    }
+    Ok(cache_profile)
+}
+
 fn linked(
     input: Fingerprint,
     world: &Path,
@@ -580,13 +667,14 @@ fn linked(
     sample: Option<LinkedSample<'_>>,
     sampling_gap: Option<&str>,
     checkpoint: Option<&Checkpoint>,
-) -> Result<(RowReport, bool), String> {
+    format: Option<PlaybackFormat>,
+) -> Result<(RowReport, bool, Option<Vec<u8>>), String> {
     options.world = world.to_owned();
     options.json = true;
     let mut roots = processes::Inputs::default();
     roots.capture(task)?;
     let checkpoint_prefix = format!("linked-{:016x}-", sim_signal::fnv1a(encode((input, key))?));
-    if let Some(checkpoint) = checkpoint.filter(|_| selected) {
+    if let Some(checkpoint) = checkpoint.filter(|_| selected && format.is_none()) {
         for name in checkpoint.rows_with_prefix(&checkpoint_prefix)? {
             let Some(saved) = checkpoint.load_row::<SavedLinked>(&name)? else {
                 continue;
@@ -611,18 +699,19 @@ fn linked(
                     continue;
                 }
             }
-            return Ok((saved.row, true));
+            return Ok((saved.row, true, None));
         }
     }
     let task = task
         .canonicalize()
         .map_err(|e| format!("{}: {e}", task.display()))?;
-    let mut audit = LinkedAudit {
+    let new_audit = || LinkedAudit {
         station: key.into(),
         selected,
         omitted: None,
         unavailable: None,
         children: Vec::new(),
+        playback: None,
         findings: Vec::new(),
         installed: Vec::new(),
         files: BTreeMap::new(),
@@ -631,37 +720,10 @@ fn linked(
         sample_key: sample.map_or(SampleKey::Nominal, |s| s.sample.key.clone()),
         inventory: BTreeMap::new(),
     };
+    let mut audit = new_audit();
     audit.record_files(&roots)?;
     let mut stdout = Vec::new();
-    // Старый контур имеет собственные точки завершённых строк.
-    let mut cache_profile = false;
-    if let Some(file) = interaction::TaskFile::load(&task)? {
-        cache_profile = true;
-        options.checkpoint = None;
-        interaction::run_observed(file, &task, &options, &mut stdout, Some(&mut audit), sample)?;
-    } else if let Some(file) = processes::TaskFile::load(&task)? {
-        cache_profile = true;
-        options.checkpoint = None;
-        processes::run_observed(file, &task, &options, &mut stdout, Some(&mut audit), sample)?;
-    } else {
-        options.matrix_full = true;
-        let compiled = if let Some(hz) = options.linked_grid_hz {
-            let mut inputs =
-                sim_task::campaign::WorldInputs::load(world).map_err(|e| e.to_string())?;
-            inputs.world.physics_hz = hz;
-            inputs.compile().map_err(|e| e.to_string())?
-        } else {
-            sim_world::load_and_compile(world)?
-        };
-        run_control(
-            compiled,
-            &task,
-            &options,
-            &mut stdout,
-            Some(&mut audit),
-            sample,
-        )?;
-    }
+    let cache_profile = run_linked_profile(world, &task, &mut options, &mut audit, sample, &mut stdout)?;
     if let Some(reason) = audit.unavailable {
         return Ok((
             RowReport {
@@ -670,13 +732,14 @@ fn linked(
                 ..RowReport::omitted(input)
             },
             false,
+            None,
         ));
     }
     if let Some(required) = audit.omitted {
         if required == 0 {
             return Err("у опыта отсутствуют обязательные дочерние строки".into());
         }
-        return Ok((RowReport::omitted_rows(input, required), false));
+        return Ok((RowReport::omitted_rows(input, required), false, None));
     }
     let required = audit.children.len();
     if required == 0 && options.selected_control_case.is_some() {
@@ -687,6 +750,7 @@ fn linked(
                 ..RowReport::omitted(input)
             },
             false,
+            None,
         ));
     }
     if required == 0 || audit.installed.is_empty() {
@@ -756,6 +820,7 @@ fn linked(
         required,
         executed,
         findings: audit.findings.iter().map(value).collect::<Result<_, _>>()?,
+        playback: audit.playback.map(|(_, choice)| choice),
         detail: value(LinkedReport {
             children: &audit.children,
             profile: serde_json::from_slice(&stdout).map_err(|e| e.to_string())?,
@@ -763,6 +828,30 @@ fn linked(
             inventory: &inventory,
         })?,
     };
+    let mut view = None;
+    if let Some((choice, format)) = row.playback.as_ref().zip(format) {
+        let capture = PlaybackCapture::new(choice.clone(), format);
+        if cache_profile {
+            options.case = Some(choice.child.mode.clone());
+        } else {
+            options.selected_control_case = Some(Case {
+                mode: choice.child.mode.clone(),
+                path: choice.child.path.clone(),
+                fault: choice.child.faults.first().cloned(),
+            });
+        }
+        options.campaign_capture = Some(capture.clone());
+        let mut replay_audit = new_audit();
+        replay_audit.record_files(&roots)?;
+        run_linked_profile(world, &task, &mut options, &mut replay_audit, sample, &mut Vec::new())?;
+        if replay_audit.catalog != audit.catalog
+            || !replay_audit.files.iter().all(|(path, stamp)| audit.files.get(path) == Some(stamp))
+            || !audit.files.iter().all(|(path, stamp)| stamp.matches(path))
+        {
+            return Err("входы дочернего прогона изменились при повторе".into());
+        }
+        view = Some(capture.take()?);
+    }
     if let Some(checkpoint) = checkpoint
         && cache_profile
         && audit.checkpointable
@@ -785,9 +874,9 @@ fn linked(
             catalog: audit.catalog,
         };
         checkpoint.save_row(&name, &saved)?;
-        return Ok((saved.row, false));
+        return Ok((saved.row, false, view));
     }
-    Ok((row, false))
+    Ok((row, false, view))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -928,10 +1017,258 @@ fn linked_statistics(
     Ok((statistics, worst))
 }
 
+type Worst = Option<((Outcome, bool), String)>;
+
+fn run_assembly(
+    id: &str,
+    mut assembly: Assembly,
+    base: &Path,
+    engine: &(String, u64),
+    checkpoint: Option<&Checkpoint>,
+    bench: &[bench::Bench],
+    options: &Options,
+    workers: &Workers,
+) -> Result<(AssemblyReport, Worst, usize, Option<Vec<u8>>), String> {
+    if let Some(plan) = &mut assembly.sampling {
+        plan.validate().map_err(|e| e.to_string())?;
+    }
+    let experiments = workers.map(
+        assembly.experiments.into_iter().collect(),
+        None,
+        |(name, experiment)| {
+            let prefix = format!("{id}/{name}");
+            let is_task = matches!(experiment, Experiment::Task { .. });
+            let result = match experiment {
+                Experiment::Task {
+                    world,
+                    task,
+                    catalog,
+                    seed,
+                    jobs,
+                    mut sampling,
+                } => {
+                    let (world, task) = (base.join(world), base.join(task));
+                    let stamp = Fingerprint::of(&encode((&engine, &prefix, &world, &task, seed))?);
+                    let catalog = catalog.map(|path| base.join(path));
+                    if let Some(plan) = &mut sampling {
+                        plan.validate().map_err(|e| e.to_string())?;
+                    }
+                    let inherited = sampling.is_none() && assembly.sampling.is_some();
+                    if inherited && seed.is_some() && seed != assembly.seed {
+                        return Err(format!(
+                            "«{prefix}»: зерно общего разброса отличается от зерна сборки"
+                        ));
+                    }
+                    let sampling = sampling.as_ref().or(assembly.sampling.as_ref());
+                    let seed = seed.or(assembly.seed);
+                    let root_seed = match (sampling.is_some(), seed) {
+                        (true, None) => {
+                            sim_task::campaign::WorldInputs::load(&world)
+                                .map_err(|e| e.to_string())?
+                                .world
+                                .seed
+                        }
+                        (_, seed) => seed.unwrap_or_default(),
+                    };
+                    let gap = if let Some(plan) = sampling {
+                        plan.coverage_gap(root_seed)
+                            .map_err(|e| e.to_string())?
+                            .or_else(|| {
+                                plan.unproven_axes()
+                                    .next()
+                                    .map(|_| "не подтверждена непрерывная огибающая допуска")
+                            })
+                    } else {
+                        Some("отсутствует обязательный раздел разброса sampling")
+                    };
+                    let samples = if let Some(plan) = sampling {
+                        plan.keys()
+                            .map_err(|e| e.to_string())?
+                            .iter()
+                            .map(|key| {
+                                plan.sample(root_seed, key, &["campaign/v1", "linked", &prefix])
+                                    .map(Some)
+                                    .map_err(|e| e.to_string())
+                            })
+                            .collect::<Result<Vec<_>, _>>()?
+                    } else {
+                        vec![None]
+                    };
+                    let finished = workers.map(samples.iter().collect(), None, |sample| {
+                        let input = Fingerprint::of(&encode((stamp, sample, &catalog, jobs))?);
+                        let run_key = if sample.is_some() {
+                            format!("{prefix}/{:016x}", sim_signal::fnv1a(encode(input)?))
+                        } else {
+                            prefix.clone()
+                        };
+                        let sample = sampling
+                            .zip(sample.as_ref())
+                            .map(|(sampling, sample)| LinkedSample { sampling, sample });
+                        let wanted = options.repeat.as_deref();
+                        let selected = wanted.is_none_or(|wanted| {
+                            if sample.is_some() {
+                                wanted
+                                    .strip_prefix(&run_key)
+                                    .is_some_and(|suffix| suffix.starts_with('@'))
+                            } else {
+                                wanted == run_key
+                            }
+                        });
+                        let (row, resumed, archive) = linked(
+                            input,
+                            &world,
+                            &task,
+                            &run_key,
+                            selected,
+                            Options {
+                                seed,
+                                jobs,
+                                workers: options.workers.clone(),
+                                catalog: catalog.clone(),
+                                checkpoint: options
+                                    .checkpoint
+                                    .clone()
+                                    .filter(|_| options.repeat.is_none()),
+                                ..Default::default()
+                            },
+                            sample,
+                            gap,
+                            checkpoint,
+                            PlaybackFormat::for_options(options).filter(|_| selected),
+                        )?;
+                        let run_key = if selected && sample.is_some() {
+                            format!("{run_key}@{:016x}", sim_signal::fnv1a(encode(row.input)?))
+                        } else {
+                            run_key
+                        };
+                        Ok((run_key, row, resumed, archive, sample))
+                    })?;
+                    let mut runs = BTreeMap::new();
+                    let mut resumed_count = 0;
+                    let mut view = None;
+                    let mut series_rows = Vec::with_capacity(finished.len());
+                    for (run_key, row, resumed, archive, sample) in finished {
+                        if let Some(archive) = archive {
+                            view = Some(archive);
+                        }
+                        resumed_count += usize::from(resumed);
+                        let children = match row.detail.get("children") {
+                            Some(children) => serde_json::from_value(children.clone())
+                                .map_err(|e| e.to_string())?,
+                            None => Vec::new(),
+                        };
+                        series_rows.push((
+                            run_key.clone(),
+                            children,
+                            sample.map(|s| s.sample.clone()),
+                        ));
+                        if runs.insert(run_key, row).is_some() {
+                            return Err("повтор ключа ссылочного опыта".into());
+                        }
+                    }
+                    let (series, worst) = linked_statistics(&prefix, &series_rows, sampling)?;
+                    Ok(native::ResultRows {
+                        rows: runs,
+                        statistics: series,
+                        metric_worst: worst,
+                        resumed: resumed_count,
+                        readiness: Readiness::NeedsWork,
+                        view,
+                    })
+                }
+                Experiment::Scenario {
+                    campaign,
+                    installation,
+                } => native::run(
+                    &prefix,
+                    &base.join(campaign),
+                    &base.join(installation),
+                    options,
+                    checkpoint,
+                    bench,
+                ),
+            }?;
+            Ok((name, is_task, result))
+        },
+    )?;
+
+    let mut runs = BTreeMap::new();
+    let mut statistics = BTreeMap::new();
+    let mut metric_worst = BTreeSet::new();
+    let mut readiness = Readiness::Passed;
+    let mut resumed = 0;
+    let mut view = None;
+    for (name, is_task, result) in experiments {
+        if let Some(archive) = result.view {
+            view = Some(archive);
+        }
+        resumed += result.resumed;
+        readiness = if is_task {
+            Readiness::NeedsWork
+        } else {
+            match (readiness, result.readiness) {
+                (Readiness::Rejected, _) | (_, Readiness::Rejected) => Readiness::Rejected,
+                (Readiness::NeedsWork, _) | (_, Readiness::NeedsWork) => Readiness::NeedsWork,
+                (Readiness::BenchOnly, _) | (_, Readiness::BenchOnly) => Readiness::BenchOnly,
+                (Readiness::Passed, Readiness::Passed) => Readiness::Passed,
+            }
+        };
+        statistics.insert(name, result.statistics);
+        metric_worst.extend(result.metric_worst);
+        for (key, row) in result.rows {
+            if runs.insert(key, row).is_some() {
+                return Err("повтор ключа прогона".into());
+            }
+        }
+    }
+    let mut coverage = Coverage::default();
+    let mut assembly_worst = None;
+    for (key, row) in &runs {
+        coverage.required += row.required;
+        coverage.executed += row.executed;
+        if row.status == RunStatus::Omitted {
+            coverage.omitted += row.required;
+        } else {
+            coverage.open += row.required - row.executed;
+            // При одинаковом исходе сохраняем физический экстремум
+            // однородной серии. Разные метрики численно не сравниваем.
+            let rank = (row.outcome, metric_worst.contains(key));
+            if assembly_worst
+                .as_ref()
+                .is_none_or(|(current, _)| rank > *current)
+            {
+                assembly_worst = Some((rank, key.clone()));
+            }
+        }
+    }
+    let outcome = covered_outcome(&coverage, runs.values().map(|r| r.outcome));
+    let verdict = match outcome {
+        Outcome::Fail => SimulationVerdict::Rejected,
+        Outcome::NotAnalyzed => SimulationVerdict::NotProven,
+        Outcome::Pass => SimulationVerdict::PassedSimulation,
+    };
+    let report = AssemblyReport {
+        scope: assembly.scope,
+        verdict,
+        readiness: match outcome {
+            Outcome::Fail => Readiness::Rejected,
+            Outcome::NotAnalyzed => Readiness::NeedsWork,
+            Outcome::Pass => readiness,
+        },
+        coverage,
+        worst_run_key: assembly_worst.as_ref().map(|(_, key)| key.clone()),
+        runs,
+        statistics,
+    };
+    Ok((report, assembly_worst, resumed, view))
+}
+
 pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Result<u8, String> {
-    let base = processes::dir(path);
+    // Одна установка может быть открыта относительным путём, абсолютным или через ссылку.
+    let path = path.canonicalize().map_err(|error| format!("{}: {error}", path.display()))?;
+    let base = processes::dir(&path);
     let mut files = processes::Inputs::default();
-    let manifest: Manifest = files.toml(path)?;
+    let manifest: Manifest = files.toml(&path)?;
     if manifest.version != VERSION || manifest.assemblies.is_empty() {
         return Err("нужен непустой манифест кампании версии 1".into());
     }
@@ -991,6 +1328,7 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         status: "completed",
         scope: "модели и постановки из манифеста исполнения",
         repeat: options.repeat.clone(),
+        view_unavailable: None,
         worst_run_key: None,
         resumed: 0,
         assemblies: BTreeMap::new(),
@@ -998,218 +1336,46 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     let mut all_keys = BTreeSet::new();
     let mut worst = None;
     let mut view = None;
-    for (id, mut assembly) in manifest.assemblies {
-        if let Some(plan) = &mut assembly.sampling {
-            plan.validate().map_err(|e| e.to_string())?;
-        }
-        let mut runs = BTreeMap::new();
-        let mut statistics = BTreeMap::new();
-        let mut metric_worst = BTreeSet::new();
-        let mut readiness = Readiness::Passed;
-        for (name, experiment) in assembly.experiments {
-            let prefix = format!("{id}/{name}");
-            match experiment {
-                Experiment::Task {
-                    world,
-                    task,
-                    catalog,
-                    seed,
-                    jobs,
-                    mut sampling,
-                } => {
-                    readiness = Readiness::NeedsWork;
-                    let (world, task) = (base.join(world), base.join(task));
-                    let stamp = Fingerprint::of(&encode((&engine, &prefix, &world, &task, seed))?);
-                    let catalog = catalog.map(|path| base.join(path));
-                    if let Some(plan) = &mut sampling {
-                        plan.validate().map_err(|e| e.to_string())?;
-                    }
-                    let inherited = sampling.is_none() && assembly.sampling.is_some();
-                    if inherited && seed.is_some() && seed != assembly.seed {
-                        return Err(format!(
-                            "«{prefix}»: зерно общего разброса отличается от зерна сборки"
-                        ));
-                    }
-                    let sampling = sampling.as_ref().or(assembly.sampling.as_ref());
-                    let seed = seed.or(assembly.seed);
-                    let root_seed = match (sampling.is_some(), seed) {
-                        (true, None) => {
-                            sim_task::campaign::WorldInputs::load(&world)
-                                .map_err(|e| e.to_string())?
-                                .world
-                                .seed
-                        }
-                        (_, seed) => seed.unwrap_or_default(),
-                    };
-                    let gap = if let Some(plan) = sampling {
-                        plan.coverage_gap(root_seed).map_err(|e| e.to_string())?
-                    } else {
-                        Some("отсутствует обязательный раздел разброса sampling")
-                    };
-                    let samples = if let Some(plan) = sampling {
-                        plan.keys()
-                            .map_err(|e| e.to_string())?
-                            .iter()
-                            .map(|key| {
-                                plan.sample(root_seed, key, &["campaign/v1", "linked", &prefix])
-                                    .map(Some)
-                                    .map_err(|e| e.to_string())
-                            })
-                            .collect::<Result<Vec<_>, _>>()?
-                    } else {
-                        vec![None]
-                    };
-                    let mut series_rows = Vec::with_capacity(samples.len());
-                    for sample in &samples {
-                        let input = Fingerprint::of(&encode((stamp, sample, &catalog, jobs))?);
-                        let run_key = if sample.is_some() {
-                            format!("{prefix}/{:016x}", sim_signal::fnv1a(encode(input)?))
-                        } else {
-                            prefix.clone()
-                        };
-                        let sample = sampling
-                            .zip(sample.as_ref())
-                            .map(|(sampling, sample)| LinkedSample { sampling, sample });
-                        let wanted = options.repeat.as_deref();
-                        let selected = wanted.is_none_or(|wanted| {
-                            if sample.is_some() {
-                                wanted
-                                    .strip_prefix(&run_key)
-                                    .is_some_and(|suffix| suffix.starts_with('@'))
-                            } else {
-                                wanted == run_key
-                            }
-                        });
-                        let (row, resumed) = linked(
-                            input,
-                            &world,
-                            &task,
-                            &run_key,
-                            selected,
-                            Options {
-                                seed,
-                                jobs,
-                                catalog: catalog.clone(),
-                                checkpoint: options
-                                    .checkpoint
-                                    .clone()
-                                    .filter(|_| options.repeat.is_none()),
-                                ..Default::default()
-                            },
-                            sample,
-                            gap,
-                            checkpoint.as_ref(),
-                        )?;
-                        let run_key = if selected && sample.is_some() {
-                            format!("{run_key}@{:016x}", sim_signal::fnv1a(encode(row.input)?))
-                        } else {
-                            run_key
-                        };
-                        report.resumed += usize::from(resumed);
-                        let children = match row.detail.get("children") {
-                            Some(children) => serde_json::from_value(children.clone())
-                                .map_err(|e| e.to_string())?,
-                            None => Vec::new(),
-                        };
-                        series_rows.push((
-                            run_key.clone(),
-                            children,
-                            sample.map(|s| s.sample.clone()),
-                        ));
-                        if runs.insert(run_key, row).is_some() {
-                            return Err("повтор ключа ссылочного опыта".into());
-                        }
-                    }
-                    let (series, worst) = linked_statistics(&prefix, &series_rows, sampling)?;
-                    statistics.insert(name, series);
-                    metric_worst.extend(worst);
-                }
-                Experiment::Scenario {
-                    campaign,
-                    installation,
-                } => {
-                    let result = native::run(
-                        &prefix,
-                        &base.join(campaign),
-                        &base.join(installation),
-                        options,
-                        checkpoint.as_ref(),
-                        &bench,
-                    )?;
-                    if let Some(archive) = result.view {
-                        view = Some(archive);
-                    }
-                    report.resumed += result.resumed;
-                    readiness = match (readiness, result.readiness) {
-                        (Readiness::Rejected, _) | (_, Readiness::Rejected) => Readiness::Rejected,
-                        (Readiness::NeedsWork, _) | (_, Readiness::NeedsWork) => {
-                            Readiness::NeedsWork
-                        }
-                        (Readiness::BenchOnly, _) | (_, Readiness::BenchOnly) => {
-                            Readiness::BenchOnly
-                        }
-                        (Readiness::Passed, Readiness::Passed) => Readiness::Passed,
-                    };
-                    statistics.insert(name, result.statistics);
-                    metric_worst.extend(result.metric_worst);
-                    for (key, row) in result.rows {
-                        if runs.insert(key, row).is_some() {
-                            return Err("повтор ключа прогона".into());
-                        }
-                    }
-                }
-            }
-        }
-        let mut coverage = Coverage::default();
-        let mut assembly_worst = None;
-        for (key, row) in &runs {
+    let workers = Arc::new(Workers::new(
+        options.jobs.unwrap_or_else(Workers::campaign_jobs),
+    ));
+    let options = Options {
+        workers: Some(workers.clone()),
+        ..options.clone()
+    };
+    let assemblies = workers.map(
+        manifest.assemblies.into_iter().collect(),
+        None,
+        |(id, assembly)| {
+            let result = run_assembly(
+                &id,
+                assembly,
+                base,
+                &engine,
+                checkpoint.as_ref(),
+                &bench,
+                &options,
+                &workers,
+            )?;
+            Ok((id, result))
+        },
+    )?;
+    for (id, (assembly, assembly_worst, resumed, archive)) in assemblies {
+        for key in assembly.runs.keys() {
             if !all_keys.insert(key.clone()) {
                 return Err("повтор глобального ключа прогона".into());
             }
-            coverage.required += row.required;
-            coverage.executed += row.executed;
-            if row.status == RunStatus::Omitted {
-                coverage.omitted += row.required;
-            } else {
-                coverage.open += row.required - row.executed;
-                // При одинаковом исходе сохраняем физический экстремум
-                // однородной серии. Разные метрики численно не сравниваем.
-                let rank = (row.outcome, metric_worst.contains(key));
-                if assembly_worst
-                    .as_ref()
-                    .is_none_or(|(current, _)| rank > *current)
-                {
-                    assembly_worst = Some((rank, key.clone()));
-                }
-            }
         }
-        if let Some((rank, key)) = &assembly_worst
-            && worst.as_ref().is_none_or(|(current, _)| rank > current)
+        if let Some((rank, key)) = assembly_worst
+            && worst.as_ref().is_none_or(|(current, _)| rank > *current)
         {
-            worst = Some((*rank, key.clone()));
+            worst = Some((rank, key));
         }
-        let outcome = Outcome::aggregate(runs.values().map(|r| r.outcome));
-        let verdict = match outcome {
-            Outcome::Fail => SimulationVerdict::Rejected,
-            Outcome::NotAnalyzed => SimulationVerdict::NotProven,
-            Outcome::Pass => SimulationVerdict::PassedSimulation,
-        };
-        report.assemblies.insert(
-            id,
-            AssemblyReport {
-                scope: assembly.scope,
-                verdict,
-                readiness: match outcome {
-                    Outcome::Fail => Readiness::Rejected,
-                    Outcome::NotAnalyzed => Readiness::NeedsWork,
-                    Outcome::Pass => readiness,
-                },
-                coverage,
-                worst_run_key: assembly_worst.map(|(_, key)| key),
-                runs,
-                statistics,
-            },
-        );
+        report.resumed += resumed;
+        if let Some(archive) = archive {
+            view = Some(archive);
+        }
+        report.assemblies.insert(id, assembly);
     }
     if options
         .repeat
@@ -1222,14 +1388,43 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     if sim_runtime::Runtime::physics_engine_identity()? != engine {
         return Err("образ MuJoCo изменился во время кампании".into());
     }
-    if let (Some(path), Some(bytes)) = (&options.view, view) {
-        crate::export(path, |file| file.write_all(&bytes))?;
+    if let Some((path, key)) = options.view.as_ref().or(options.log.as_ref()).zip(options.repeat.as_ref()) {
+        let assembly = &report.assemblies[key.split_once('/').ok_or("неверный ключ строки")?.0];
+        let row = &assembly.runs[key];
+        if let Some(playback) = &row.playback {
+            let bytes = view.ok_or("для исполненной строки отсутствует журнал повтора")?;
+            if options.log.is_some() {
+                let log = sim_runtime::Log::read_binary(bytes.as_slice()).map_err(|error| error.to_string())?;
+                if log.fingerprint() != playback.journal {
+                    return Err("журнал повтора расходится с отчётом".into());
+                }
+                crate::export(path, |file| file.write_all(&bytes))?;
+            } else {
+                crate::view::bind_campaign(
+                    &bytes,
+                    CampaignBinding {
+                        key: key.clone(),
+                        input: row.input,
+                        playback: playback.clone(),
+                        verdict: assembly.verdict,
+                        readiness: assembly.readiness,
+                        coverage: assembly.coverage,
+                    },
+                    path,
+                )?;
+            }
+        } else {
+            report.view_unavailable = Some(unavailable_reason(row));
+        }
     }
     report.worst_run_key = worst.map(|(_, key)| key);
     if options.json {
         serde_json::to_writer(&mut *out, &report).map_err(|e| e.to_string())?;
         writeln!(out).map_err(|e| e.to_string())?;
     } else {
+        if let Some(reason) = &report.view_unavailable {
+            writeln!(out, "Просмотр недоступен · {reason}").map_err(|e| e.to_string())?;
+        }
         for (id, assembly) in report.assemblies {
             writeln!(
                 out,
@@ -1240,4 +1435,43 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         }
     }
     Ok(0)
+}
+
+fn unavailable_reason(row: &RowReport) -> String {
+    if let Some(reason) = row.detail.as_str()
+        .or_else(|| row.detail.get("reason").and_then(serde_json::Value::as_str))
+        .or_else(|| row.detail.get(0).and_then(serde_json::Value::as_str))
+    {
+        return reason.to_owned();
+    }
+    if let Some(reasons) = row.detail.get("reasons").and_then(serde_json::Value::as_array) {
+        let reasons: Vec<_> = reasons.iter().filter_map(serde_json::Value::as_str).collect();
+        if !reasons.is_empty() {
+            return reasons.join(" · ");
+        }
+    }
+    let reasons: BTreeSet<_> = row.findings.iter()
+        .filter(|f| f["key"]["class"] == "execution")
+        .filter_map(|f| f["reason"].as_str())
+        .collect();
+    if reasons.is_empty() {
+        format!("Нет завершённого дочернего прогона с журналом. Исполнено {} из {}", row.executed, row.required)
+    } else {
+        reasons.into_iter().collect::<Vec<_>>().join(" · ")
+    }
+}
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+
+    #[test]
+    fn открытая_строка_удерживает_вердикт_при_успехе_всех_исполненных() {
+        let mut coverage = Coverage { required: 2, executed: 2, ..Coverage::default() };
+        assert_eq!(covered_outcome(&coverage, [Outcome::Pass]), Outcome::Pass);
+        coverage.executed = 1;
+        coverage.open = 1;
+        assert_eq!(covered_outcome(&coverage, [Outcome::Pass]), Outcome::NotAnalyzed);
+        assert_eq!(covered_outcome(&coverage, [Outcome::Fail]), Outcome::Fail);
+    }
 }

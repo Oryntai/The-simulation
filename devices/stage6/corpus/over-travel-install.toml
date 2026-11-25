@@ -25,4 +25,4 @@ applicability = { kind = "datasheet", reference = "Спецификация не
 scope = "Независимая статическая нагрузка поперёк прямоугольного стержня длиной 1 м."
 inputs = [{ kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }]
 # M = F·1 м. Порог 5 МПа принят в приёмке синтетической постановки B.
-verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [20.0, 20.0], allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Стенд статической нагрузки: 20 Н на плече 1 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }
+verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [4.0, 4.0], live_load = { effort = "каретка/сила", moment_per_effort = 1.0 }, allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Протокол штатного режима: до 4 Н на плече 1 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }

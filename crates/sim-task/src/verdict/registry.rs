@@ -1,11 +1,11 @@
 //! Реестр обязательств. Идентификаторы являются частью формата отчёта.
 
 use serde::Serialize;
-use sim_process::work::HazardKind;
+use sim_process::{schematic::ElectricalClass, work::HazardKind};
 
 use super::{ComponentKind, Group};
 
-pub const REGISTRY_VERSION: u32 = 1;
+pub const REGISTRY_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +17,7 @@ pub enum Method {
     Control,
     Measurement,
     Inventory,
+    Electrical,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -30,26 +31,52 @@ pub struct ClassSpec {
     pub independent_check: &'static str,
 }
 
-macro_rules! registry {
-    ($($class:ident, $id:literal, $group:ident, [$($kind:ident),*], $method:ident, $limit:literal, $check:literal;)*) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-        pub enum HazardClass { $(#[serde(rename = $id)] $class,)* }
-
-        pub const REGISTRY: &[ClassSpec] = &[$(ClassSpec {
+macro_rules! class_spec {
+    ($class:ident, $id:literal, $group:ident, [$($kind:ident),*], $method:ident, $limit:literal, $check:literal) => {
+        ClassSpec {
             class: HazardClass::$class, id: $id, group: Group::$group,
             applies_to: &[$(ComponentKind::$kind),*], method: Method::$method,
             limit_origin: $limit, independent_check: $check,
-        },)*];
-
-        impl HazardClass {
-            pub fn spec(self) -> &'static ClassSpec {
-                // Индексы перечисления и таблицы порождаются одной декларацией.
-                &REGISTRY[self as usize]
-            }
         }
     };
 }
 
+macro_rules! registry {
+    (
+        $($class:ident, $id:literal, $group:ident, [$($kind:ident),*], $method:ident, $limit:literal, $check:literal;)*
+        @electrical {
+            $($electric:ident, $code:literal, $electric_group:ident, $origin:literal, $verification:literal;)*
+        }
+    ) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+        pub enum HazardClass {
+            $(#[serde(rename = $id)] $class,)*
+            $(#[serde(rename = $code)] $electric,)*
+        }
+
+        /// Реестр классов общего корпуса этапа 6.
+        pub const REGISTRY: &[ClassSpec] = &[$(
+            class_spec!($class, $id, $group, [$($kind),*], $method, $limit, $check),
+        )*];
+
+        /// Дополнительные классы отдельного электрического корпуса.
+        /// Две причины превышения тока используют запись Overcurrent.
+        pub const ELECTRICAL_REGISTRY: &[ClassSpec] = &[$(
+            class_spec!($electric, $code, $electric_group, [], Electrical, $origin, $verification),
+        )*];
+
+        impl HazardClass {
+            pub fn spec(self) -> &'static ClassSpec {
+                let index = self as usize;
+                if index < REGISTRY.len() {
+                    &REGISTRY[index]
+                } else {
+                    &ELECTRICAL_REGISTRY[index - REGISTRY.len()]
+                }
+            }
+        }
+    };
+}
 registry! {
     StaticStrength, "static_strength", Mechanics, [Part], Section, "расчётный предел материала в условиях нагрузки", "равновесие и модуль сечения";
     Fatigue, "fatigue", Parts, [CyclicLoad], Dynamics, "кривая усталости и концентрация", "цикл нагрузки и независимый расчёт либо стенд";
@@ -57,7 +84,7 @@ registry! {
     ConnectionFailure, "connection_failure", Parts, [Connection], Process, "огибающая прочности соединения", "реакция опоры и баланс сил и моментов";
     TravelJam, "travel_jam", Mechanics, [MotionLimit], Dynamics, "предел перемещения и допустимая реакция", "геометрия зазора и межсеточное сравнение";
     Fall, "fall", Mechanics, [FreeSupport], Dynamics, "граница устойчивости или событие падения", "опорный многоугольник или баланс момента";
-    ThreadFailure, "thread_failure", Parts, [], Process, "огибающая нагрузки резьбы", "виртуальная работа, осевая нагрузка и момент";
+    ThreadFailure, "thread_failure", Parts, [ThreadedDrive], Process, "огибающая нагрузки резьбы", "виртуальная работа, осевая нагрузка и момент";
     Impact, "impact", Contact, [ImpactPath], Process, "применимый предел силы или импульса", "баланс импульса и межсеточное сравнение";
     Pinch, "pinch", Contact, [PinchPath], Process, "геометрия зазора и предел сдавливания или сдвига", "кинематика, реакции и межсеточное сравнение";
     SharpEdge, "sharp_edge", Contact, [SharpSurface], Process, "применимая геометрия и предел контакта", "обмер кромки и анализ достижимости";
@@ -83,6 +110,18 @@ registry! {
     TaskCriterion, "task_criterion", Measurements, [], Dynamics, "граница постановки", "истинный ряд в объявленном окне";
     Execution, "execution", Measurements, [], Dynamics, "полнота живого прогона и установки", "повтор прогона и совпадение журналов";
     Inventory, "inventory", Parts, [], Inventory, "полнота состава и области", "разрешённый граф и исходные документы";
+    @electrical {
+        AssemblyMismatch, "assembly_mismatch", Wiring, "сопряжение каталожных контактов", "таблица сопряжений и сверка монтажа";
+        MissingGround, "missing_ground", Wiring, "штатный путь возврата сигнала", "прозвонка контура и проверка обрыва";
+        ReversePolarity, "reverse_polarity", Power, "обратный предел полярной детали", "знак напряжения на клеммах";
+        PinOvervoltage, "pin_overvoltage", Wiring, "предел вывода в каждом состоянии питания", "напряжение относительно шин и ток инжекции";
+        GroundSwitchBackfeed, "ground_switch_backfeed", Wiring, "ток обратного пути и остаточное питание", "ток через сигнальный провод";
+        SourceConflict, "source_conflict", Power, "предел обратного тока источника", "разность ЭДС и сопротивление контура";
+        RailSag, "rail_sag", Power, "порог и выдержка сброса", "падение напряжения, баланс заряда и событие сброса";
+        StartupActuation, "startup_actuation", Firmware, "штатное состояние нагрузки при пуске", "подтяжки, ток и реакция нагрузки";
+        InductiveSpike, "inductive_spike", Power, "импульсный предел", "напряжение ограничения и сходимость по шагу";
+        SwitchUnderdrive, "switch_underdrive", Power, "применимая область ключа", "напряжение управления и баланс потерь";
+    }
 }
 
 impl From<HazardKind> for HazardClass {
@@ -102,6 +141,26 @@ impl From<HazardKind> for HazardClass {
             HazardKind::ContactStructure => Self::ContactStructure,
             HazardKind::DangerousMotion => Self::DangerousMotion,
             HazardKind::Fatigue => Self::Fatigue,
+        }
+    }
+}
+
+impl From<ElectricalClass> for HazardClass {
+    fn from(class: ElectricalClass) -> Self {
+        match class {
+            ElectricalClass::AssemblyMismatch => Self::AssemblyMismatch,
+            ElectricalClass::MissingGround => Self::MissingGround,
+            ElectricalClass::ReversePolarity => Self::ReversePolarity,
+            ElectricalClass::PinOvervoltage => Self::PinOvervoltage,
+            ElectricalClass::GroundSwitchBackfeed => Self::GroundSwitchBackfeed,
+            ElectricalClass::SourceConflict => Self::SourceConflict,
+            ElectricalClass::RailSag => Self::RailSag,
+            ElectricalClass::StartupActuation => Self::StartupActuation,
+            ElectricalClass::InductiveSpike => Self::InductiveSpike,
+            ElectricalClass::SwitchUnderdrive => Self::SwitchUnderdrive,
+            ElectricalClass::ConnectionOvercurrent | ElectricalClass::RegulatorOverload => {
+                Self::Overcurrent
+            }
         }
     }
 }

@@ -1,0 +1,24 @@
+format = 1
+board = "stm32f103c8"
+
+# DS5319, Reset and power control block characteristics, V_POR/PDR and T_RSTTEMPO.
+# Это пороги на VDD микроконтроллера, а не на входной клемме модуля.
+[reset.falling_v]
+measurement = "измерить порог POR/PDR на VDD при спаде напряжения в применимом диапазоне температуры"
+range = { min = 1.80, nominal = 1.88, max = 1.96, source = { datasheet = "ST DS5319, V_POR/PDR falling edge, https://www.st.com/resource/en/datasheet/stm32f103rb.pdf" } }
+
+[reset.rising_v]
+measurement = "измерить порог POR/PDR на VDD при нарастании напряжения"
+range = { min = 1.84, nominal = 1.92, max = 2.00, source = { datasheet = "ST DS5319, V_POR/PDR rising edge, https://www.st.com/resource/en/datasheet/stm32f103rb.pdf" } }
+
+[reset.assert_delay_s]
+measurement = "снять минимальную длительность просадки для сброса на конкретной плате, с контролем VDD и исполнения образа"
+
+[reset.release_delay_s]
+measurement = "проверить время отпускания POR по VDD и началу выполнения образа"
+range = { min = 0.0010, nominal = 0.0025, max = 0.0045, source = { datasheet = "ST DS5319, T_RSTTEMPO, guaranteed by design, https://www.st.com/resource/en/datasheet/stm32f103rb.pdf" } }
+
+[[reset_pins]]
+# Каталожные PA0–PA12. Контакты SWD/JTAG и контакты специального назначения не включены.
+pins = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+state = { state = "input", source = { datasheet = "ST RM0008, GPIO input floating during/after reset, https://www.st.com/resource/en/reference_manual/rm0008-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf" } }

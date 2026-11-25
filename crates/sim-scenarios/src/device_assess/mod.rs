@@ -220,7 +220,9 @@ fn needs_real_bench(f: &Finding, motor_data_gap: bool) -> bool {
         && (matches!(f.group, Group::Human | Group::Measurements)
             || matches!(
                 f.code,
-                "closed_loop"
+                "static_strength"
+                    | "bending_stress"
+                    | "closed_loop"
                     | "coupled_motion"
                     | "motion_limits"
                     | "guard_claim"

@@ -68,7 +68,7 @@ pub enum Parameter {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "AxisInput", into = "AxisInput")]
 pub struct Axis {
     pub id: String,
     pub parameter: Parameter,
@@ -76,8 +76,69 @@ pub struct Axis {
     pub nominal: f64,
     pub min: f64,
     pub max: f64,
+    /// Для конечного набора min и max вычисляются из допустимых значений.
+    pub values: Option<Vec<f64>>,
     pub source: Source,
     pub scope: Scope,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct AxisInput {
+    id: String,
+    parameter: Parameter,
+    unit: String,
+    nominal: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    values: Option<Vec<f64>>,
+    source: Source,
+    scope: Scope,
+}
+
+impl TryFrom<AxisInput> for Axis {
+    type Error = String;
+
+    fn try_from(mut input: AxisInput) -> Result<Self, Self::Error> {
+        let (min, max) = match (input.min, input.max, &mut input.values) {
+            (Some(min), Some(max), None) => (min, max),
+            (None, None, Some(values)) if !values.is_empty() && values.iter().all(|v| v.is_finite()) => {
+                values.sort_by(f64::total_cmp);
+                if values.windows(2).any(|pair| pair[0] == pair[1])
+                    || !values.contains(&input.nominal)
+                {
+                    return Err(format!("sampling.axes.{}: повтор значения или номинал вне набора", input.id));
+                }
+                (values[0], values[values.len() - 1])
+            }
+            _ => return Err(format!("sampling.axes.{}: укажите min и max либо непустой конечный набор values", input.id)),
+        };
+        Ok(Self {
+            id: input.id, parameter: input.parameter, unit: input.unit, nominal: input.nominal,
+            min, max, values: input.values, source: input.source, scope: input.scope,
+        })
+    }
+}
+
+impl From<Axis> for AxisInput {
+    fn from(axis: Axis) -> Self {
+        let continuous = axis.values.is_none();
+        Self {
+            id: axis.id, parameter: axis.parameter, unit: axis.unit, nominal: axis.nominal,
+            min: continuous.then_some(axis.min), max: continuous.then_some(axis.max),
+            values: axis.values, source: axis.source, scope: axis.scope,
+        }
+    }
+}
+
+impl Axis {
+    fn contains(&self, value: f64) -> bool {
+        value.is_finite() && self.min <= value && value <= self.max
+            && self.values.as_ref().is_none_or(|values| values.contains(&value))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -154,11 +215,27 @@ pub struct Sampling {
     pub(crate) axes: Vec<Axis>,
     #[serde(default)]
     boundaries: Vec<Boundary>,
-    /// Источник, задающий номинал и граничные векторы как исчерпывающий набор состояний.
-    pub(crate) discrete: Option<Source>,
+    #[serde(skip)]
+    generated: Vec<Boundary>,
+    discrete: Option<Discrete>,
     pub(crate) probability: Option<Probability>,
     #[serde(skip)]
     validated: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum Discrete {
+    Matrix(DiscreteMatrix),
+    Legacy(Source),
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiscreteMatrix {
+    /// Источник ручных сочетаний. Конечную область задают только values осей.
+    source: Source,
+    boundary_ids: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -286,7 +363,7 @@ impl Law {
                         (*min, *max)
                     }
                 };
-                if !(min.is_finite() && max.is_finite() && axis.min <= min && max <= axis.max) {
+                if !axis.contains(min) || !axis.contains(max) || axis.values.is_some() && min != max {
                     return Err(invalid(format!(
                         "{}.values.{id}: вне диапазона источника",
                         alternative.id
@@ -471,6 +548,13 @@ impl Probability {
 }
 
 impl Sampling {
+    /// Конечные пробы сами по себе не накрывают ни одну непрерывную ось.
+    pub fn unproven_axes(&self) -> impl Iterator<Item = &str> {
+        let discrete = self.has_discrete_envelope();
+        self.axes.iter().filter(move |axis| !discrete && axis.min < axis.max)
+            .map(|axis| axis.id.as_str())
+    }
+
     pub fn coverage_gap(&self, seed: u64) -> Result<Option<&'static str>, Error> {
         if self.axes.is_empty() {
             return Ok(Some("разброс пуст: отсутствуют оси допуска"));
@@ -533,7 +617,7 @@ impl Sampling {
             if axis.id != value.id
                 || axis.unit != value.unit
                 || axis.parameter != value.parameter
-                || !(axis.min <= value.value && value.value <= axis.max)
+                || !axis.contains(value.value)
             {
                 return Err(invalid(format!("неверная выборка для оси «{}»", axis.id)));
             }
@@ -582,6 +666,7 @@ impl Sampling {
 
     pub fn validate(&mut self) -> Result<(), Error> {
         self.validated = false;
+        self.generated.clear();
         self.axes.sort_by(|a, b| a.id.cmp(&b.id));
         self.boundaries.sort_by(|a, b| a.id.cmp(&b.id));
         let mut axes = BTreeMap::new();
@@ -615,7 +700,7 @@ impl Sampling {
             for (id, value) in &boundary.values {
                 if !axes
                     .get(id.as_str())
-                    .is_some_and(|a| value.is_finite() && a.min <= *value && *value <= a.max)
+                    .is_some_and(|a| a.contains(*value))
                 {
                     return Err(invalid(format!(
                         "sampling.boundaries.{}.values.{id}: неизвестная ось или значение вне допуска",
@@ -624,7 +709,9 @@ impl Sampling {
                 }
             }
         }
-        if self.probability.is_none() && !self.axes.is_empty() && self.boundaries.is_empty() {
+        if self.probability.is_none() && !self.axes.is_empty() && self.boundaries.is_empty()
+            && self.axes.iter().all(|axis| axis.values.is_none())
+        {
             return Err(invalid(
                 "sampling.boundaries: для допуска без закона нужно задать граничные сочетания",
             ));
@@ -632,19 +719,88 @@ impl Sampling {
         if let Some(probability) = &mut self.probability {
             probability.validate(&axes)?;
         }
-        if let Some(source) = &self.discrete {
-            source.validate()?;
-            if self.probability.is_some()
-                || !source.can_prove()
-                || source.kind == crate::SourceKind::Derived
-            {
-                return Err(invalid(
-                    "sampling.discrete: нужен исходный источник дискретной матрицы без вероятностного закона",
-                ));
+        if let Some(discrete) = &self.discrete {
+            match discrete {
+                Discrete::Legacy(source) => source.validate()?,
+                Discrete::Matrix(matrix) => {
+                    matrix.source.validate()?;
+                    for id in &matrix.boundary_ids {
+                        name(id)?;
+                    }
+                }
             }
         }
+        self.complete_discrete_states()?;
         self.validated = true;
         Ok(())
+    }
+
+    fn complete_discrete_states(&mut self) -> Result<(), Error> {
+        let axes: Vec<_> = self.axes.iter().filter(|axis| axis.values.is_some()).collect();
+        if axes.is_empty() {
+            return Ok(());
+        }
+        let states = axes.iter().try_fold(1usize, |count, axis| {
+            count.checked_mul(axis.values.as_ref().expect("конечная ось").len())
+                .ok_or_else(|| invalid("переполнение числа сочетаний конечных допусков"))
+        })?;
+        let vector = |boundary: Option<&Boundary>| {
+            self.axes.iter().map(|axis| {
+                let value = boundary.and_then(|b| b.values.get(&axis.id)).copied().unwrap_or(axis.nominal);
+                // Минус ноль задаёт то же физическое положение.
+                if value == 0.0 { 0 } else { value.to_bits() }
+            }).collect::<Vec<_>>()
+        };
+        let covered: BTreeSet<_> = std::iter::once(vector(None))
+            .chain(self.boundaries.iter().map(|boundary| vector(Some(boundary))))
+            .collect();
+        let mut ids: BTreeSet<_> = self.boundaries.iter().map(|b| b.id.clone()).collect();
+        let mut candidate = 0usize;
+        self.generated.try_reserve_exact(states.saturating_sub(1))
+            .map_err(|_| invalid("сочетания конечных допусков не помещаются в память"))?;
+        for index in 0..states {
+            let mut position = index;
+            let mut values = BTreeMap::new();
+            for axis in &axes {
+                let options = axis.values.as_ref().expect("конечная ось");
+                values.insert(axis.id.clone(), options[position % options.len()]);
+                position /= options.len();
+            }
+            let mut boundary = Boundary {
+                id: String::new(), values, source: axes[0].source.clone(),
+            };
+            if !covered.contains(&vector(Some(&boundary))) {
+                loop {
+                    candidate = candidate.checked_add(1).ok_or_else(|| invalid("переполнение номера сочетания"))?;
+                    let id = format!("конечное-сочетание-{candidate}");
+                    if ids.insert(id.clone()) {
+                        boundary.id = id;
+                        break;
+                    }
+                }
+                self.generated.push(boundary);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn has_discrete_envelope(&self) -> bool {
+        self.discrete_envelope_with(|source| {
+            source.can_prove() && source.kind != crate::SourceKind::Derived
+        })
+    }
+
+    pub(crate) fn discrete_envelope_with(&self, sourced: impl Fn(&Source) -> bool) -> bool {
+        self.validated
+            && self.probability.is_none()
+            && self.axes.iter().all(|axis| sourced(&axis.source) && (axis.min == axis.max || axis.values.is_some()))
+            && self.boundaries.iter().all(|boundary| sourced(&boundary.source))
+            && self.discrete.as_ref().is_none_or(|discrete| match discrete {
+                Discrete::Legacy(_) => false,
+                Discrete::Matrix(matrix) => sourced(&matrix.source)
+                    && matrix.boundary_ids.len() == self.boundaries.len()
+                    && self.boundaries.iter().all(|boundary| matrix.boundary_ids.contains(&boundary.id)),
+            })
     }
 
     fn check_validated(&self) -> Result<(), Error> {
@@ -664,6 +820,7 @@ impl Sampling {
             .transpose()?
             .unwrap_or(0)
             .checked_add(self.boundaries.len())
+            .and_then(|n| n.checked_add(self.generated.len()))
             .and_then(|n| n.checked_add(1))
             .ok_or_else(|| invalid("sampling: переполнение числа выборок"))?;
         let mut keys = Vec::new();
@@ -673,6 +830,7 @@ impl Sampling {
         keys.extend(
             self.boundaries
                 .iter()
+                .chain(&self.generated)
                 .map(|b| SampleKey::Boundary { id: b.id.clone() }),
         );
         if let Some(p) = &self.probability {
@@ -703,9 +861,11 @@ impl Sampling {
                     .boundaries
                     .iter()
                     .find(|b| b.id == *id)
+                    .or_else(|| self.generated.iter().find(|b| b.id == *id))
                     .ok_or_else(|| invalid("неизвестная граничная комбинация"))?;
                 values = boundary.values.clone();
-                boundary_source = Some(&boundary.source);
+                // Синтезированная строка опирается на собственный источник каждой оси.
+                boundary_source = self.boundaries.iter().find(|b| b.id == *id).map(|b| &b.source);
                 ("boundary".into(), id.clone(), String::new())
             }
             SampleKey::Random {
@@ -787,7 +947,7 @@ impl Sampling {
         let mut applied = Vec::new();
         for axis in &self.axes {
             let value = values.get(&axis.id).copied().unwrap_or(axis.nominal);
-            if !(value.is_finite() && axis.min <= value && value <= axis.max) {
+            if !axis.contains(value) {
                 return Err(invalid(format!(
                     "sampling.axes.{}: выборка вне диапазона источника",
                     axis.id

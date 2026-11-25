@@ -36,5 +36,7 @@ pub use loader::{
 };
 pub use mesh::{Mesh, load_mesh};
 pub use schema::*;
-pub use strength::{SectionAxis, StrengthSection, strength_section};
+pub use strength::{
+    CentrifugalModel, CentrifugalStress, STRENGTH_REQUIRES_BENCH, SectionAxis, StrengthSection, strength_section,
+};
 pub use verify::{CheckStatus, CompileCheck, set_attachment_active, verify_compiled};

@@ -1,0 +1,3916 @@
+{
+  "устройство": {
+    "proof_scope": "сборка",
+    "schematic": 3090315246489774287,
+    "sheet": {
+      "bindings": [
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adcangle"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"adc:0\", function: Adc }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adccurrent"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"adc:1\", function: Adc }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adctemp"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"adc:2\", function: Adc }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adcbattery"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"adc:3\", function: Adc }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "pwm"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"0\", function: Pwm }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "dir"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"1\", function: GpioOutput }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "enable"
+            }
+          ],
+          "target": "BoardPin { board: \"плата\", pin: \"2\", function: GpioOutput }"
+        },
+        {
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "target": "DrivePower { drive: \"мотор\" }"
+        },
+        {
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "target": "BoardPower { board: \"плата\", rail: \"vdd\" }"
+        }
+      ],
+      "inspections": [
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "g"
+            },
+            {
+              "component": "return_bus",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_bus_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "return_bus",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_bus_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "lead_hall_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_return_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "lead_hall_return",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_return"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_return_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_1"
+            },
+            {
+              "component": "lead_hall_1",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_1_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "lead_hall_1",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_1"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_1_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_2"
+            },
+            {
+              "component": "lead_hall_2",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_2_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "lead_hall_2",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_2"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_2_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_3"
+            },
+            {
+              "component": "lead_hall_3",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_3_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "lead_hall_3",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_3"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_3_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_supply"
+            },
+            {
+              "component": "lead_hall_supply",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_supply_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "lead_hall_supply",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_supply"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "lead_hall_supply_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "u"
+            },
+            {
+              "component": "phase_u",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "phase_u_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "phase_u",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "u"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "phase_u_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "v"
+            },
+            {
+              "component": "phase_v",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "phase_v_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "phase_v",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "v"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "phase_v_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "w"
+            },
+            {
+              "component": "phase_w",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "phase_w_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "phase_w",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "w"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "phase_w_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "bms",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_bms",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "p"
+            },
+            {
+              "component": "bms",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bank_to_bms",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bms",
+              "pin": "output"
+            },
+            {
+              "component": "protected_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "protected_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "protected_feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "protected_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "fuse_output",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "fuse_output_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "fuse_output",
+              "pin": "b"
+            },
+            {
+              "component": "terminal",
+              "pin": "clamp"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "fuse_output_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "bridge_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_board",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "feedback",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_feedback",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "regulator",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_regulator",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "regulator",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "regulator_feed",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "regulator",
+              "pin": "output"
+            },
+            {
+              "component": "logic_power",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "logic_power_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "logic_power",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "logic_power_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "dir"
+            },
+            {
+              "component": "control_dir",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "control_dir_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "control_dir",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "control_dir_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "enable"
+            },
+            {
+              "component": "control_enable",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "control_enable_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "control_enable",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "enable"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "control_enable_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "pwm"
+            },
+            {
+              "component": "control_pwm",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "control_pwm_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "control_pwm",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "control_pwm_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "feedback",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feedback_power",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "angle"
+            },
+            {
+              "component": "sense_angle",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_angle_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sense_angle",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adcangle"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_angle_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "battery"
+            },
+            {
+              "component": "sense_battery",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_battery_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sense_battery",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adcbattery"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_battery_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "current"
+            },
+            {
+              "component": "sense_current",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_current_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sense_current",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adccurrent"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_current_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "feedback",
+              "pin": "bus"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_feed",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "temp"
+            },
+            {
+              "component": "sense_temp",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_temp_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sense_temp",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adctemp"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить сопротивление участка и стыка без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sense_temp_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vdd»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vdd»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "p"
+            },
+            {
+              "component": "bank",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «вход батареи»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "p"
+            },
+            {
+              "component": "bank",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «вход батареи»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «питание моста»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «питание моста»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "board/dir → bridge/dir",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "board/enable → bridge/enable",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "board/pwm → bridge/pwm",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "feedback/angle → board/adcangle",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "feedback/battery → board/adcbattery",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "feedback/current → board/adccurrent",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "feedback/temp → board/adctemp",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "motor",
+              "pin": "hall_return"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "motor/hall_1 → bridge/hall_1",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "motor",
+              "pin": "hall_return"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "motor/hall_2 → bridge/hall_2",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "motor",
+              "pin": "hall_return"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "motor/hall_3 → bridge/hall_3",
+          "test": "continuity"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "g"
+            },
+            {
+              "component": "return_bus",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_bus_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "return_bus",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_bus_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "lead_hall_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_return_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "lead_hall_return",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_return"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_return_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_1"
+            },
+            {
+              "component": "lead_hall_1",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_1_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "lead_hall_1",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_1"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_1_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_2"
+            },
+            {
+              "component": "lead_hall_2",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_2_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "lead_hall_2",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_2"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_2_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_3"
+            },
+            {
+              "component": "lead_hall_3",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_3_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "lead_hall_3",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_3"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_3_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_supply"
+            },
+            {
+              "component": "lead_hall_supply",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_supply_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "lead_hall_supply",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_supply"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "lead_hall_supply_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "u"
+            },
+            {
+              "component": "phase_u",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "phase_u_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "phase_u",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "u"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "phase_u_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "v"
+            },
+            {
+              "component": "phase_v",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "phase_v_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "phase_v",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "v"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "phase_v_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "w"
+            },
+            {
+              "component": "phase_w",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "phase_w_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "phase_w",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "w"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "phase_w_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "bms",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_bms",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "p"
+            },
+            {
+              "component": "bms",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bank_to_bms",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bms",
+              "pin": "output"
+            },
+            {
+              "component": "protected_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "protected_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "protected_feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "protected_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "fuse_output",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "fuse_output_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "fuse_output",
+              "pin": "b"
+            },
+            {
+              "component": "terminal",
+              "pin": "clamp"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "fuse_output_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "bridge_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_board",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "feedback",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_feedback",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "regulator",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_regulator",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "regulator",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "regulator_feed",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "regulator",
+              "pin": "output"
+            },
+            {
+              "component": "logic_power",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "logic_power_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "logic_power",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "logic_power_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "dir"
+            },
+            {
+              "component": "control_dir",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "control_dir_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "control_dir",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "control_dir_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "enable"
+            },
+            {
+              "component": "control_enable",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "control_enable_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "control_enable",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "enable"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "control_enable_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "pwm"
+            },
+            {
+              "component": "control_pwm",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "control_pwm_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "control_pwm",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "control_pwm_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "feedback",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feedback_power",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "angle"
+            },
+            {
+              "component": "sense_angle",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_angle_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sense_angle",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adcangle"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_angle_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "battery"
+            },
+            {
+              "component": "sense_battery",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_battery_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sense_battery",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adcbattery"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_battery_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "current"
+            },
+            {
+              "component": "sense_current",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_current_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sense_current",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adccurrent"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_current_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "feedback",
+              "pin": "bus"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_feed",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "temp"
+            },
+            {
+              "component": "sense_temp",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_temp_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sense_temp",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adctemp"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить ток по проводу, контакту и длительности с контролем нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sense_temp_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить обратное напряжение и предел защиты экземпляра.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «vdd»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "p"
+            },
+            {
+              "component": "bank",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить обратное напряжение и предел защиты экземпляра.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «вход батареи»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить обратное напряжение и предел защиты экземпляра.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «питание моста»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adcangle"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"adc:0\", function: Adc }",
+          "test": "signal_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adccurrent"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"adc:1\", function: Adc }",
+          "test": "signal_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adctemp"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"adc:2\", function: Adc }",
+          "test": "signal_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "adcbattery"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"adc:3\", function: Adc }",
+          "test": "signal_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "pwm"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"0\", function: Pwm }",
+          "test": "signal_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "dir"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"1\", function: GpioOutput }",
+          "test": "signal_voltage"
+        },
+        {
+          "conditions": "замерить уровень относительно локальной опоры при выключении, сбросе и загрузке",
+          "ends": [
+            {
+              "component": "board",
+              "pin": "enable"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "current_limited_start",
+          "subject": "BoardPin { board: \"плата\", pin: \"2\", function: GpioOutput }",
+          "test": "signal_voltage"
+        }
+      ],
+      "operations": [
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "g"
+            },
+            {
+              "component": "return_bus",
+              "pin": "a"
+            }
+          ],
+          "id": "return_bus_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "return_bus_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "return_bus",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "id": "return_bus_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "lead_hall_return",
+              "pin": "a"
+            }
+          ],
+          "id": "lead_hall_return_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_return_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "lead_hall_return",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_return"
+            }
+          ],
+          "id": "lead_hall_return_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_1"
+            },
+            {
+              "component": "lead_hall_1",
+              "pin": "a"
+            }
+          ],
+          "id": "lead_hall_1_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_1_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "lead_hall_1",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_1"
+            }
+          ],
+          "id": "lead_hall_1_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_2"
+            },
+            {
+              "component": "lead_hall_2",
+              "pin": "a"
+            }
+          ],
+          "id": "lead_hall_2_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_2_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "lead_hall_2",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_2"
+            }
+          ],
+          "id": "lead_hall_2_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_3"
+            },
+            {
+              "component": "lead_hall_3",
+              "pin": "a"
+            }
+          ],
+          "id": "lead_hall_3_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_3_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "lead_hall_3",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_3"
+            }
+          ],
+          "id": "lead_hall_3_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "hall_supply"
+            },
+            {
+              "component": "lead_hall_supply",
+              "pin": "a"
+            }
+          ],
+          "id": "lead_hall_supply_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "lead_hall_supply_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "lead_hall_supply",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "hall_supply"
+            }
+          ],
+          "id": "lead_hall_supply_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "u"
+            },
+            {
+              "component": "phase_u",
+              "pin": "a"
+            }
+          ],
+          "id": "phase_u_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "phase_u_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "phase_u",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "u"
+            }
+          ],
+          "id": "phase_u_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "v"
+            },
+            {
+              "component": "phase_v",
+              "pin": "a"
+            }
+          ],
+          "id": "phase_v_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "phase_v_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "phase_v",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "v"
+            }
+          ],
+          "id": "phase_v_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "w"
+            },
+            {
+              "component": "phase_w",
+              "pin": "a"
+            }
+          ],
+          "id": "phase_w_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "phase_w_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "phase_w",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "w"
+            }
+          ],
+          "id": "phase_w_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "bms",
+              "pin": "g"
+            }
+          ],
+          "id": "return_bms",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bms"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bank",
+              "pin": "p"
+            },
+            {
+              "component": "bms",
+              "pin": "input"
+            }
+          ],
+          "id": "bank_to_bms",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "bank_to_bms"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bms",
+              "pin": "output"
+            },
+            {
+              "component": "protected_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "protected_feed_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "protected_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "protected_feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "id": "protected_feed_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "protected_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "fuse_output",
+              "pin": "a"
+            }
+          ],
+          "id": "fuse_output_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "fuse_output_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "fuse_output",
+              "pin": "b"
+            },
+            {
+              "component": "terminal",
+              "pin": "clamp"
+            }
+          ],
+          "id": "fuse_output_finish",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "fuse_output_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "bridge_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "bridge_feed_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "bridge_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "id": "bridge_feed_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "board",
+              "pin": "g"
+            }
+          ],
+          "id": "return_board",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "feedback",
+              "pin": "g"
+            }
+          ],
+          "id": "return_feedback",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "regulator",
+              "pin": "g"
+            }
+          ],
+          "id": "return_regulator",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "fuse_output_finish",
+            "return_regulator"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "regulator",
+              "pin": "input"
+            }
+          ],
+          "id": "regulator_feed",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "regulator_feed",
+            "return_board"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "regulator",
+              "pin": "output"
+            },
+            {
+              "component": "logic_power",
+              "pin": "a"
+            }
+          ],
+          "id": "logic_power_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "logic_power_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "logic_power",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "p"
+            }
+          ],
+          "id": "logic_power_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "logic_power_finish",
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "board",
+              "pin": "dir"
+            },
+            {
+              "component": "control_dir",
+              "pin": "a"
+            }
+          ],
+          "id": "control_dir_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "control_dir_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "control_dir",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "id": "control_dir_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "logic_power_finish",
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "board",
+              "pin": "enable"
+            },
+            {
+              "component": "control_enable",
+              "pin": "a"
+            }
+          ],
+          "id": "control_enable_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "control_enable_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "control_enable",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "enable"
+            }
+          ],
+          "id": "control_enable_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "logic_power_finish",
+            "return_bus_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "board",
+              "pin": "pwm"
+            },
+            {
+              "component": "control_pwm",
+              "pin": "a"
+            }
+          ],
+          "id": "control_pwm_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "control_pwm_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "control_pwm",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "id": "control_pwm_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "logic_power_finish",
+            "return_feedback"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "board",
+              "pin": "p"
+            },
+            {
+              "component": "feedback",
+              "pin": "p"
+            }
+          ],
+          "id": "feedback_power",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "feedback_power"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "angle"
+            },
+            {
+              "component": "sense_angle",
+              "pin": "a"
+            }
+          ],
+          "id": "sense_angle_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "sense_angle_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sense_angle",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adcangle"
+            }
+          ],
+          "id": "sense_angle_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "feedback_power"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "battery"
+            },
+            {
+              "component": "sense_battery",
+              "pin": "a"
+            }
+          ],
+          "id": "sense_battery_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "sense_battery_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sense_battery",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adcbattery"
+            }
+          ],
+          "id": "sense_battery_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "feedback_power"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "current"
+            },
+            {
+              "component": "sense_current",
+              "pin": "a"
+            }
+          ],
+          "id": "sense_current_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "sense_current_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sense_current",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adccurrent"
+            }
+          ],
+          "id": "sense_current_finish",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "fuse_output_finish",
+            "return_feedback"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "terminal",
+              "pin": "tail"
+            },
+            {
+              "component": "feedback",
+              "pin": "bus"
+            }
+          ],
+          "id": "sense_feed",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "feedback_power"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feedback",
+              "pin": "temp"
+            },
+            {
+              "component": "sense_temp",
+              "pin": "a"
+            }
+          ],
+          "id": "sense_temp_start",
+          "kind": "Splice"
+        },
+        {
+          "after": [
+            "sense_temp_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sense_temp",
+              "pin": "b"
+            },
+            {
+              "component": "board",
+              "pin": "adctemp"
+            }
+          ],
+          "id": "sense_temp_finish",
+          "kind": "Splice"
+        }
+      ],
+      "parts": [
+        {
+          "component": "bank",
+          "kind": "Battery",
+          "missing_parameters": {
+            "elements/capacity/farad": "Оценка sim-circuit/src/battery.rs для SOC ≥60%: 10 мОм и 2913.1 Ф на ячейку. Пересчёт R×6/2 и C×2/6.",
+            "elements/emf/volt": "Модель 6S2P из sampled-drive.toml, SOC 90%, параметры при 25 °C. ЭДС по Chen 2020, R0 по Lone et al., sim-circuit/src/battery.rs.",
+            "elements/polarization/ohm": "Оценка sim-circuit/src/battery.rs для SOC ≥60%: 10 мОм и 2913.1 Ф на ячейку. Пересчёт R×6/2 и C×2/6.",
+            "elements/series/ohm": "Модель 6S2P из sampled-drive.toml, SOC 90%, параметры при 25 °C. ЭДС по Chen 2020, R0 по Lone et al., sim-circuit/src/battery.rs."
+          },
+          "model_gap": "Зафиксировать ревизию ячеек, SOC, температуру, пределы BMS и зарядного тока, снять обратную ВАХ.",
+          "part": "lg_m50_6s2p",
+          "pins": {
+            "g": "g",
+            "p": "bank_plus"
+          },
+          "source": "LG INR21700-M50: sampled-drive.toml, модель Chen 2020, https://doi.org/10.1149/1945-7111/ab9050"
+        },
+        {
+          "component": "bms",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/closed/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании."
+          },
+          "model_gap": "Проверить BMS для 6S, обратный ток, пределы заряда, разбаланса и время отсечки.",
+          "part": "bms_series_unspecified",
+          "pins": {
+            "g": "g",
+            "input": "bank_plus",
+            "output": "protected"
+          },
+          "source": "sampled-drive.toml задаёт 6S2P. Модель BMS в данных отсутствует."
+        },
+        {
+          "component": "board",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/adcangle/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/adcbattery/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/adccurrent/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/adctemp/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/dir/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/enable/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/pwm/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах."
+          },
+          "model_gap": "Нужны физическая плата, соответствие контактов ABI, нагрузки, пороги GPIO и сброса. В опыте питание измеряется отдельно.",
+          "part": "virtual_controller_io",
+          "pins": {
+            "adcangle": "adcangle",
+            "adcbattery": "adcbattery",
+            "adccurrent": "adccurrent",
+            "adctemp": "adctemp",
+            "dir": "dir",
+            "enable": "enable",
+            "g": "g",
+            "p": "vdd",
+            "pwm": "pwm"
+          },
+          "source": "VMCU-C3, crates/sim-mcu/MEMORY_MAP.md, карта проводки control.toml."
+        },
+        {
+          "component": "bridge",
+          "kind": "SwitchModule",
+          "missing_parameters": {
+            "elements/dc_load/ampere": "До первой команды модель привода обесточена. Далее ток приходит из привода.",
+            "elements/hall_1/ohm": "Установить режим и входное сопротивление линий Холла по плате драйвера.",
+            "elements/hall_2/ohm": "Установить режим и входное сопротивление линий Холла по плате драйвера.",
+            "elements/hall_3/ohm": "Установить режим и входное сопротивление линий Холла по плате драйвера.",
+            "elements/hall_supply/ohm": "Установить режим и входное сопротивление линий Холла по плате драйвера.",
+            "elements/u/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/v/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах.",
+            "elements/w/ohm": "Снять входной или выходной импеданс указанного контакта в рабочих фазах."
+          },
+          "model_gap": "Определить установленный трёхфазный драйвер, напряжение и входы Холлов, защиту, торможение и путь рекуперации. Холлы не возбуждаются в численном опыте. В DC-шину возвращается ток модели привода.",
+          "part": "bldc_bridge_unspecified",
+          "pins": {
+            "dir": "dir",
+            "enable": "enable",
+            "g": "g",
+            "hall_1": "hall_1",
+            "hall_2": "hall_2",
+            "hall_3": "hall_3",
+            "hall_supply": "hall_supply",
+            "p": "bus",
+            "pwm": "pwm",
+            "u": "u",
+            "v": "v",
+            "w": "w"
+          },
+          "source": "sampled-drive.toml и control.toml задают эквивалент моста PWM, DIR, EN. maxon ESCON 70/10, Hardware Reference, используется только для сверки интерфейса: https://www.maxongroup.com/medias/sys_master/root/9350562709534/422969-ESCON-70-10-Hardware-Reference-En.pdf"
+        },
+        {
+          "component": "bridge_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "bus",
+            "b": "bus"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "control_dir",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "dir",
+            "b": "dir"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "control_enable",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "enable",
+            "b": "enable"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "control_pwm",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "pwm",
+            "b": "pwm"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "feedback",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/divider/gain": "control.toml: передаточное отношение 1/11; нагрузка делителя не задана."
+          },
+          "model_gap": "Определить измерители угла, тока и температуры, резисторы делителя, выходной импеданс и диапазоны. В опыте их сигналы поступают через контур наблюдений.",
+          "part": "analogue_feedback_unspecified",
+          "pins": {
+            "angle": "adcangle",
+            "battery": "adcbattery",
+            "bus": "bus",
+            "current": "adccurrent",
+            "g": "g",
+            "p": "vdd",
+            "temp": "adctemp"
+          },
+          "source": "Аналоговые каналы и масштабирование из control.toml; модификации измерителей не определены."
+        },
+        {
+          "component": "fuse",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/closed/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Определить номинал и кривую времени отключения держателя."
+          },
+          "model_gap": "Замерить холодное сопротивление. Выбрать артикул по напряжению, отключающей способности, кривой I²t и жгуту.",
+          "part": "fuse_series",
+          "pins": {
+            "input": "protected",
+            "output": "bus"
+          },
+          "source": "Littelfuse 0451/0453 NANO², кривые отключения https://www.littelfuse.com/assetdocs/451-series-time-curve-data?assetguid=e50cd9d4-cfe0-4341-ba60-73b19722a700; семейство кандидатов. Номинал и артикул экземпляра не установлены."
+        },
+        {
+          "component": "fuse_output",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "bus",
+            "b": "bus"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "lead_hall_1",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "hall_1",
+            "b": "hall_1"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "lead_hall_2",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "hall_2",
+            "b": "hall_2"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "lead_hall_3",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "hall_3",
+            "b": "hall_3"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "lead_hall_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "g",
+            "b": "g"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "lead_hall_supply",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "hall_supply",
+            "b": "hall_supply"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "logic_power",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "vdd",
+            "b": "vdd"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "motor",
+          "kind": "Other",
+          "missing_parameters": {},
+          "model_gap": "Номинальная медь по паспорту. Сверить разъём Холлов V1/V2 и питание 4,5–24 В по фактической ревизии. Коммутация и противо-ЭДС относятся к модели привода.",
+          "part": "maxon_500267",
+          "pins": {
+            "hall_1": "hall_1",
+            "hall_2": "hall_2",
+            "hall_3": "hall_3",
+            "hall_return": "g",
+            "hall_supply": "hall_supply",
+            "u": "u",
+            "v": "v",
+            "w": "w"
+          },
+          "source": "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf"
+        },
+        {
+          "component": "phase_u",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "u",
+            "b": "u"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "phase_v",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "v",
+            "b": "v"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "phase_w",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "w",
+            "b": "w"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "protected_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "protected",
+            "b": "protected"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "regulator",
+          "kind": "SwitchingRegulator",
+          "missing_parameters": {
+            "elements/load/ampere": "Ток электроники 0.12 А из sampled-drive.toml.",
+            "elements/regulator/volt": "Номинальное питание IO каталога VMCU-C3. Уставка модуля в сборке не определена."
+          },
+          "model_gap": "Измерить входной ток, пуск и нагрев, допустимый ток модуля, выходную ВАХ и поведение при обратном токе.",
+          "part": "logic_buck_24",
+          "pins": {
+            "g": "g",
+            "input": "bus",
+            "output": "vdd"
+          },
+          "source": "TI LM2596, §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf; кандидат на отдельную логику, ревизия и выходной делитель не заданы."
+        },
+        {
+          "component": "return_bus",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "g",
+            "b": "g"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "sense_angle",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "adcangle",
+            "b": "adcangle"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "sense_battery",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "adcbattery",
+            "b": "adcbattery"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "sense_current",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "adccurrent",
+            "b": "adccurrent"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "sense_temp",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "adctemp",
+            "b": "adctemp"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "terminal",
+          "kind": "ScrewTerminal",
+          "missing_parameters": {
+            "elements/contact/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании."
+          },
+          "model_gap": "Снять тип клеммы, момент затяжки, ток и сопротивление обжатого конца.",
+          "part": "harness_terminal",
+          "pins": {
+            "clamp": "bus",
+            "tail": "bus"
+          },
+          "source": "Клемма стойки монтажа. Маркировку установленной детали установить."
+        }
+      ]
+    }
+  }
+}

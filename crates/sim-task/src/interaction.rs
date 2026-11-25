@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 pub use sim_process::SourcedRange;
 use sim_process::attachments::InterfaceState;
 use sim_process::{Analysis, Interval};
@@ -19,7 +19,7 @@ use crate::verdict::{Finding, HazardClass, Level, LimitValue, RequirementKey};
 use crate::{Error, Fingerprint, Outcome, invalid};
 
 /// Единое правило свёртки для живого отчёта и конструктора.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SafetyDecision {
     Rejected,
     NeedsWork,
@@ -46,7 +46,8 @@ pub enum Reach {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EnergyPath {
     Electrical,
     Thermal,
@@ -368,6 +369,8 @@ impl ContactMetric {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum CriterionKind {
     Exposure,
+    /// Отсев по численной модели, подтверждение пригодности требует замера.
+    TissueScreen,
     Design,
 }
 
@@ -439,6 +442,8 @@ pub struct GridSummary {
     pub journal: Fingerprint,
     pub rate_hz: f64,
     pub patches: BTreeMap<String, ContactMetrics>,
+    #[serde(skip)]
+    pub patch_peaks_at_ns: BTreeMap<String, BTreeMap<ContactMetric, u64>>,
     pub regions: BTreeMap<String, ContactMetrics>,
     pub routes: BTreeMap<String, ContactMetrics>,
     pub coverage_gaps: Vec<String>,
@@ -467,6 +472,8 @@ pub struct ExposureFinding {
     pub unit: &'static str,
     pub outcome: Outcome,
     pub source: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub measurement_sources: Vec<String>,
     pub applicability: String,
     pub coverage_gaps: Vec<String>,
     pub event_ns: Option<u64>,
@@ -515,18 +522,22 @@ impl InteractionEvidence {
         for item in &self.findings {
             let class = match item.kind {
                 CriterionKind::Design => HazardClass::ContactStructure,
-                CriterionKind::Exposure => HazardClass::TissueLoad,
+                CriterionKind::Exposure | CriterionKind::TissueScreen => HazardClass::TissueLoad,
             };
             let mut finding = Finding::open(
                 &key(class, item.patch.clone(), item.window_ns),
                 item.applicability.clone(),
             );
             finding.code = format!("{}/{:?}", item.region, item.metric);
-            finding.outcome = item.outcome;
+            finding.outcome = match (class, item.outcome) {
+                (HazardClass::TissueLoad, Outcome::Pass) => Outcome::NotAnalyzed,
+                (_, outcome) => outcome,
+            };
             finding.measurement = item.measurement;
             finding.limit = item.limit.map(LimitValue::upper);
             finding.unit = Some(item.unit.into());
             finding.limit_sources.push(item.source.clone());
+            finding.measurement_sources.clone_from(&item.measurement_sources);
             finding.model_scope = Some(item.applicability.clone());
             finding.journal = item.event_journal.or(journal);
             finding.event_ns = item.event_ns;
@@ -534,6 +545,9 @@ impl InteractionEvidence {
                 .coverage_gaps
                 .extend(item.coverage_gaps.iter().cloned());
             finding.confirmed_hazard = item.outcome == Outcome::Fail;
+            if finding.confirmed_hazard {
+                finding.missing_data.clear();
+            }
             result.push(finding);
         }
         for item in &self.power {
@@ -849,7 +863,7 @@ fn assess(runs: &[&Runtime], plan: &InteractionPlan) -> Result<InteractionEviden
                     if !findings.iter().any(|f| {
                         f.patch == *patch
                             && f.region == *region
-                            && f.kind == CriterionKind::Exposure
+                            && matches!(f.kind, CriterionKind::Exposure | CriterionKind::TissueScreen)
                             && f.metric == metric
                     }) {
                         blockers.insert(format!(
@@ -1280,7 +1294,7 @@ fn audit_grid(rt: &Runtime, plan: &InteractionPlan) -> GridAudit {
             .map(|(k, v)| (k, v.metrics))
             .collect()
     };
-    let peaks_at = patch_metrics
+    let peaks_at: BTreeMap<_, _> = patch_metrics
         .iter()
         .map(|(patch, summary)| (patch.clone(), summary.peaks_at.clone()))
         .collect();
@@ -1289,6 +1303,7 @@ fn audit_grid(rt: &Runtime, plan: &InteractionPlan) -> GridAudit {
         journal: Fingerprint::from_fnv1a(rt.log().fingerprint()),
         rate_hz: rt.physics_rate().as_hz(),
         patches: metrics(patch_metrics),
+        patch_peaks_at_ns: peaks_at.clone(),
         regions: metrics(region_metrics),
         routes: metrics(route_metrics),
         coverage_gaps: gaps.into_iter().collect(),
@@ -1466,6 +1481,7 @@ fn compare_limit(
         unit: rule.metric.unit(),
         outcome: Outcome::NotAnalyzed,
         source: format!("{:?}; {:?}", rule.limit.provenance, rule.validation),
+        measurement_sources: Vec::new(),
         coverage_gaps: Vec::new(),
         event_ns: None,
         event_journal: None,
@@ -1486,10 +1502,11 @@ fn compare_limit(
                 && !a.invalid_patches.contains(&rule.patch)
                 && a.summary.patches.contains_key(&rule.patch)
         });
-    let with_area = !matches!(
+    let tissue_screen = rule.kind == CriterionKind::TissueScreen;
+    let with_area = (!tissue_screen && !matches!(
         rule.metric,
         ContactMetric::MeanPressure | ContactMetric::MeanShear
-    ) || rule.area_m2.is_some();
+    )) || rule.area_m2.is_some();
     let context = with_area
         && patch.is_some_and(|p| {
             p.geometry == rule.geometry
@@ -1507,6 +1524,8 @@ fn compare_limit(
                     && a.areas.get(&rule.patch).is_some_and(|area| {
                         area.can_prove() && area.min >= r.min && area.max <= r.max
                     })
+                    && (!tissue_screen || a.summary.patches.get(&rule.patch)
+                        .is_some_and(|m| m.peak_mean_pressure_pa.is_some()))
             })
         });
     let quantities: &[&str] = match rule.metric {
@@ -1560,6 +1579,35 @@ fn compare_limit(
                 .and_then(|m| metric_value(m, rule.metric))
         })
         .collect::<Vec<_>>();
+    if tissue_screen {
+        let bounds = med.iter().fold([min, max], |acc, row| {
+            [acc[0].min(row[0]), acc[1].max(row[1])]
+        });
+        finding.measurement = Some(bounds);
+        finding.measurement_sources.push(
+            "Реакция из завершённых интервалов взаимодействия на трёх вложенных сетках".into(),
+        );
+        for audit in audits.iter().flatten() {
+            let area = &audit.areas[&rule.patch];
+            let source = format!("Эффективная площадь по сжатию: {:?}", area.provenance);
+            if !finding.measurement_sources.contains(&source) {
+                finding.measurement_sources.push(source);
+            }
+        }
+        if bounds[0] > high
+            && let Some((at, journal)) = finest.and_then(|audit| {
+                Some((*audit.peaks_at.get(&rule.patch)?.get(&rule.metric)?, audit.summary.journal))
+            })
+        {
+            finding.outcome = Outcome::Fail;
+            finding.event_ns = Some(at);
+            finding.event_journal = Some(journal);
+            finding.applicability.push_str(". Живая нагрузка превышает предел постановки");
+        } else {
+            finding.applicability.push_str(". Живая нагрузка требует заверенного замера для положительного вывода");
+        }
+        return finding;
+    }
     finding.outcome = if min > high || med.iter().any(|bounds| bounds[0] > high) {
         Outcome::Fail
     } else if max <= low && med.iter().all(|bounds| bounds[1] <= low) {

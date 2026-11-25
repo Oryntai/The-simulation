@@ -1,0 +1,505 @@
+format = 1
+scope = "assembly"
+name = "Монтажная схема 6S2P, силовой привод и измерители"
+nets = ["adcangle", "adcbattery", "adccurrent", "adctemp", "bank_plus", "bus", "dir", "enable", "g", "hall_supply", "hall_1", "hall_2", "hall_3", "protected", "pwm", "u", "v", "vdd", "w"]
+
+[components.bank]
+part = "lg_m50_6s2p"
+nets = { p = "bank_plus", g = "g" }
+
+[components.bms]
+part = "bms_series_unspecified"
+nets = { input = "bank_plus", output = "protected", g = "g" }
+
+[components.fuse]
+part = "fuse_series"
+nets = { input = "protected", output = "bus" }
+
+[components.terminal]
+part = "harness_terminal"
+nets = { clamp = "bus", tail = "bus" }
+
+[components.regulator]
+part = "logic_buck_24"
+nets = { input = "bus", output = "vdd", g = "g" }
+
+[components.board]
+part = "virtual_controller_io"
+nets = { p = "vdd", g = "g", pwm = "pwm", dir = "dir", enable = "enable", adcangle = "adcangle", adccurrent = "adccurrent", adctemp = "adctemp", adcbattery = "adcbattery" }
+
+[components.bridge]
+part = "bldc_bridge_unspecified"
+nets = { p = "bus", g = "g", pwm = "pwm", dir = "dir", enable = "enable", u = "u", v = "v", w = "w", hall_supply = "hall_supply", hall_1 = "hall_1", hall_2 = "hall_2", hall_3 = "hall_3" }
+
+[components.motor]
+part = "maxon_500267"
+nets = { u = "u", v = "v", w = "w", hall_supply = "hall_supply", hall_1 = "hall_1", hall_2 = "hall_2", hall_3 = "hall_3", hall_return = "g" }
+
+[components.feedback]
+part = "analogue_feedback_unspecified"
+nets = { p = "vdd", g = "g", angle = "adcangle", current = "adccurrent", temp = "adctemp", battery = "adcbattery", bus = "bus" }
+
+[components.return_bus]
+part = "harness_copper"
+nets = { a = "g", b = "g" }
+
+[components.protected_feed]
+part = "harness_copper"
+nets = { a = "protected", b = "protected" }
+
+[components.fuse_output]
+part = "harness_copper"
+nets = { a = "bus", b = "bus" }
+
+[components.bridge_feed]
+part = "harness_copper"
+nets = { a = "bus", b = "bus" }
+
+[components.logic_power]
+part = "harness_copper"
+nets = { a = "vdd", b = "vdd" }
+
+[components.control_pwm]
+part = "harness_copper"
+nets = { a = "pwm", b = "pwm" }
+
+[components.control_dir]
+part = "harness_copper"
+nets = { a = "dir", b = "dir" }
+
+[components.control_enable]
+part = "harness_copper"
+nets = { a = "enable", b = "enable" }
+
+[components.phase_u]
+part = "harness_copper"
+nets = { a = "u", b = "u" }
+
+[components.phase_v]
+part = "harness_copper"
+nets = { a = "v", b = "v" }
+
+[components.phase_w]
+part = "harness_copper"
+nets = { a = "w", b = "w" }
+
+[components.sense_angle]
+part = "harness_copper"
+nets = { a = "adcangle", b = "adcangle" }
+
+[components.sense_current]
+part = "harness_copper"
+nets = { a = "adccurrent", b = "adccurrent" }
+
+[components.sense_temp]
+part = "harness_copper"
+nets = { a = "adctemp", b = "adctemp" }
+
+[components.sense_battery]
+part = "harness_copper"
+nets = { a = "adcbattery", b = "adcbattery" }
+
+[components.lead_hall_return]
+part = "harness_copper"
+nets = { a = "g", b = "g" }
+
+[components.lead_hall_supply]
+part = "harness_copper"
+nets = { a = "hall_supply", b = "hall_supply" }
+
+[components.lead_hall_1]
+part = "harness_copper"
+nets = { a = "hall_1", b = "hall_1" }
+
+[components.lead_hall_2]
+part = "harness_copper"
+nets = { a = "hall_2", b = "hall_2" }
+
+[components.lead_hall_3]
+part = "harness_copper"
+nets = { a = "hall_3", b = "hall_3" }
+
+[connections.return_bus_start]
+kind = "solder"
+ends = ["bank/g", "return_bus/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = []
+
+[connections.return_bus_finish]
+kind = "solder"
+ends = ["return_bus/b", "bridge/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_start"]
+
+[connections.return_bms]
+kind = "splice"
+ends = ["bridge/g", "bms/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.return_regulator]
+kind = "splice"
+ends = ["bridge/g", "regulator/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.return_board]
+kind = "splice"
+ends = ["bridge/g", "board/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.return_feedback]
+kind = "splice"
+ends = ["bridge/g", "feedback/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.bank_to_bms]
+kind = "splice"
+crimp = true
+ends = ["bank/p", "bms/input"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bms"]
+
+[connections.protected_feed_start]
+kind = "solder"
+ends = ["bms/output", "protected_feed/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["bank_to_bms"]
+
+[connections.protected_feed_finish]
+kind = "solder"
+ends = ["protected_feed/b", "fuse/input"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["protected_feed_start"]
+
+[connections.fuse_output_start]
+kind = "solder"
+ends = ["fuse/output", "fuse_output/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["protected_feed_finish"]
+
+[connections.fuse_output_finish]
+kind = "terminal"
+ends = ["fuse_output/b", "terminal/clamp"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["fuse_output_start"]
+
+[connections.bridge_feed_start]
+kind = "splice"
+ends = ["terminal/tail", "bridge_feed/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["fuse_output_finish"]
+
+[connections.bridge_feed_finish]
+kind = "splice"
+ends = ["bridge_feed/b", "bridge/p"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["bridge_feed_start"]
+
+[connections.regulator_feed]
+kind = "splice"
+ends = ["terminal/tail", "regulator/input"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["fuse_output_finish", "return_regulator"]
+
+[connections.sense_feed]
+kind = "splice"
+ends = ["terminal/tail", "feedback/bus"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["fuse_output_finish", "return_feedback"]
+
+[connections.logic_power_start]
+kind = "splice"
+ends = ["regulator/output", "logic_power/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["regulator_feed", "return_board"]
+
+[connections.logic_power_finish]
+kind = "splice"
+ends = ["logic_power/b", "board/p"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["logic_power_start"]
+
+[connections.feedback_power]
+kind = "splice"
+ends = ["board/p", "feedback/p"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["logic_power_finish", "return_feedback"]
+
+[connections.control_pwm_start]
+kind = "splice"
+ends = ["board/pwm", "control_pwm/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish", "logic_power_finish"]
+
+[connections.control_pwm_finish]
+kind = "splice"
+ends = ["control_pwm/b", "bridge/pwm"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["control_pwm_start"]
+
+[connections.control_dir_start]
+kind = "splice"
+ends = ["board/dir", "control_dir/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish", "logic_power_finish"]
+
+[connections.control_dir_finish]
+kind = "splice"
+ends = ["control_dir/b", "bridge/dir"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["control_dir_start"]
+
+[connections.control_enable_start]
+kind = "splice"
+ends = ["board/enable", "control_enable/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish", "logic_power_finish"]
+
+[connections.control_enable_finish]
+kind = "splice"
+ends = ["control_enable/b", "bridge/enable"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["control_enable_start"]
+
+[connections.phase_u_start]
+kind = "terminal"
+ends = ["bridge/u", "phase_u/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.phase_u_finish]
+kind = "splice"
+ends = ["phase_u/b", "motor/u"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["phase_u_start"]
+
+[connections.phase_v_start]
+kind = "terminal"
+ends = ["bridge/v", "phase_v/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.phase_v_finish]
+kind = "splice"
+ends = ["phase_v/b", "motor/v"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["phase_v_start"]
+
+[connections.phase_w_start]
+kind = "terminal"
+ends = ["bridge/w", "phase_w/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.phase_w_finish]
+kind = "splice"
+ends = ["phase_w/b", "motor/w"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["phase_w_start"]
+
+[connections.sense_angle_start]
+kind = "splice"
+ends = ["feedback/angle", "sense_angle/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feedback_power"]
+
+[connections.sense_angle_finish]
+kind = "splice"
+ends = ["sense_angle/b", "board/adcangle"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["sense_angle_start"]
+
+[connections.sense_current_start]
+kind = "splice"
+ends = ["feedback/current", "sense_current/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feedback_power"]
+
+[connections.sense_current_finish]
+kind = "splice"
+ends = ["sense_current/b", "board/adccurrent"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["sense_current_start"]
+
+[connections.sense_temp_start]
+kind = "splice"
+ends = ["feedback/temp", "sense_temp/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feedback_power"]
+
+[connections.sense_temp_finish]
+kind = "splice"
+ends = ["sense_temp/b", "board/adctemp"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["sense_temp_start"]
+
+[connections.sense_battery_start]
+kind = "splice"
+ends = ["feedback/battery", "sense_battery/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feedback_power"]
+
+[connections.sense_battery_finish]
+kind = "splice"
+ends = ["sense_battery/b", "board/adcbattery"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["sense_battery_start"]
+
+[connections.lead_hall_return_start]
+kind = "solder"
+ends = ["bridge/g", "lead_hall_return/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["return_bus_finish"]
+
+[connections.lead_hall_return_finish]
+kind = "solder"
+ends = ["lead_hall_return/b", "motor/hall_return"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_return_start"]
+
+[connections.lead_hall_supply_start]
+kind = "solder"
+ends = ["bridge/hall_supply", "lead_hall_supply/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_return_finish"]
+
+[connections.lead_hall_supply_finish]
+kind = "solder"
+ends = ["lead_hall_supply/b", "motor/hall_supply"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_supply_start"]
+
+[connections.lead_hall_1_start]
+kind = "solder"
+ends = ["bridge/hall_1", "lead_hall_1/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_return_finish"]
+
+[connections.lead_hall_1_finish]
+kind = "solder"
+ends = ["lead_hall_1/b", "motor/hall_1"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_1_start"]
+
+[connections.lead_hall_2_start]
+kind = "solder"
+ends = ["bridge/hall_2", "lead_hall_2/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_return_finish"]
+
+[connections.lead_hall_2_finish]
+kind = "solder"
+ends = ["lead_hall_2/b", "motor/hall_2"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_2_start"]
+
+[connections.lead_hall_3_start]
+kind = "solder"
+ends = ["bridge/hall_3", "lead_hall_3/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_return_finish"]
+
+[connections.lead_hall_3_finish]
+kind = "solder"
+ends = ["lead_hall_3/b", "motor/hall_3"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["lead_hall_3_start"]
+
+[rails."вход батареи"]
+ends = ["bank/p", "bank/g"]
+reverse_limit_v = { measurement = "Подтвердить обратное напряжение и предел защиты экземпляра." }
+
+[rails."питание моста"]
+ends = ["bridge/p", "bridge/g"]
+reverse_limit_v = { measurement = "Подтвердить обратное напряжение и предел защиты экземпляра." }
+
+[rails.vdd]
+ends = ["board/p", "board/g"]
+reverse_limit_v = { measurement = "Подтвердить обратное напряжение и предел защиты экземпляра." }
+
+[[bindings]]
+ends = ["board/adcangle"]
+target = { kind = "board_pin", board = "плата", pin = "adc:0", function = "adc" }
+
+[[bindings]]
+ends = ["board/adccurrent"]
+target = { kind = "board_pin", board = "плата", pin = "adc:1", function = "adc" }
+
+[[bindings]]
+ends = ["board/adctemp"]
+target = { kind = "board_pin", board = "плата", pin = "adc:2", function = "adc" }
+
+[[bindings]]
+ends = ["board/adcbattery"]
+target = { kind = "board_pin", board = "плата", pin = "adc:3", function = "adc" }
+
+[[bindings]]
+ends = ["board/pwm"]
+target = { kind = "board_pin", board = "плата", pin = "0", function = "pwm" }
+
+[[bindings]]
+ends = ["board/dir"]
+target = { kind = "board_pin", board = "плата", pin = "1", function = "gpio_output" }
+
+[[bindings]]
+ends = ["board/enable"]
+target = { kind = "board_pin", board = "плата", pin = "2", function = "gpio_output" }
+
+[[bindings]]
+ends = ["bridge/p", "bridge/g"]
+target = { kind = "drive_power", drive = "мотор" }
+
+[[bindings]]
+ends = ["board/p", "board/g"]
+target = { kind = "board_power", board = "плата", rail = "vdd" }

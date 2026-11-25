@@ -1,0 +1,6 @@
+# Паспорт искусственного детектора стенда Э2 для независимой сверки события сброса.
+[reset]
+falling_v = { measurement = "Порог сброса Э2", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Исходная спецификация детектора Э2: порог сброса 3,6 В" } } }
+rising_v = { measurement = "Порог возврата Э2", range = { min = 3.8, nominal = 3.8, max = 3.8, source = { datasheet = "Исходная спецификация детектора Э2: порог возврата 3,8 В" } } }
+assert_delay_s = { measurement = "Выдержка сброса Э2", range = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { datasheet = "Исходная спецификация детектора Э2: выдержка сброса 100 мкс" } } }
+release_delay_s = { measurement = "Выдержка возврата Э2", range = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { datasheet = "Исходная спецификация детектора Э2: выдержка возврата 100 мкс" } } }

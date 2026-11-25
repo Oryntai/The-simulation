@@ -1,0 +1,95 @@
+# Точные параметры синтетических стендов записаны как исходные данные расчёта.
+format = 1
+
+[parts.reference_source]
+kind = "bench_supply"
+source = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.reference_source.pins]
+plus = { contact = "socket", role = "passive", family = "fixture" }
+minus = { contact = "bare", role = "return" }
+
+[parts.reference_source.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Измерить постоянное напряжение между указанными выводами", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома" } } } } }
+series = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома" } } } } }
+
+[parts.reference_sender]
+kind = "other"
+source = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.reference_sender.pins]
+plus = { contact = "bare", role = { signal_out = "minus" } }
+minus = { contact = "bare", role = "return" }
+
+[parts.reference_sender.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Измерить постоянное напряжение между указанными выводами", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома" } } } } }
+series = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома" } } } } }
+
+[parts.reference_load]
+kind = "resistor"
+source = "Корпус Э1: нагрузка 100 Ом для независимой DC-сверки"
+reference_only = true
+
+[parts.reference_load.pins]
+input = { contact = "socket", role = "passive", family = "fixture" }
+return = { contact = "bare", role = "return" }
+
+[parts.reference_load.elements]
+load = { kind = "resistor", nodes = ["input", "return"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 100.0, nominal = 100.0, max = 100.0, source = { derived = "Исходные данные стенда: нагрузка 100 Ом" } } } } }
+
+[parts.reference_receiver]
+kind = "other"
+source = "Корпус Э1: вход эквивалентен сопротивлению 1 кОм относительно локального минуса"
+reference_only = true
+
+[parts.reference_receiver.pins]
+input = { contact = "bare", role = { signal_in = "return" } }
+return = { contact = "bare", role = "return" }
+
+[parts.reference_receiver.elements]
+load = { kind = "resistor", nodes = ["input", "return"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { derived = "Исходные данные стенда: вход 1 кОм" } } } } }
+
+[parts.reference_jumper]
+kind = "wire"
+source = "Корпус Э1: два одинаковых штекера, жила 0,2 Ом"
+reference_only = true
+
+[parts.reference_jumper.pins]
+a = { contact = "plug", role = "passive", family = "fixture" }
+b = { contact = "plug", role = "passive", family = "fixture" }
+
+[parts.reference_jumper.elements]
+core = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 0.2, nominal = 0.2, max = 0.2, source = { derived = "Исходные данные стенда: жила переходника 0,2 Ом" } } } }, continuity = true }
+
+[parts.reference_cell]
+kind = "battery"
+source = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома"
+reference_only = true
+internal_nodes = ["emf"]
+
+[parts.reference_cell.pins]
+plus = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+[parts.reference_cell.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Измерить постоянное напряжение между указанными выводами", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома" } } } } }
+series = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Корпус Э1: источник Тевенина 5 В и 1 Ом для ручной проверки закона Ома" } } } } }
+
+[parts.reference_polar_capacitor]
+kind = "polar_capacitor"
+source = "Корпус Э1: идеальная ориентированная ёмкость для сверки знака"
+reference_only = true
+
+[parts.reference_polar_capacitor.pins]
+plus = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+[parts.reference_polar_capacitor.elements]
+cap = { kind = "capacitor", nodes = ["plus", "minus"], parameters = { farad = { measurement = "Измерить ёмкость LCR-метром", range = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { derived = "Исходные данные стенда: ёмкость 100 мкФ" } } } } }
+
+[parts.reference_polar_capacitor.ratings]
+reverse = { quantity = "reverse_voltage_v", nodes = ["plus", "minus"], limit = { measurement = "Уточнить допустимое обратное напряжение", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Условие стенда: обратная полярность не допускается" } } }, conditions = "Установившееся DC, ёмкость считается идеальной" }

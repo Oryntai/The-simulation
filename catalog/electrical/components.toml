@@ -1,0 +1,750 @@
+# Неполные параметры требуют источника для конкретной позиции и описанного замера.
+# Семейство и позиция контакта подлежат сверке по выбранной детали.
+format = 1
+
+[parts.resistor]
+kind = "resistor"
+source = "Параметризуемый резистор; требуется номинал с допуском выбранной детали"
+
+[parts.resistor.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.resistor.elements]
+r = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } } }
+
+[parts.resistor.ratings]
+thermal = { quantity = "power_w", nodes = ["a", "b"], limit = { measurement = "Снять допустимую мощность с кривой дерейтинга" }, conditions = "Температура и способ монтажа выбранной детали" }
+
+[parts.capacitor]
+kind = "capacitor"
+source = "Ёмкостный эквивалент; выбрать деталь и зафиксировать условия"
+model_gap = "Для реальной детали нужны ESR и утечка в рабочем диапазоне"
+
+[parts.capacitor.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.capacitor.elements]
+c = { kind = "capacitor", nodes = ["a", "b"], parameters = { farad = { measurement = "Измерить LCR-метром при рабочем смещении и температуре" } } }
+
+[parts.capacitor.ratings]
+forward = { quantity = "voltage_v", nodes = ["a", "b"], limit = { measurement = "Уточнить DC-предел по паспорту выбранной детали" }, conditions = "Рабочая температура и частота пульсаций" }
+
+[parts.polar_capacitor]
+kind = "polar_capacitor"
+source = "Ёмкостный эквивалент; выбрать деталь и зафиксировать условия"
+model_gap = "Для реальной детали нужны ESR и утечка в рабочем диапазоне"
+
+[parts.polar_capacitor.pins]
+a = { contact = "bare", role = "power" }
+b = { contact = "bare", role = "return" }
+
+[parts.polar_capacitor.elements]
+c = { kind = "capacitor", nodes = ["a", "b"], parameters = { farad = { measurement = "Измерить LCR-метром при рабочем смещении и температуре" } } }
+
+[parts.polar_capacitor.ratings]
+forward = { quantity = "voltage_v", nodes = ["a", "b"], limit = { measurement = "Уточнить DC-предел по паспорту выбранной детали" }, conditions = "Рабочая температура и частота пульсаций" }
+reverse = { quantity = "reverse_voltage_v", nodes = ["a", "b"], limit = { measurement = "Уточнить допустимое обратное напряжение по паспорту" }, conditions = "Постоянное напряжение, температура по установке" }
+
+[parts.diode_1n4148]
+kind = "diode"
+source = "Nexperia 1N4148 https://www.nexperia.com/product/1N4148"
+model_gap = "Модель Шокли ограничена прямой ветвью; для обратной нужны утечка и пробой"
+
+[parts.diode_1n4148.pins]
+a = { contact = "bare", role = "passive" }
+k = { contact = "bare", role = "passive" }
+
+[parts.diode_1n4148.elements]
+d = { kind = "diode", nodes = ["a", "k"], parameters = { is_a = { measurement = "Снять прямую и обратную ВАХ при рабочей температуре", range = { min = 2.52e-09, nominal = 2.52e-09, max = 2.52e-09, source = { estimate = "sim-circuit, DIODE_RESISTOR: ориентировочная модель 1N4148" } } }, ideality = { measurement = "Снять прямую и обратную ВАХ при рабочей температуре", range = { min = 1.752, nominal = 1.752, max = 1.752, source = { estimate = "sim-circuit, DIODE_RESISTOR: ориентировочная модель 1N4148" } } }, series_ohm = { measurement = "Снять прямую и обратную ВАХ при рабочей температуре", range = { min = 0.568, nominal = 0.568, max = 0.568, source = { estimate = "sim-circuit, DIODE_RESISTOR: ориентировочная модель 1N4148" } } } } }
+
+[parts.diode_1n4148.ratings]
+blocking = { quantity = "voltage_v", nodes = ["k", "a"], limit = { measurement = "Проверить маркировку диода", range = { min = 100.0, nominal = 100.0, max = 100.0, source = { datasheet = "Nexperia 1N4148, continuous reverse voltage https://www.nexperia.com/product/1N4148" } } }, conditions = "Постоянное обратное напряжение; пробой не моделируется" }
+
+[parts.nmos]
+kind = "nmos"
+source = "AOS AOD4184A, паспорт https://www.aosmd.com/products/mosfets/medium-voltage-mosfets-40v-400v/aod4184a"
+model_gap = "Снять ВАХ для калибровки эквивалента и проверить область допустимой работы"
+
+[parts.nmos.pins]
+d = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "control" }
+s = { contact = "bare", role = "return" }
+
+[parts.nmos.elements]
+m = { kind = "nmos", nodes = ["d", "g", "s", "s"], parameters = { threshold_v = { measurement = "Сверить порог при паспортном тестовом токе", range = { min = 1.7, nominal = 2.1, max = 2.6, source = { datasheet = "AOS, VGS(th) https://www.aosmd.com/products/mosfets/medium-voltage-mosfets-40v-400v/aod4184a" } } }, kp_a_per_v2 = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, lambda_per_v = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, is_a = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, width_m = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, length_m = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" } } }
+
+[parts.nmos.ratings]
+vds = { quantity = "voltage_v", nodes = ["d", "s"], limit = { measurement = "Проверить маркировку", range = { min = 40.0, nominal = 40.0, max = 40.0, source = { datasheet = "AOS, VDS https://www.aosmd.com/products/mosfets/medium-voltage-mosfets-40v-400v/aod4184a" } } }, conditions = "Абсолютный предел кристалла; проверить температуру и SOA" }
+
+[parts.pmos]
+kind = "pmos"
+source = "Выбрать конкретный транзистор; модель использует общий уровень 1"
+model_gap = "Снять ВАХ для калибровки эквивалента и проверить область допустимой работы"
+
+[parts.pmos.pins]
+d = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "control" }
+s = { contact = "bare", role = "return" }
+
+[parts.pmos.elements]
+m = { kind = "pmos", nodes = ["d", "g", "s", "s"], parameters = { threshold_v = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, kp_a_per_v2 = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, lambda_per_v = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, is_a = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, width_m = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, length_m = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" } } }
+
+[parts.switch_module]
+kind = "switch_module"
+source = "Эквивалент силовой ветви модуля с AOD4184A; паспорт кристалла https://www.aosmd.com/products/mosfets/medium-voltage-mosfets-40v-400v/aod4184a"
+model_gap = "Снять ВАХ клемм, порог включения и обратный путь модуля"
+
+[parts.switch_module.pins]
+d = { contact = "terminal", role = "passive" }
+g = { contact = "pad", role = "control" }
+s = { contact = "terminal", role = "return" }
+
+[parts.switch_module.elements]
+m = { kind = "nmos", nodes = ["d", "g", "s", "s"], parameters = { threshold_v = { measurement = "Сверить порог при паспортном тестовом токе", range = { min = 1.7, nominal = 2.1, max = 2.6, source = { datasheet = "AOS, VGS(th) https://www.aosmd.com/products/mosfets/medium-voltage-mosfets-40v-400v/aod4184a" } } }, kp_a_per_v2 = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, lambda_per_v = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, is_a = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, width_m = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" }, length_m = { measurement = "Аппроксимировать по семейству ВАХ с учётом температур и погрешности" } } }
+
+[parts.linear_regulator]
+kind = "linear_regulator"
+source = "Texas Instruments LM7805, §6.6 https://www.ti.com/lit/ds/symlink/lm7800.pdf"
+internal_nodes = ["regulated"]
+model_gap = "Выходной эквивалент действует только в области регулирования; измерить входной ток под нагрузкой, переход в ограничение и обратный ток"
+
+[parts.linear_regulator.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+return = { contact = "bare", role = "return" }
+
+[parts.linear_regulator.elements]
+regulation = { kind = "voltage", nodes = ["regulated", "return"], parameters = { volt = { measurement = "Измерить постоянное напряжение между указанными выводами", range = { min = 4.8, nominal = 5.0, max = 5.2, source = { datasheet = "Texas Instruments LM7805, §6.6 https://www.ti.com/lit/ds/symlink/lm7800.pdf" } } } } }
+series = { kind = "resistor", nodes = ["regulated", "output"], parameters = { ohm = { measurement = "Снять наклон выходной ВАХ в окрестности рабочей точки" } } }
+idle = { kind = "current", nodes = ["input", "return"], parameters = { ampere = { measurement = "Измерить ток покоя с отключённой нагрузкой" } } }
+
+[parts.linear_regulator.ratings]
+output_domain = { quantity = "current_a", nodes = ["output", "return"], limit = { measurement = "Измерить ток при указанном напряжении и допустимом нагреве", range = { min = 1.0, nominal = 1.0, max = 1.0, source = { datasheet = "Texas Instruments LM7805, §6.6 https://www.ti.com/lit/ds/symlink/lm7800.pdf" } } }, conditions = "Vin 10 В, Tj 25 °C, ток 5 мА–1 А, условия измерения §6.6" }
+
+[parts.switching_regulator]
+kind = "switching_regulator"
+source = "Texas Instruments LM2596-5.0, §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf"
+internal_nodes = ["regulated"]
+model_gap = "Выходной эквивалент действует только в области регулирования; измерить входной ток под нагрузкой, переход в ограничение и обратный ток"
+
+[parts.switching_regulator.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+return = { contact = "bare", role = "return" }
+
+[parts.switching_regulator.elements]
+regulation = { kind = "voltage", nodes = ["regulated", "return"], parameters = { volt = { measurement = "Измерить постоянное напряжение между указанными выводами", range = { min = 4.75, nominal = 5.0, max = 5.25, source = { datasheet = "Texas Instruments LM2596-5.0, §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf" } } } } }
+series = { kind = "resistor", nodes = ["regulated", "output"], parameters = { ohm = { measurement = "Снять наклон выходной ВАХ в окрестности рабочей точки" } } }
+idle = { kind = "current", nodes = ["input", "return"], parameters = { ampere = { measurement = "Измерить ток покоя с отключённой нагрузкой" } } }
+
+[parts.switching_regulator.ratings]
+output_domain = { quantity = "current_a", nodes = ["output", "return"], limit = { measurement = "Измерить ток при указанном напряжении и допустимом нагреве", range = { min = 3.0, nominal = 3.0, max = 3.0, source = { datasheet = "Texas Instruments LM2596-5.0, §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf" } } }, conditions = "7–40 В на входе, 0,2–3 А, Tj от −40 до 125 °C, схема рис. 9-13" }
+
+[parts.charge_power_module]
+kind = "charge_power_module"
+source = "Microchip, Curiosity Nano Base, §3.3, штатная конфигурация MCP73871 https://onlinedocs.microchip.com/oxy/GUID-1CE2657F-0A40-47B3-AA7D-5FB057E6EF7C-en-US-5/GUID-2A9AE32E-553A-476D-A8C5-0BCF90F784F8.html"
+model_gap = "Фазы CC/CV, завершение заряда, приоритет нагрузки и развязка требуют профиля режимов и замера переходов"
+
+[parts.charge_power_module.pins]
+input = { contact = "bare", role = "power" }
+battery = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+return = { contact = "bare", role = "return" }
+
+[parts.charge_power_module.elements]
+input_path = { kind = "diode", nodes = ["input", "output"], parameters = { is_a = { measurement = "Снять ВАХ проходной ветви основного входа" }, ideality = { measurement = "Снять ВАХ проходной ветви основного входа" }, series_ohm = { measurement = "Снять ВАХ проходной ветви основного входа" } } }
+battery_path = { kind = "diode", nodes = ["battery", "output"], parameters = { is_a = { measurement = "Снять ВАХ разрядной ветви батареи при снятом внешнем питании" }, ideality = { measurement = "Снять ВАХ разрядной ветви батареи при снятом внешнем питании" }, series_ohm = { measurement = "Снять ВАХ разрядной ветви батареи при снятом внешнем питании" } } }
+charge = { kind = "current", nodes = ["input", "battery"], parameters = { ampere = { measurement = "Измерить ток в выбранной фазе заряда и температуру" } } }
+
+[parts.charge_power_module.ratings]
+charge = { quantity = "current_a", nodes = ["battery", "return"], limit = { measurement = "Измерить ток при указанном напряжении и допустимом нагреве", range = { min = 0.5, nominal = 0.5, max = 0.5, source = { datasheet = "Microchip, Curiosity Nano Base, §3.3, штатная конфигурация MCP73871 https://onlinedocs.microchip.com/oxy/GUID-1CE2657F-0A40-47B3-AA7D-5FB057E6EF7C-en-US-5/GUID-2A9AE32E-553A-476D-A8C5-0BCF90F784F8.html" } } }, conditions = "Заводской R7, заряд от внешнего источника" }
+
+[parts.usb_source]
+kind = "usb_source"
+source = "Эквивалент Тевенина при фиксированном режиме; идентифицировать установленный источник"
+internal_nodes = ["emf"]
+model_gap = "Требуются режимы источника, предел тока и обратная ВАХ; для батареи также состояние заряда"
+
+[parts.usb_source.pins]
+plus = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+[parts.usb_source.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Снять напряжение холостого хода при заданных условиях" } } }
+internal = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Измерить падение на ступени тока" } } }
+
+[parts.usb_source.ratings]
+output = { quantity = "current_a", nodes = ["plus", "minus"], limit = { measurement = "По паспорту или нагрузочным тестом определить порог и длительность тока" }, conditions = "Ограничение, температура и состояние источника для опыта" }
+
+[parts.battery]
+kind = "battery"
+source = "Эквивалент Тевенина при фиксированном режиме; идентифицировать установленный источник"
+internal_nodes = ["emf"]
+model_gap = "Требуются режимы источника, предел тока и обратная ВАХ; для батареи также состояние заряда"
+
+[parts.battery.pins]
+plus = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+[parts.battery.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Снять напряжение холостого хода при заданных условиях" } } }
+internal = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Измерить падение на ступени тока" } } }
+
+[parts.battery.ratings]
+output = { quantity = "current_a", nodes = ["plus", "minus"], limit = { measurement = "По паспорту или нагрузочным тестом определить порог и длительность тока" }, conditions = "Ограничение, температура и состояние источника для опыта" }
+
+[parts.bench_supply]
+kind = "bench_supply"
+source = "Эквивалент Тевенина при фиксированном режиме; идентифицировать установленный источник"
+internal_nodes = ["emf"]
+model_gap = "Требуются режимы источника, предел тока и обратная ВАХ; для батареи также состояние заряда"
+
+[parts.bench_supply.pins]
+plus = { contact = "terminal", role = "power" }
+minus = { contact = "terminal", role = "return" }
+
+[parts.bench_supply.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Снять напряжение холостого хода при заданных условиях" } } }
+internal = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Измерить падение на ступени тока" } } }
+
+[parts.bench_supply.ratings]
+output = { quantity = "current_a", nodes = ["plus", "minus"], limit = { measurement = "По паспорту или нагрузочным тестом определить порог и длительность тока" }, conditions = "Ограничение, температура и состояние источника для опыта" }
+
+[parts.wire_plug_socket]
+kind = "wire"
+source = "Обжатый провод папа–мама; подтвердить семейство и обжим"
+
+[parts.wire_plug_socket.pins]
+a = { contact = "plug", role = "passive", family = "dupont" }
+b = { contact = "socket", role = "passive", family = "dupont" }
+
+[parts.wire_plug_socket.elements]
+contact = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } }, continuity = true }
+
+[parts.wire_plug_socket.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Паспорт конкретной детали или стендовый предел по нагреву" }, conditions = "Для указанного проводника, обжима и температуры" }
+
+[parts.wire_plug_plug]
+kind = "wire"
+source = "Обжатый провод папа–папа; подтвердить семейство и обжим"
+
+[parts.wire_plug_plug.pins]
+a = { contact = "plug", role = "passive", family = "dupont" }
+b = { contact = "plug", role = "passive", family = "dupont" }
+
+[parts.wire_plug_plug.elements]
+contact = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } }, continuity = true }
+
+[parts.wire_plug_plug.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Паспорт конкретной детали или стендовый предел по нагреву" }, conditions = "Для указанного проводника, обжима и температуры" }
+
+[parts.wire_socket_socket]
+kind = "wire"
+source = "Обжатый провод мама–мама; подтвердить семейство и обжим"
+
+[parts.wire_socket_socket.pins]
+a = { contact = "socket", role = "passive", family = "dupont" }
+b = { contact = "socket", role = "passive", family = "dupont" }
+
+[parts.wire_socket_socket.elements]
+contact = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } }, continuity = true }
+
+[parts.wire_socket_socket.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Паспорт конкретной детали или стендовый предел по нагреву" }, conditions = "Для указанного проводника, обжима и температуры" }
+
+[parts.screw_terminal]
+kind = "screw_terminal"
+source = "Винтовая клемма с площадкой под пайку"
+
+[parts.screw_terminal.pins]
+a = { contact = "terminal", role = "passive" }
+b = { contact = "pad", role = "passive" }
+
+[parts.screw_terminal.elements]
+contact = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } }, continuity = true }
+
+[parts.screw_terminal.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Паспорт конкретной детали или стендовый предел по нагреву" }, conditions = "Для указанного проводника, обжима и температуры" }
+
+[parts.header]
+kind = "header"
+source = "Штыревой разъём с площадкой под пайку"
+
+[parts.header.pins]
+a = { contact = "plug", role = "passive", family = "dupont" }
+b = { contact = "pad", role = "passive" }
+
+[parts.header.elements]
+contact = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } }, continuity = true }
+
+[parts.header.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Паспорт конкретной детали или стендовый предел по нагреву" }, conditions = "Для указанного проводника, обжима и температуры" }
+
+[parts.solder_joint]
+kind = "solder_joint"
+source = "Паяная перемычка, резистивная модель соединения"
+
+[parts.solder_joint.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.solder_joint.elements]
+contact = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводный замер сопротивления без питания" } }, continuity = true }
+
+[parts.solder_joint.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Паспорт конкретной детали или стендовый предел по нагреву" }, conditions = "Для указанного проводника, обжима и температуры" }
+
+# Монтажные позиции. Неизвестная ревизия и выбранные для проекта кандидаты отмечены явно.
+# Отсутствующие параметры численного опыта хранятся отдельно от монтажного каталога.
+
+[parts.harness_copper]
+kind = "wire"
+source = "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+model_gap = "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке."
+
+[parts.harness_copper.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.harness_copper.elements]
+copper = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.harness_copper.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Установить сечение и предел тока по нагреву." }, conditions = "Фактическая жила, изоляция и прокладка" }
+
+[parts.harness_terminal]
+kind = "screw_terminal"
+source = "Клемма стойки монтажа. Маркировку установленной детали установить."
+model_gap = "Снять тип клеммы, момент затяжки, ток и сопротивление обжатого конца."
+
+[parts.harness_terminal.pins]
+clamp = { contact = "terminal", role = "passive" }
+tail = { contact = "bare", role = "passive" }
+
+[parts.harness_terminal.elements]
+contact = { kind = "resistor", nodes = ["clamp", "tail"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.servo_header_power]
+kind = "header"
+source = "Переходник на штатную трёхконтактную колодку. Семейство и ориентацию сверить с экземпляром."
+model_gap = "Сверить распиновку, шаг и ток держателя контактов."
+
+[parts.servo_header_power.pins]
+tail = { contact = "bare", role = "passive" }
+contact = { contact = "plug", role = "passive", family = "servo_3p", key = "power" }
+
+[parts.servo_header_power.elements]
+contact = { kind = "resistor", nodes = ["tail", "contact"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.servo_header_return]
+kind = "header"
+source = "Переходник на штатную трёхконтактную колодку. Семейство и ориентацию сверить с экземпляром."
+model_gap = "Сверить распиновку, шаг и ток держателя контактов."
+
+[parts.servo_header_return.pins]
+tail = { contact = "bare", role = "passive" }
+contact = { contact = "plug", role = "passive", family = "servo_3p", key = "return" }
+
+[parts.servo_header_return.elements]
+contact = { kind = "resistor", nodes = ["tail", "contact"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.servo_header_signal]
+kind = "header"
+source = "Переходник на штатную трёхконтактную колодку. Семейство и ориентацию сверить с экземпляром."
+model_gap = "Сверить распиновку, шаг и ток держателя контактов."
+
+[parts.servo_header_signal.pins]
+tail = { contact = "bare", role = "passive" }
+contact = { contact = "plug", role = "passive", family = "servo_3p", key = "signal" }
+
+[parts.servo_header_signal.elements]
+contact = { kind = "resistor", nodes = ["tail", "contact"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.fuse_series]
+kind = "other"
+source = "Littelfuse 0451/0453 NANO², кривые отключения https://www.littelfuse.com/assetdocs/451-series-time-curve-data?assetguid=e50cd9d4-cfe0-4341-ba60-73b19722a700; семейство кандидатов. Номинал и артикул экземпляра не установлены."
+model_gap = "Замерить холодное сопротивление. Выбрать артикул по напряжению, отключающей способности, кривой I²t и жгуту."
+
+[parts.fuse_series.pins]
+input = { contact = "pad", role = "power" }
+output = { contact = "pad", role = "power" }
+
+[parts.fuse_series.elements]
+closed = { kind = "resistor", nodes = ["input", "output"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.fuse_series.ratings]
+current = { quantity = "current_a", nodes = ["input", "output"], limit = { measurement = "Определить номинал и кривую времени отключения держателя." }, conditions = "Конкретный артикул и температура" }
+
+[parts.lg_m50_6s2p]
+kind = "battery"
+source = "LG INR21700-M50: sampled-drive.toml, модель Chen 2020, https://doi.org/10.1149/1945-7111/ab9050"
+model_gap = "Зафиксировать ревизию ячеек, SOC, температуру, пределы BMS и зарядного тока, снять обратную ВАХ."
+internal_nodes = ["e", "x"]
+
+[parts.lg_m50_6s2p.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.lg_m50_6s2p.elements]
+emf = { kind = "voltage", nodes = ["e", "g"], parameters = { volt = { measurement = "Модель 6S2P из sampled-drive.toml, SOC 90%, параметры при 25 °C. ЭДС по Chen 2020, R0 по Lone et al., sim-circuit/src/battery.rs." } } }
+series = { kind = "resistor", nodes = ["e", "x"], parameters = { ohm = { measurement = "Модель 6S2P из sampled-drive.toml, SOC 90%, параметры при 25 °C. ЭДС по Chen 2020, R0 по Lone et al., sim-circuit/src/battery.rs." } } }
+polarization = { kind = "resistor", nodes = ["x", "p"], parameters = { ohm = { measurement = "Оценка sim-circuit/src/battery.rs для SOC ≥60%: 10 мОм и 2913.1 Ф на ячейку. Пересчёт R×6/2 и C×2/6." } } }
+capacity = { kind = "capacitor", nodes = ["x", "p"], parameters = { farad = { measurement = "Оценка sim-circuit/src/battery.rs для SOC ≥60%: 10 мОм и 2913.1 Ф на ячейку. Пересчёт R×6/2 и C×2/6." } } }
+
+[parts.cell_pack_unspecified]
+kind = "battery"
+source = "Батарейный источник носимого узла. Конкретные ячейки и защита требуют идентификации."
+model_gap = "Определить химию, конфигурацию, выходную ВАХ и пороги защиты экземпляра."
+
+[parts.cell_pack_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.cell_pack_unspecified.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "LG INR21700-M50: sampled-drive.toml, модель Chen 2020, https://doi.org/10.1149/1945-7111/ab9050; ОCV одной ячейки как диагностическое условие." } } }
+
+[parts.servo_pack_unspecified]
+kind = "battery"
+source = "Батарейный источник сервошины. Конкретные ячейки и защита требуют идентификации."
+model_gap = "Определить химию, конфигурацию, выходную ВАХ и пороги защиты экземпляра."
+
+[parts.servo_pack_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.servo_pack_unspecified.elements]
+emf = { kind = "voltage", nodes = ["p", "g"], parameters = { volt = { measurement = "TowerPro MG90S, паспортное напряжение 4,8 В https://towerpro.com.tw/product/mg90s-3/; 4,8 В как диагностическая полка, химия и число ячеек неизвестны." } } }
+
+[parts.bms_series_unspecified]
+kind = "other"
+source = "sampled-drive.toml задаёт 6S2P. Модель BMS в данных отсутствует."
+model_gap = "Проверить BMS для 6S, обратный ток, пределы заряда, разбаланса и время отсечки."
+
+[parts.bms_series_unspecified.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.bms_series_unspecified.elements]
+closed = { kind = "resistor", nodes = ["input", "output"], parameters = { ohm = { measurement = "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании." } }, continuity = true }
+
+[parts.logic_buck_24]
+kind = "switching_regulator"
+source = "TI LM2596, §7.6 https://www.ti.com/lit/ds/symlink/lm2596.pdf; кандидат на отдельную логику, ревизия и выходной делитель не заданы."
+model_gap = "Измерить входной ток, пуск и нагрев, допустимый ток модуля, выходную ВАХ и поведение при обратном токе."
+
+[parts.logic_buck_24.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.logic_buck_24.elements]
+load = { kind = "current", nodes = ["input", "g"], parameters = { ampere = { measurement = "Ток электроники 0.12 А из sampled-drive.toml." } } }
+regulator = { kind = "voltage", nodes = ["output", "g"], parameters = { volt = { measurement = "Номинальное питание IO каталога VMCU-C3. Уставка модуля в сборке не определена." } } }
+
+[parts.wearable_ldo_33]
+kind = "linear_regulator"
+source = "TI TPS7A4533, §6.5 https://www.ti.com/lit/ds/symlink/tps7a45.pdf; кандидат. Входное напряжение и корпус модуля уточнить."
+model_gap = "Диагностический Тевенин не воспроизводит ток входа, dropout и пуск. Измерить на фактическом модуле."
+internal_nodes = ["internal"]
+
+[parts.wearable_ldo_33.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.wearable_ldo_33.elements]
+emf = { kind = "voltage", nodes = ["internal", "g"], parameters = { volt = { measurement = "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1." } } }
+series = { kind = "resistor", nodes = ["internal", "output"], parameters = { ohm = { measurement = "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1." } } }
+input = { kind = "resistor", nodes = ["input", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.servo_buck_boost]
+kind = "switching_regulator"
+source = "TI TPS63070, §6 и §9 https://www.ti.com/lit/ds/symlink/tps63070.pdf; кандидат на уставку 4,8 В стенда."
+model_gap = "Установить модуль, уставку, КПД, пуск и токоограничение. Ступень задаётся на выходном эквиваленте."
+internal_nodes = ["internal"]
+
+[parts.servo_buck_boost.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.servo_buck_boost.elements]
+emf = { kind = "voltage", nodes = ["internal", "g"], parameters = { volt = { measurement = "Эскизный источник: 4.8 В по control.toml, 0.25 Ом по стенду этапа 4. Это стендовый эквивалент, параметры батареи требуют замеров." } } }
+series = { kind = "resistor", nodes = ["internal", "output"], parameters = { ohm = { measurement = "Эскизный источник: 4.8 В по control.toml, 0.25 Ом по стенду этапа 4. Это стендовый эквивалент, параметры батареи требуют замеров." } } }
+input = { kind = "resistor", nodes = ["input", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.servo_ldo_33]
+kind = "linear_regulator"
+source = "TI TPS7A4533, §6.5 https://www.ti.com/lit/ds/symlink/tps7a45.pdf; кандидат, диагностический эквивалент падения 1,5 В."
+model_gap = "Падение 1,5 В задано для эксперимента. ВАХ вне регулирования, номиналы конденсаторов и ток требуют проверки."
+
+[parts.servo_ldo_33.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.servo_ldo_33.elements]
+logic = { kind = "voltage", nodes = ["input", "output"], parameters = { volt = { measurement = "Стендовая последовательная модель: падение 4.8−3.3=1.5 В из номиналов испытания. Ток платы возвращается через общий R источника. Регулирование и обратный путь модуля требуют замеров." } } }
+
+[parts.virtual_controller_io]
+kind = "other"
+source = "VMCU-C3, crates/sim-mcu/MEMORY_MAP.md, карта проводки control.toml."
+model_gap = "Нужны физическая плата, соответствие контактов ABI, нагрузки, пороги GPIO и сброса. В опыте питание измеряется отдельно."
+
+[parts.virtual_controller_io.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+adcangle = { contact = "bare", role = { signal_in = "g" } }
+adccurrent = { contact = "bare", role = { signal_in = "g" } }
+adctemp = { contact = "bare", role = { signal_in = "g" } }
+adcbattery = { contact = "bare", role = { signal_in = "g" } }
+pwm = { contact = "bare", role = { signal_out = "g" } }
+dir = { contact = "bare", role = { signal_out = "g" } }
+enable = { contact = "bare", role = { signal_out = "g" } }
+
+[parts.virtual_controller_io.elements]
+pwm = { kind = "resistor", nodes = ["pwm", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+dir = { kind = "resistor", nodes = ["dir", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+enable = { kind = "resistor", nodes = ["enable", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+adcangle = { kind = "resistor", nodes = ["adcangle", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+adccurrent = { kind = "resistor", nodes = ["adccurrent", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+adctemp = { kind = "resistor", nodes = ["adctemp", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+adcbattery = { kind = "resistor", nodes = ["adcbattery", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.bldc_bridge_unspecified]
+kind = "switch_module"
+source = "sampled-drive.toml и control.toml задают эквивалент моста PWM, DIR, EN. maxon ESCON 70/10, Hardware Reference, используется только для сверки интерфейса: https://www.maxongroup.com/medias/sys_master/root/9350562709534/422969-ESCON-70-10-Hardware-Reference-En.pdf"
+model_gap = "Определить установленный трёхфазный драйвер, напряжение и входы Холлов, защиту, торможение и путь рекуперации. Холлы не возбуждаются в численном опыте. В DC-шину возвращается ток модели привода."
+
+[parts.bldc_bridge_unspecified.pins]
+hall_supply = { contact = "bare", role = "power" }
+hall_1 = { contact = "bare", role = { signal_in = "g" } }
+hall_2 = { contact = "bare", role = { signal_in = "g" } }
+hall_3 = { contact = "bare", role = { signal_in = "g" } }
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+pwm = { contact = "bare", role = { signal_in = "g" } }
+dir = { contact = "bare", role = { signal_in = "g" } }
+enable = { contact = "bare", role = { signal_in = "g" } }
+u = { contact = "terminal", role = "passive" }
+v = { contact = "terminal", role = "passive" }
+w = { contact = "terminal", role = "passive" }
+
+[parts.bldc_bridge_unspecified.elements]
+hall_3 = { kind = "resistor", nodes = ["hall_3", "g"], parameters = { ohm = { measurement = "Установить режим и входное сопротивление линий Холла по плате драйвера." } } }
+hall_2 = { kind = "resistor", nodes = ["hall_2", "g"], parameters = { ohm = { measurement = "Установить режим и входное сопротивление линий Холла по плате драйвера." } } }
+hall_1 = { kind = "resistor", nodes = ["hall_1", "g"], parameters = { ohm = { measurement = "Установить режим и входное сопротивление линий Холла по плате драйвера." } } }
+hall_supply = { kind = "resistor", nodes = ["hall_supply", "g"], parameters = { ohm = { measurement = "Установить режим и входное сопротивление линий Холла по плате драйвера." } } }
+dc_load = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "До первой команды модель привода обесточена. Далее ток приходит из привода." } } }
+u = { kind = "resistor", nodes = ["u", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+v = { kind = "resistor", nodes = ["v", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+w = { kind = "resistor", nodes = ["w", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.maxon_500267]
+kind = "other"
+source = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf"
+model_gap = "Номинальная медь по паспорту. Сверить разъём Холлов V1/V2 и питание 4,5–24 В по фактической ревизии. Коммутация и противо-ЭДС относятся к модели привода."
+internal_nodes = ["star"]
+
+[parts.maxon_500267.pins]
+hall_supply = { contact = "bare", role = "power" }
+hall_return = { contact = "bare", role = "return" }
+hall_1 = { contact = "bare", role = { signal_out = "hall_return" } }
+hall_2 = { contact = "bare", role = { signal_out = "hall_return" } }
+hall_3 = { contact = "bare", role = { signal_out = "hall_return" } }
+u = { contact = "bare", role = "passive" }
+v = { contact = "bare", role = "passive" }
+w = { contact = "bare", role = "passive" }
+
+[parts.maxon_500267.elements]
+u = { kind = "resistor", nodes = ["u", "star"], parameters = { ohm = { measurement = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf; для симметричной звезды: 0,844 Ом между фазами / 2.", range = { min = 0.422, nominal = 0.422, max = 0.422, source = { derived = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf; для симметричной звезды: 0,844 Ом между фазами / 2." } } } } }
+v = { kind = "resistor", nodes = ["v", "star"], parameters = { ohm = { measurement = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf; для симметричной звезды: 0,844 Ом между фазами / 2.", range = { min = 0.422, nominal = 0.422, max = 0.422, source = { derived = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf; для симметричной звезды: 0,844 Ом между фазами / 2." } } } } }
+w = { kind = "resistor", nodes = ["w", "star"], parameters = { ohm = { measurement = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf; для симметричной звезды: 0,844 Ом между фазами / 2.", range = { min = 0.422, nominal = 0.422, max = 0.422, source = { derived = "maxon EC 90 flat 500267, схема разъёма и таблица параметров https://www.maxongroup.com/medias/sys_master/root/8882567512094/EN-21-310.pdf; для симметричной звезды: 0,844 Ом между фазами / 2." } } } } }
+
+[parts.analogue_feedback_unspecified]
+kind = "other"
+source = "Аналоговые каналы и масштабирование из control.toml; модификации измерителей не определены."
+model_gap = "Определить измерители угла, тока и температуры, резисторы делителя, выходной импеданс и диапазоны. В опыте их сигналы поступают через контур наблюдений."
+
+[parts.analogue_feedback_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+angle = { contact = "bare", role = { signal_out = "g" } }
+current = { contact = "bare", role = { signal_out = "g" } }
+temp = { contact = "bare", role = { signal_out = "g" } }
+battery = { contact = "bare", role = { signal_out = "g" } }
+bus = { contact = "bare", role = "power" }
+
+[parts.analogue_feedback_unspecified.elements]
+divider = { kind = "vcvs", nodes = ["battery", "g", "bus", "g"], parameters = { gain = { measurement = "control.toml: передаточное отношение 1/11; нагрузка делителя не задана." } } }
+
+[parts.bmi270_i2c]
+kind = "other"
+source = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+model_gap = "Снять раздельные токи VDD и VDDIO, входные уровни, переход питания и время первой достоверной выборки. Подключение I²C по §7.2.3."
+
+[parts.bmi270_i2c.pins]
+vdd = { contact = "bare", role = "power" }
+g = { contact = "pad", role = "return" }
+vddio = { contact = "pad", role = "power" }
+gndio = { contact = "pad", role = "return" }
+sda = { contact = "pad", role = { signal_io = "gndio" } }
+scl = { contact = "pad", role = { signal_io = "gndio" } }
+csb = { contact = "pad", role = { signal_in = "gndio" } }
+sdo = { contact = "pad", role = { signal_in = "gndio" } }
+
+[parts.bmi270_i2c.elements]
+sensor = { kind = "resistor", nodes = ["vdd", "g"], parameters = { ohm = { measurement = "Диагностический эквивалент R=3.3 В / 685 мкА. Просадка меняет ток в модели. Фактическая ВАХ BMI270 и его VDDIO требуют измерения." } } }
+sda = { kind = "resistor", nodes = ["sda", "gndio"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+scl = { kind = "resistor", nodes = ["scl", "gndio"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+csb = { kind = "resistor", nodes = ["csb", "gndio"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+sdo = { kind = "resistor", nodes = ["sdo", "gndio"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.bmi270_i2c.ratings]
+vdd = { quantity = "voltage_v", nodes = ["vdd", "g"], limit = { measurement = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf" } } }, conditions = "Рабочий диапазон VDD 1,71–3,6 В" }
+vddio = { quantity = "voltage_v", nodes = ["vddio", "gndio"], limit = { measurement = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf" } } }, conditions = "Рабочий диапазон VDDIO 1,2–3,6 В" }
+
+[parts.ble_host_unspecified]
+kind = "other"
+source = "Пакетный BLE из control.toml. Плата и физический интерфейс камеры не определены."
+model_gap = "Установить плату BLE, допуски входов, питание, прошивку и интерфейс камеры. В опыте BLE остаётся пакетным."
+
+[parts.ble_host_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+sda = { contact = "bare", role = { signal_io = "g" } }
+scl = { contact = "bare", role = { signal_io = "g" } }
+camera_bus = { contact = "bare", role = { signal_io = "g" } }
+
+[parts.ble_host_unspecified.elements]
+camera_input = { kind = "resistor", nodes = ["camera_bus", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.rgb_module_unspecified]
+kind = "other"
+source = "device.toml: reference-rgb задаёт модель камеры. Физический модуль не определён."
+model_gap = "Установить модуль, напряжение, ток и распиновку. Контакт bus резервирует маркировку жгута; разводку шины выполнить по паспорту модуля."
+
+[parts.rgb_module_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+bus = { contact = "bare", role = { signal_io = "g" } }
+
+[parts.esp32_c3_io]
+kind = "other"
+source = "Espressif ESP32-C3 Series Datasheet, §2 и §5 https://documentation.espressif.com/esp32-c3_datasheet_en.pdf"
+model_gap = "Ревизия платы и уставки brownout не определены. Токи фаз численного блока не относятся к железу."
+
+[parts.esp32_c3_io.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+gpio0 = { contact = "pad", role = { signal_in = "g" } }
+gpio4 = { contact = "pad", role = { signal_out = "g" } }
+
+[parts.esp32_c3_io.elements]
+board = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "Линейная передача 3.3/4.8 для стендового проседания логики. Ток фаз 0/50/150/200 мА из синтетического блока tests/electrical_runtime.rs рантайма, не ток ESP32-C3." } } }
+adc = { kind = "resistor", nodes = ["gpio0", "g"], parameters = { ohm = { measurement = "Эквиваленты линий стендового блока рантайма: выход 10 Ом, подтяжка 1 кОм, вход и утечка 1 МОм. Защитные пути не аттестованы." } } }
+pull = { kind = "resistor", nodes = ["gpio4", "g"], parameters = { ohm = { measurement = "Идеальный ключ эталонного блока рантайма: порог 1 В, нагрузка 10 Ом и подтяжка 10 кОм. Ron/Roff из SPICE-примера Э2. Это диагностическая ветвь наблюдения вывода, не модель внутренностей сервопривода." } } }
+
+[parts.esp32_c3_io.ratings]
+vdd = { quantity = "voltage_v", nodes = ["p", "g"], limit = { measurement = "Espressif ESP32-C3 Series Datasheet, §2 и §5 https://documentation.espressif.com/esp32-c3_datasheet_en.pdf", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Espressif ESP32-C3 Series Datasheet, §2 и §5 https://documentation.espressif.com/esp32-c3_datasheet_en.pdf" } } }, conditions = "Рабочее окно VDD 3,0–3,6 В" }
+
+[parts.analogue_position_unspecified]
+kind = "other"
+source = "control.toml: стендовая шкала ADC1_CH0 от угла рычага."
+model_gap = "Определить тип датчика, схему защиты и уровень при обрыве. Численный сигнал угла приходит через контур наблюдений."
+
+[parts.analogue_position_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+sig = { contact = "bare", role = { signal_out = "g" } }
+
+[parts.high_side_key_pwm]
+kind = "switch_module"
+source = "Эскиз силового ключа по electrical-control.toml; TI TPS22918, пример ключа в плюсе https://www.ti.com/lit/ds/symlink/tps22918.pdf"
+model_gap = "Не определены тип ключа, внешний формирователь и защитный путь при рекуперации. Численный порог не является паспортным."
+internal_nodes = ["gate"]
+
+[parts.high_side_key_pwm.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+pwm = { contact = "bare", role = { signal_in = "g" } }
+
+[parts.high_side_key_pwm.elements]
+key = { kind = "switch", nodes = ["input", "output", "gate", "g"], parameters = { on_ohm = { measurement = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." }, off_ohm = { measurement = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." }, threshold_v = { measurement = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." }, hysteresis_v = { measurement = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." } } }
+envelope_r = { kind = "resistor", nodes = ["pwm", "gate"], parameters = { ohm = { measurement = "Эталонная огибающая PWM: R=1 кОм из стенда Э2, RC=100 мкс (половина периода обмена платы из control.toml). Это внешняя цепь численного опыта." } } }
+envelope_pull = { kind = "resistor", nodes = ["gate", "g"], parameters = { ohm = { measurement = "Разряд огибающей на высокоимпедансном выводе. R=1 кОм из стенда Э2. Вместе с 100 нФ задаёт постоянную разряда около 100 мкс." } } }
+envelope_c = { kind = "capacitor", nodes = ["gate", "g"], parameters = { farad = { measurement = "Эталонная огибающая PWM: R=1 кОм из стенда Э2, RC=100 мкс (половина периода обмена платы из control.toml). Это внешняя цепь численного опыта." } } }
+
+[parts.mg90s_servo]
+kind = "other"
+source = "TowerPro MG90S, паспортное напряжение 4,8 В https://towerpro.com.tw/product/mg90s-3/"
+model_gap = "Штатную длительность импульса, ток, уровни, распиновку и внутренний драйвер проверить на экземпляре. Электромеханика опыта использует эквивалент доступа к обмотке."
+
+[parts.mg90s_servo.pins]
+p = { contact = "socket", role = "power", family = "servo_3p", key = "power" }
+g = { contact = "socket", role = "return", family = "servo_3p", key = "return" }
+pwm = { contact = "socket", role = { signal_in = "g" }, family = "servo_3p", key = "signal" }
+
+[parts.mg90s_servo.elements]
+drive = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "До первой команды ток привода равен нулю." } } }
+load_bleed = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Эталонный путь утечки 1 МОм из блока Э3." } } }
+load_cap = { kind = "capacitor", nodes = ["p", "g"], parameters = { farad = { measurement = "Расчётный накопитель 10 мкФ. Энергия обмотки ½·23.44 мкГн·(0.7 А)²≈5.74 мкДж из device.toml, сопоставима с ½·C·(4.8²−4.68²). Схему защиты от рекуперации нужно проверить на стенде." } } }
+signal = { kind = "resistor", nodes = ["pwm", "g"], parameters = { ohm = { measurement = "Снять входной или выходной импеданс указанного контакта в рабочих фазах." } } }
+
+[parts.imu_decoupling]
+kind = "polar_capacitor"
+source = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf; смонтированная ёмкость неизвестна."
+model_gap = "Установить номинал, ESR, напряжение и полярность фактической детали."
+
+[parts.imu_decoupling.pins]
+plus = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+[parts.imu_decoupling.elements]
+cap = { kind = "capacitor", nodes = ["plus", "minus"], parameters = { farad = { measurement = "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1." } } }
+
+[parts.imu_decoupling.ratings]
+reverse = { quantity = "reverse_voltage_v", nodes = ["plus", "minus"], limit = { measurement = "Взять обратный предел из паспорта детали." }, conditions = "Выбранный конденсатор" }
+
+[parts.servo_bulk_cap]
+kind = "polar_capacitor"
+source = "Численный опыт Э3; смонтированная ёмкость неизвестна."
+model_gap = "Установить номинал, ESR, напряжение и полярность фактической детали."
+
+[parts.servo_bulk_cap.pins]
+plus = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+[parts.servo_bulk_cap.elements]
+cap = { kind = "capacitor", nodes = ["plus", "minus"], parameters = { farad = { measurement = "Два конденсатора 100 мкФ из эталона Э1 параллельно. При начальных 4.75 В связка с нагрузочными 10 мкФ даёт 4.75·200/210=4.524 В без тока источника. Для VDD≥3.0 В с падением 1.5 В нужно ≥180 мкФ." } } }
+
+[parts.servo_bulk_cap.ratings]
+reverse = { quantity = "reverse_voltage_v", nodes = ["plus", "minus"], limit = { measurement = "Взять обратный предел из паспорта детали." }, conditions = "Выбранный конденсатор" }
+
+[parts.i2c_pullup]
+kind = "resistor"
+source = "Bosch BMI270, BST-BMI270-DS000-07, §1, §5 и §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf; подтяжки I²C. Номинал и ёмкость жгута требуют расчёта."
+model_gap = "Подтвердить номинал по ёмкости шины, фронтам и допустимому току выводов."
+
+[parts.i2c_pullup.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.i2c_pullup.elements]
+pull = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Номинал 1 кОм из модели подтяжки Э3, диагностическая нагрузка." } } }
+
+[parts.bmi270_bypass]
+kind = "capacitor"
+source = "Bosch BMI270, BST-BMI270-DS000-07, §7.2.3 https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+model_gap = "Уточнить артикул, допуск ёмкости с DC bias, ESR и допустимое напряжение."
+
+[parts.bmi270_bypass.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.bmi270_bypass.elements]
+cap = { kind = "capacitor", nodes = ["a", "b"], parameters = { farad = { measurement = "Уточнить эффективную ёмкость установленной детали при рабочем смещении", range = { min = 1e-7, nominal = 1e-7, max = 1e-7, source = { derived = "Номинал 100 нФ из схемы Bosch BMI270 §7.2.3. Допуск детали неизвестен." } } } } }

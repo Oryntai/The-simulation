@@ -3,7 +3,7 @@ source = "Таблица переноса этапов 3–5 в docs/STAGE6_PLAN
 
 [assemblies."01"]
 verdict = "Rejected"
-executed = 172
+executed = 226
 experiments = { control = 216, process = 7, interaction = 7 }
 
 [assemblies."02"]
@@ -44,9 +44,12 @@ class = "static_strength"
 object = "каретка/стержень"
 mode = "loaded"
 reason_contains = "напряжения изгиба по модулю сечения"
-expected = 7500000.0 # M/W = 40/(0,02·0,04²/6) Па.
+expected = 15000000.0 # M/W_min = 40/(0,04·0,02²/6) Па.
 tolerance = 1e-8
 pair_assembly = "under-travel"
+pair_expected = 750000.0 # M/W_min = 2/(0,04·0,02²/6) Па.
+paired_finding = { bound = 1, reason_contains = "напряжения изгиба по модулю сечения" }
+reject_only = true
 
 [[witnesses]]
 assembly = "over-travel"
@@ -355,15 +358,15 @@ reject_only = true
 [[witnesses]]
 assembly = "tissue-load"
 class = "tissue_load"
-object = "пятно блока"
+object = "опора"
 mode = "tissue-load"
-reason_contains = "ряд карты давления превышает локальный предел"
-expected = 110000 # Наибольшее давление: 5,5 Н / 0,5 см².
-tolerance = 0 # Точное синтетическое значение.
+reason_contains = "Живая нагрузка превышает предел"
+expected = 124657.94475769566 # 180 Н/м × (3 мм + 31,627206877 мм по проекции портов) / 50 мм².
+tolerance = 1.0 # Разрешение давления стенда; первый учитываемый интервал после начала движения.
 pair_assembly = "tissue-load-pair"
 pair_mode = "tissue-load-pair"
-pair_expected = 50000 # 2,5 Н / 0,5 см².
-paired_finding = { bound = 0, reason_contains = "ряд" }
+pair_expected = 51940.81031570652 # Та же сила / 120 мм².
+paired_finding = { bound = 0, reason_contains = "Живая нагрузка" }
 reject_only = true
 
 [[witnesses]]
@@ -371,13 +374,13 @@ assembly = "ingress"
 class = "ingress"
 object = "оболочка блока"
 mode = "ingress"
-reason_contains = "ряд подтверждает проникновение в зоне «узел изоляции»"
-expected = 0.000002 # 2 мл = 2·10⁻⁶ м³ в защищаемой зоне.
-tolerance = 0 # Точное синтетическое значение.
+reason_contains = "открытый путь ниже уровня воды: ввод → проход"
+expected = 0.01 # Уровень 20 мм минус max(5, 10) мм вдоль пути.
+tolerance = 1e-12 # Округление высот при вычитании double.
 pair_assembly = "ingress-pair"
 pair_mode = "ingress-pair"
-pair_expected = 0 # Весь объём в дренажной зоне.
-paired_finding = { bound = 0, reason_contains = "ряд" }
+pair_expected = -0.01 # Уровень 20 мм минус max(5, 30) мм.
+paired_finding = { bound = 0, reason_contains = "открыт" }
 reject_only = true
 
 [[reference]]
@@ -551,8 +554,34 @@ tolerance = 1e-9 # Допуск стадии 5 для той же геометр
 [corpus]
 # Реестр учитывает дополнительные классы условий доказательства. Инвентарь,
 # полнота исполнения и общий критерий постановки не являются опасностью корпуса.
-# Открытые вычислительные пары отсутствуют. Для tissue_load и ingress вход
-# синтетический, поэтому живые физические свидетельства для этих классов открыты.
+# Все вычислительные пары имеют собственный расчёт по данным постановки.
 open = []
 
 [corpus.gaps]
+
+[[matrix_physics]]
+run = "01/control"
+mode = "jam"
+rows = 18 # Номинал и 17 одиночных отказов разрешённого пути.
+horizon_ns = 4000000000
+criterion = "реакция зажима"
+nominal_above = 1 # Минимальная реакция из stage4/jam.toml, Н·м.
+max_packet_lag_ns = 60000000 # Окно до следующего запланированного пакета из профиля отказов.
+
+[[matrix_physics]]
+run = "01/control"
+mode = "water"
+rows = 18 # Тот же путь с моделью погружения.
+horizon_ns = 3000000000
+criterion = "длинный объём/Архимед"
+nominal_above = 9.9 # Нижняя граница 9,921 Н из F = ρgV с допуском 0,01 Н на основной сетке.
+max_packet_lag_ns = 60000000 # Окно до следующего запланированного пакета из профиля отказов.
+
+[[matrix_physics]]
+run = "01/control"
+mode = "obstacle"
+rows = 18 # Тот же путь в мире с препятствием.
+horizon_ns = 4000000000
+criterion = "удар/пик"
+nominal_above = 0 # Номинальная траектория доходит до контакта.
+max_packet_lag_ns = 60000000 # Окно до следующего запланированного пакета из профиля отказов.

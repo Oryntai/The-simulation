@@ -1,0 +1,30 @@
+format = 1
+scope = "reference"
+name = "Блок: ток из области гарантии"
+nets = ["g", "p"]
+
+[components.regulator]
+part = "regulator_a"
+nets = { p = "p", g = "g" }
+
+[components.load]
+part = "load_3"
+nets = { a = "p", b = "g" }
+
+[connections.feed]
+kind = "solder"
+ends = ["regulator/p", "load/a"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[connections.return]
+kind = "solder"
+ends = ["load/b", "regulator/g"]
+resistance_ohm = { measurement = "Условие стенда: сопротивление участка 0.1 Ом", range = { min = 0.1, nominal = 0.1, max = 0.1, source = { derived = "Условие стенда: сопротивление участка 0.1 Ом" } } }
+current_limit_a = { measurement = "Паспорт синтетического стенда Э2: предел данного участка 5 А", range = { min = 5.0, nominal = 5.0, max = 5.0, source = { datasheet = "Паспорт синтетического стенда Э2: предел данного участка 5 А" } } }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Фиксированная постановка синтетического корпуса Э2" }
+probes = [{ kind = "voltage", ends = ["load/a", "load/b"] }, { kind = "voltage", ends = ["regulator/p", "load/a"] }, { kind = "current", branch = { kind = "connection", id = "feed" } }]
+window = { step_ns = 1000, end_ns = 10000 }

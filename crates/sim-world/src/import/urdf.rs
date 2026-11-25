@@ -92,6 +92,7 @@ fn convert(path: &Path, root: &Node) -> Result<Device, String> {
     Ok(Device {
         format: FORMAT,
         name,
+        schematic: None,
         links,
         constraints: Vec::new(),
         transmissions: Vec::new(),
