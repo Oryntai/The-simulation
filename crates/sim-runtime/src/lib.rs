@@ -1228,8 +1228,13 @@ impl Runtime {
 
     /// Дойти до абсолютного момента, выполнив все события вплоть до него.
     pub fn run_until(&mut self, until: Time) -> Result<Status, String> {
-        if self.state.electrical.is_some() && self.state.control.is_none() {
-            return Err("к электрической цепи не установлен контур с платами".into());
+        if let Some(circuit) = &self.state.electrical {
+            let control = self
+                .state
+                .control
+                .as_ref()
+                .ok_or("к электрической цепи не установлен контур с платами")?;
+            circuit.check_load_inputs(control)?;
         }
         if until < self.time() {
             return Err("задан момент в прошлом: используйте restore".into());
@@ -1265,8 +1270,16 @@ impl Runtime {
         self.state.log.set_process_ticks(None);
         while let Some(at) = self.next_event_time().filter(|&at| at <= until) {
             self.state.log.end.time = at;
+            let physics_boundary = self.state.next_physics == Some(at);
+            let load_boundary = (at == Time::ZERO || physics_boundary)
+                && self
+                    .state
+                    .electrical
+                    .as_ref()
+                    .is_some_and(electrical::Electrical::has_loads);
             let electrical_boundary = self.state.electrical.as_ref().is_some_and(|circuit| {
-                circuit.due == Some(at)
+                load_boundary
+                    || circuit.due == Some(at)
                     || self
                         .state
                         .control
@@ -1277,7 +1290,9 @@ impl Runtime {
                 self.stop(Status::ComponentFailure, reason);
                 break;
             }
-            let physics_boundary = self.state.next_physics == Some(at);
+            // Отсчёты цепи относятся к завершённому интервалу. Свежий ток
+            // нагрузки для следующего интервала появится позже на этом такте.
+            let load_log_start = load_boundary.then(|| self.state.log.entries().len());
             if physics_boundary {
                 if !self.step_physics() {
                     break;
@@ -1380,6 +1395,13 @@ impl Runtime {
                 }
             }
             if self.status() == Status::Running {
+                if let Some(start) = load_log_start
+                    && let Some(circuit) = &mut self.state.electrical
+                    && let Err(reason) = circuit.latch_loads(at, &self.state.log.entries()[start..])
+                {
+                    self.stop(Status::ComponentFailure, reason);
+                    break;
+                }
                 self.inject(CommandSource::External);
                 if self
                     .state

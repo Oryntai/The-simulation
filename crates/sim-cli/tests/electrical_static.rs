@@ -318,8 +318,12 @@ fn malformed_schematics_report_the_location() {
 #[test]
 fn catalog_covers_the_required_parts_and_rejects_bad_numbers() {
     use PartKind::*;
-    let input = load_catalog(&root().join("catalog/electrical")).unwrap();
-    assert_eq!(input.sources.len(), 2);
+    let directory = root().join("catalog/electrical");
+    let input = load_catalog(&directory).unwrap();
+    for name in ["components.toml", "reference.toml", "depth-modules.toml"] {
+        let file = directory.join(name);
+        assert_eq!(input.sources[&file], fs::read(file).unwrap(), "{name}");
+    }
     let kinds = input
         .catalog
         .parts()

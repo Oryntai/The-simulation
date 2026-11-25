@@ -1,0 +1,146 @@
+# Адреса снимаются с монтажных схем, времена — с профилей соответствующих опытов.
+# Порог 10 мВ из допуска Э2 различает полки в безнагрузочных окнах.
+# Пороги постановок диагностические и не определяют допуск физической сборки.
+[[checks]]
+id = "01"
+owner = "устройство"
+rail = "vdd"
+return_from = "bank/g"
+return_joint = "return_board"
+feed_from = "regulator/output"
+feed_joint = "logic_power_finish"
+probe = "VDD"
+on_ns = 30000000
+on_min_v = 1.65 # Половина численного номинала 3,3 В.
+
+[[checks]]
+id = "02"
+owner = "устройство"
+rail = "bridge"
+return_from = "cell/g"
+return_joint = "bridge_return_finish"
+feed_from = "boost/output"
+feed_joint = "bridge_feed_finish"
+probe = "шина"
+on_ns = 24000000
+on_min_v = 2.0  # reference_drive_min_v
+off_ns = 32000000
+off_max_v = 2.0
+restored_ns = 40000000
+
+[[checks]]
+id = "03"
+owner = "устройство"
+rail = "vdd"
+return_from = "pack/g"
+return_joint = "imu_ground"
+feed_from = "ldo/output"
+feed_joint = "imu_supply"
+probe = "импульсы/питание"
+on_ns = 2000000
+on_min_v = 1.71 # minimum_v измерителя в профиле
+off_ns = 4000000
+off_max_v = 0.01
+restored_ns = 6000000
+
+[[checks]]
+id = "04"
+owner = "нажиматель"
+rail = "vdd"
+return_from = "pack/g"
+return_joint = "return_board"
+feed_from = "logic/output"
+feed_joint = "logic_output"
+probe = "VDD"
+on_ns = 2000000
+on_min_v = 2.8 # rising_v и falling_v детектора из профиля
+off_ns = 4000000
+off_max_v = 2.0
+restored_ns = 6000000
+
+[[checks]]
+id = "05"
+owner = "подвес"
+rail = "angle_vdd"
+return_from = "angle_supply/minus"
+return_joint = "angle_return"
+feed_from = "angle_supply/plus"
+feed_joint = "angle_power_source"
+probe = "VDD5V AS5600"
+on_ns = 40000000
+on_min_v = 3.0 # minimum_v измерителя в профиле
+off_ns = 60000000
+off_max_v = 0.01
+restored_ns = 80000000
+
+[[checks]]
+id = "06"
+owner = "портал"
+rail = "outlet"
+return_from = "supply/g"
+return_joint = "outlet-return-to"
+feed_from = "key/output"
+feed_joint = "outlet-feed-from"
+probe = "фланец"
+on_ns = 5650000000
+on_min_v = 2.5 # Половина численной уставки 5 В.
+off_ns = 6150000000
+off_max_v = 0.01
+restored_ns = 7650000000
+
+[[checks]]
+id = "06"
+owner = "губки"
+rail = "load"
+return_from = "mating/g"
+return_joint = "dock-return"
+feed_from = "mating/p"
+feed_joint = "dock-feed"
+probe = "нагрузка"
+on_ns = 5650000000
+on_min_v = 2.5
+off_ns = 9550000000
+off_max_v = 0.01
+
+[[checks]]
+id = "06"
+owner = "нагреватель"
+rail = "load"
+return_from = "mating/g"
+return_joint = "dock-return"
+feed_from = "thermal/output"
+feed_joint = "load-feed-to"
+probe = "нагрузка"
+on_ns = 7050000000
+on_min_v = 2.5
+off_ns = 7650000000
+off_max_v = 0.01
+
+[[checks]]
+id = "06"
+owner = "отвёртка"
+rail = "load"
+return_from = "mating/g"
+return_joint = "dock-return"
+feed_from = "mating/p"
+feed_joint = "dock-feed"
+probe = "нагрузка"
+on_ns = 9450000000
+on_min_v = 2.5
+off_ns = 9550000000
+off_max_v = 0.01
+
+[[checks]]
+id = "07"
+owner = "тележка"
+rail = "bridge_l"
+return_from = "source/g"
+return_joint = "bridge_return_l_finish"
+feed_from = "cut_l/q"
+feed_joint = "bridge_feed_l_finish"
+probe = "шина левое"
+on_ns = 5000000
+on_min_v = 2.68 # Половина 5,36 В из численной оценки источника.
+off_ns = 0
+off_max_v = 0.01
+restored_ns = 19000000

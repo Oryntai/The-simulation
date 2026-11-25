@@ -1,0 +1,83 @@
+format = 1
+# Шаг равен периоду 2 кГц из world.toml.
+step_ns = 500000
+source = "Численный опыт на независимых островах. События взяты из operations.toml как команды стенда и не следуют фактическому состоянию фланца. Напряжение и ток вычисляются для диагностических нагрузок. Общий ток, реакция механики, состояние защиты и годность оборудования остаются NotAnalyzed."
+control = "electrical-control.toml"
+
+# 0,1 Ом за стык, как в electrical-profile.toml у ранее принятых установок.
+# 3,3 В для разрешения заимствовано из logic_buck_24.regulator
+# в catalog/electrical/diagnostics/nominal.toml, 0 В задаёт снятую команду.
+# 5 В от отдельного численного источника Тевенина Э1, 0 В вне опыта.
+# Ток входа снимается на последовательной ветви источника стенда, поэтому
+# проба остаётся доступной при несовместимости плюсового контакта.
+
+[circuits."портал"]
+loads = { "канал X" = { branch = "drive-x/load", role = "resistive" }, "канал Y" = { branch = "drive-y/load", role = "resistive" }, "канал Z" = { branch = "drive-z/load", role = "resistive" } }
+diagnostic_connections = { parameters = "electrical-stimuli.toml", ohm = 0.1, source = "Оценка, замерить каждый стык: 0,1 Ом из стенда Э1, catalog/electrical/diagnostics/nominal.toml." }
+# Окна активных насадок из models.держатель.commands в operations.toml.
+steps = [
+  { branch = "control/command", at_ns = 1650000000, value = 3.3 },
+  { branch = "control/command", at_ns = 5650000000, value = 0 },
+  { branch = "control/command", at_ns = 6150000000, value = 3.3 },
+  { branch = "control/command", at_ns = 7650000000, value = 0 },
+  { branch = "control/command", at_ns = 8150000000, value = 3.3 },
+  { branch = "control/command", at_ns = 9450000000, value = 0 },
+]
+[circuits."портал".probes]
+"ток источника" = { kind = "current", branch = "supply/series" }
+"вход источника" = { kind = "voltage", ends = ["supply/p","supply/g"] }
+"фланец" = { kind = "voltage", ends = ["outlet/p","outlet/g"] }
+"ток ключа" = { kind = "current", branch = "key/key" }
+"шина X" = { kind = "voltage", ends = ["drive-x/p","drive-x/g"] }
+"ток X" = { kind = "current", branch = "drive-x/load" }
+"шина Y" = { kind = "voltage", ends = ["drive-y/p","drive-y/g"] }
+"ток Y" = { kind = "current", branch = "drive-y/load" }
+"шина Z" = { kind = "voltage", ends = ["drive-z/p","drive-z/g"] }
+"ток Z" = { kind = "current", branch = "drive-z/load" }
+
+[circuits."губки"]
+loads = { "эквивалент" = { branch = "load/load", role = "resistive" } }
+diagnostic_connections = { parameters = "electrical-stimuli.toml", ohm = 0.1, source = "Оценка, замерить каждый стык: 0,1 Ом из стенда Э1, catalog/electrical/diagnostics/nominal.toml." }
+# Окно стыка из models.держатель.commands в operations.toml.
+steps = [
+  { branch = "mating/emf", at_ns = 1650000000, value = 5 },
+  { branch = "mating/emf", at_ns = 5650000000, value = 0 },
+]
+[circuits."губки".probes]
+"шина входа" = { kind = "voltage", ends = ["inlet/p","inlet/g"] }
+"ток входа" = { kind = "current", branch = "mating/series" }
+"возврат" = { kind = "current", branch = "dock-return" }
+"нагрузка" = { kind = "voltage", ends = ["load/p","load/g"] }
+"ток нагрузки" = { kind = "current", branch = "load/load" }
+
+[circuits."нагреватель"]
+loads = { "эквивалент" = { branch = "load/load", role = "resistive" } }
+diagnostic_connections = { parameters = "electrical-stimuli.toml", ohm = 0.1, source = "Оценка, замерить каждый стык: 0,1 Ом из стенда Э1, catalog/electrical/diagnostics/nominal.toml." }
+# Окно стыка из models.держатель.commands, импульс ключа из models.тепло.power_w в operations.toml.
+steps = [
+  { branch = "mating/emf", at_ns = 6150000000, value = 5 },
+  { branch = "control/command", at_ns = 6500000000, value = 3.3 },
+  { branch = "control/command", at_ns = 7050000000, value = 0 },
+  { branch = "mating/emf", at_ns = 7650000000, value = 0 },
+]
+[circuits."нагреватель".probes]
+"шина входа" = { kind = "voltage", ends = ["inlet/p","inlet/g"] }
+"ток входа" = { kind = "current", branch = "mating/series" }
+"возврат" = { kind = "current", branch = "dock-return" }
+"нагрузка" = { kind = "voltage", ends = ["load/p","load/g"] }
+"ток нагрузки" = { kind = "current", branch = "load/load" }
+
+[circuits."отвёртка"]
+loads = { "эквивалент" = { branch = "load/load", role = "resistive" } }
+diagnostic_connections = { parameters = "electrical-stimuli.toml", ohm = 0.1, source = "Оценка, замерить каждый стык: 0,1 Ом из стенда Э1, catalog/electrical/diagnostics/nominal.toml." }
+# Окно стыка из models.держатель.commands в operations.toml.
+steps = [
+  { branch = "mating/emf", at_ns = 8150000000, value = 5 },
+  { branch = "mating/emf", at_ns = 9450000000, value = 0 },
+]
+[circuits."отвёртка".probes]
+"шина входа" = { kind = "voltage", ends = ["inlet/p","inlet/g"] }
+"ток входа" = { kind = "current", branch = "mating/series" }
+"возврат" = { kind = "current", branch = "dock-return" }
+"нагрузка" = { kind = "voltage", ends = ["load/p","load/g"] }
+"ток нагрузки" = { kind = "current", branch = "load/load" }

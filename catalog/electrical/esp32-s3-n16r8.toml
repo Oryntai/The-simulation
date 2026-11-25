@@ -1,0 +1,75 @@
+format = 1
+
+[parts.esp32_s3_n16r8]
+kind = "other"
+source = "Espressif ESP32-S3-WROOM-1-N16R8, паспорт ESP32-S3-WROOM-1 & WROOM-1U v1.8, табл. 1-1, 3-1, 6-1 и 6-2 https://documentation.espressif.com/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf"
+model_gap = "Сверить код заказа на экране модуля, ревизию кристалла по eFuse и схему несущей платы. Измерить цепь EN, состояния выводов при включении и сбросе, уровни, утечки, защитные пути и возвраты GND/EPAD."
+
+# Табл. 1-1: flash 16 МБ Quad SPI, PSRAM 8 МБ Octal SPI, температура −40…+65 °C
+# без условия повышенного предела при ECC. На модуле антенна PCB (§1.1).
+# Табл. 6-2: питание 3,0…3,6 В, тип. 3,3 В, внешний источник должен отдавать
+# не менее 0,5 А. Это требование к источнику питания.
+# §4, табл. 4-1: загрузочные GPIO0 (подтяжка вверх), GPIO3 (плавающий),
+# GPIO45 и GPIO46 (подтяжки вниз). Проверять внешнюю обвязку в момент сброса.
+# Номера физических площадок и роли — табл. 3-1; основной адрес возврата — GND, площадка 1.
+[parts.esp32_s3_n16r8.pins]
+gnd           = { contact = "pad", role = "return" }                    # 1
+vdd           = { contact = "pad", role = "power" }                     # 2, 3V3
+en            = { contact = "pad", role = { signal_in = "gnd" } }       # 3, высокий уровень включает; не оставлять плавающим
+io4           = { contact = "pad", role = { signal_io = "gnd" } }       # 4
+io5           = { contact = "pad", role = { signal_io = "gnd" } }       # 5
+io6           = { contact = "pad", role = { signal_io = "gnd" } }       # 6
+io7           = { contact = "pad", role = { signal_io = "gnd" } }       # 7
+io15          = { contact = "pad", role = { signal_io = "gnd" } }       # 8
+io16          = { contact = "pad", role = { signal_io = "gnd" } }       # 9
+io17          = { contact = "pad", role = { signal_io = "gnd" } }       # 10
+io18          = { contact = "pad", role = { signal_io = "gnd" } }       # 11
+io8           = { contact = "pad", role = { signal_io = "gnd" } }       # 12
+io19          = { contact = "pad", role = { signal_io = "gnd" } }       # 13, USB D−
+io20          = { contact = "pad", role = { signal_io = "gnd" } }       # 14, USB D+
+io3           = { contact = "pad", role = { signal_io = "gnd" } }       # 15
+io46          = { contact = "pad", role = { signal_io = "gnd" } }       # 16
+io9           = { contact = "pad", role = { signal_io = "gnd" } }       # 17
+io10          = { contact = "pad", role = { signal_io = "gnd" } }       # 18
+io11          = { contact = "pad", role = { signal_io = "gnd" } }       # 19
+io12          = { contact = "pad", role = { signal_io = "gnd" } }       # 20
+io13          = { contact = "pad", role = { signal_io = "gnd" } }       # 21
+io14          = { contact = "pad", role = { signal_io = "gnd" } }       # 22
+io21          = { contact = "pad", role = { signal_io = "gnd" } }       # 23
+io47          = { contact = "pad", role = { signal_io = "gnd" } }       # 24
+io48          = { contact = "pad", role = { signal_io = "gnd" } }       # 25
+io45          = { contact = "pad", role = { signal_io = "gnd" } }       # 26
+io0           = { contact = "pad", role = { signal_io = "gnd" } }       # 27
+reserved_io35 = { contact = "pad", role = "passive" }                   # 28, Octal PSRAM, не подключать
+reserved_io36 = { contact = "pad", role = "passive" }                   # 29, Octal PSRAM, не подключать
+reserved_io37 = { contact = "pad", role = "passive" }                   # 30, Octal PSRAM, не подключать
+io38          = { contact = "pad", role = { signal_io = "gnd" } }       # 31
+io39          = { contact = "pad", role = { signal_io = "gnd" } }       # 32
+io40          = { contact = "pad", role = { signal_io = "gnd" } }       # 33
+io41          = { contact = "pad", role = { signal_io = "gnd" } }       # 34
+io42          = { contact = "pad", role = { signal_io = "gnd" } }       # 35
+rxd0          = { contact = "pad", role = { signal_io = "gnd" } }       # 36, GPIO44
+txd0          = { contact = "pad", role = { signal_io = "gnd" } }       # 37, GPIO43
+io2           = { contact = "pad", role = { signal_io = "gnd" } }       # 38
+io1           = { contact = "pad", role = { signal_io = "gnd" } }       # 39
+gnd_40        = { contact = "pad", role = "return" }                    # 40
+epad          = { contact = "pad", role = "return" }                    # 41, GND
+
+[parts.esp32_s3_n16r8.elements.supply_load]
+kind = "current"
+nodes = ["vdd", "gnd"]
+parameters.ampere.measurement = "Измерить ток на VDD синхронно с EN и состоянием прошивки: пуск, работа, RF-пики, сон, пробуждение; условия паспортных режимов — §6.4."
+
+[parts.esp32_s3_n16r8.ratings.minimum_supply_voltage]
+quantity = "voltage_v"
+nodes = ["vdd", "gnd"]
+conditions = "Нижняя граница рабочего питания модуля при условиях табл. 6-2 и температуре исполнения N16R8."
+limit.measurement = "Снять минимум VDD относительно GND под нагрузкой."
+limit.range = { min = 3.0, nominal = 3.0, max = 3.0, source = { datasheet = "Espressif v1.8, табл. 6-2 https://documentation.espressif.com/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf" } }
+
+[parts.esp32_s3_n16r8.ratings.maximum_supply_voltage]
+quantity = "voltage_v"
+nodes = ["vdd", "gnd"]
+conditions = "Верхняя граница рабочего питания модуля и абсолютный максимум VDD33 по табл. 6-1."
+limit.measurement = "Снять максимум VDD относительно GND, включая переходы питания."
+limit.range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "Espressif v1.8, табл. 6-1 и 6-2 https://documentation.espressif.com/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf" } }

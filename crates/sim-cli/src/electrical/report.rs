@@ -16,7 +16,11 @@ use sim_task::{
     verdict::{ElectricalEvidence, Finding, SimulationVerdict},
 };
 
-use super::{CatalogInput, LiveExperiment, LivePath, LiveSummary, SchematicInput};
+use super::{
+    LiveExperiment, LivePath, LiveSummary,
+    input::{CatalogInput, ProfileInput, SchematicInput, parse},
+    install::{BoundLoad, Wiring, bound_loads, validate_owners},
+};
 use crate::tasks::processes::{Inputs, capture_world};
 
 pub(crate) struct Installation {
@@ -26,46 +30,7 @@ pub(crate) struct Installation {
     profile: Option<Fingerprint>,
     installed: Option<control::RunIdentity>,
     resets: BTreeMap<String, ResetProfile>,
-}
-
-#[derive(Deserialize)]
-struct ProfileFiles {
-    parts: Option<PathBuf>,
-    control: PathBuf,
-    stimuli: Option<PathBuf>,
-    measurements: Option<PathBuf>,
-    #[serde(default)]
-    sampled: BTreeMap<String, PathBuf>,
-    circuits: BTreeMap<String, CircuitFiles>,
-}
-
-#[derive(Deserialize)]
-struct CircuitFiles {
-    #[serde(default)]
-    boards: BTreeMap<String, BoardSupplyFiles>,
-    diagnostic_connections: Option<DiagnosticFiles>,
-}
-
-#[derive(Deserialize)]
-struct DiagnosticFiles {
-    parameters: Option<PathBuf>,
-}
-
-#[derive(Deserialize)]
-struct BoardSupplyFiles {
-    reference_reset: Option<toml::Value>,
-}
-
-#[derive(Deserialize)]
-struct BoardReference {
-    name: String,
-    catalog: String,
-}
-
-#[derive(Deserialize)]
-struct ControlFiles {
-    #[serde(default)]
-    board: Vec<BoardReference>,
+    loads: BTreeMap<String, BTreeMap<String, BoundLoad>>,
 }
 
 #[derive(Serialize)]
@@ -103,6 +68,8 @@ struct LiveAudit {
     complete: bool,
     journal: Fingerprint,
     summary: LiveSummary,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    loads: BTreeMap<String, BTreeMap<String, BoundLoad>>,
 }
 
 #[derive(Serialize)]
@@ -149,78 +116,76 @@ impl Installation {
                 missing.insert(instance.name);
             }
         }
-        let mut stamp = None;
-        let mut local_parts = None;
+        let inputs = profile
+            .map(|path| ProfileInput::load(path, &mut files, paths.keys()))
+            .transpose()?;
+        let stamp = inputs
+            .as_ref()
+            .map(|profile| Fingerprint::of(&profile.bytes));
         let mut resets = BTreeMap::new();
-        if let Some(path) = profile {
-            stamp = Some(Fingerprint::of(files.capture(path)?));
-            let inputs: ProfileFiles = files.toml(path)?;
-            let dir = dir(path);
-            let control: ControlFiles = files.toml(&dir.join(&inputs.control))?;
-            for diagnostic in inputs
-                .circuits
-                .values()
-                .filter_map(|c| c.diagnostic_connections.as_ref())
-            {
-                if let Some(path) = &diagnostic.parameters {
-                    files.capture(&dir.join(path))?;
-                }
-            }
-            let defaults = inputs
-                .circuits
-                .into_values()
-                .flat_map(|circuit| circuit.boards)
-                .filter(|(_, supply)| supply.reference_reset.is_none())
-                .map(|(board, _)| board)
-                .collect::<BTreeSet<_>>();
-            for board in control
-                .board
-                .into_iter()
-                .filter(|board| defaults.contains(&board.name))
-            {
-                if Path::new(&board.catalog)
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    != Some(board.catalog.as_str())
-                    || board.catalog.chars().any(char::is_control)
-                {
-                    return Err("ожидалось имя позиции каталога платы".into());
-                }
-                let path = catalog
-                    .join("boards/electrical")
-                    .join(format!("{}.toml", board.catalog));
-                let profile = CatalogInput::parse_board_profile(&path, files.capture(&path)?)?;
-                if profile.board != board.catalog {
-                    return Err("электрический профиль относится к другой плате".into());
-                }
-                resets.insert(board.name, profile.reset);
-            }
-            for file in [inputs.stimuli, inputs.measurements]
-                .into_iter()
-                .flatten()
-                .chain(inputs.sampled.into_values())
-            {
-                files.capture(&dir.join(file))?;
-            }
-            local_parts = inputs.parts.map(|file| dir.join(file));
-        }
-        let mut schemes = BTreeMap::new();
-        if !paths.is_empty() {
-            let parts = if let Some(path) = local_parts {
-                super::parse_catalog(&path, files.capture(&path)?)?
-            } else {
-                let CatalogInput { catalog, sources } =
-                    super::load_catalog(&catalog.join("electrical"))?;
-                for (path, bytes) in sources {
-                    if files.capture(&path)? != bytes {
-                        return Err(format!("изменился каталог {}", path.display()));
+        if let Some(profile) = &inputs {
+            let (control_path, bytes) = profile.control(&mut files)?;
+            let wiring: Wiring = parse(&control_path, &bytes)?;
+            for cfg in profile.data.circuits.values() {
+                validate_owners(cfg)?;
+                for (name, supply) in &cfg.boards {
+                    let path = wiring.board_profile(name, catalog)?;
+                    if supply.reference_reset.is_none()
+                        || path
+                            .try_exists()
+                            .map_err(|err| format!("{}: {err}", path.display()))?
+                    {
+                        let board =
+                            CatalogInput::parse_board_profile(&path, files.capture(&path)?)?;
+                        if board.board != wiring.board(name)? {
+                            return Err("электрический профиль относится к другой плате".into());
+                        }
+                        if supply.reference_reset.is_none() {
+                            resets.insert(name.clone(), board.reset);
+                        }
                     }
                 }
-                catalog
-            };
+                if let Some(path) = cfg
+                    .diagnostic_connections
+                    .as_ref()
+                    .and_then(|d| d.parameters.as_ref())
+                {
+                    files.capture(&profile.dir.join(path))?;
+                }
+            }
+            for path in profile
+                .data
+                .measurements
+                .iter()
+                .chain(profile.data.sampled.values())
+            {
+                files.capture(&profile.dir.join(path))?;
+            }
+        }
+        let mut schemes = BTreeMap::new();
+        let mut loads = BTreeMap::new();
+        if !paths.is_empty() {
+            let CatalogInput { catalog: parts, .. } =
+                CatalogInput::for_profile(catalog, inputs.as_ref(), &mut files)?;
             for (instance, path) in paths {
                 let bytes = files.capture(&path)?.to_vec();
-                schemes.insert(instance, SchematicInput::parse(&path, bytes, &parts)?);
+                let scheme = SchematicInput::parse(&path, bytes, &parts)?;
+                if let Some(profile) = &inputs {
+                    let cfg = &profile.data.circuits[&instance];
+                    if !cfg.loads.is_empty() {
+                        let net = scheme.live_netlist(
+                            &parts,
+                            cfg.diagnostic_connections.as_ref(),
+                            &profile.dir,
+                            &mut files,
+                        )?;
+                        let loads_at_instance =
+                            bound_loads(&instance, &cfg.loads, &net, &scheme.definition()?, &parts)
+                                .map_err(|err| format!("{}: {err}", path.display()))?;
+                        loads.insert(instance.clone(), loads_at_instance);
+                    }
+                }
+                schemes.insert(instance, scheme);
             }
         }
         Ok(Self {
@@ -230,6 +195,7 @@ impl Installation {
             profile: stamp,
             installed: None,
             resets,
+            loads,
         })
     }
 
@@ -246,6 +212,17 @@ impl Installation {
             return Err(
                 "контур должен быть связан с электрическими входами до первого шага".into(),
             );
+        }
+        for load in self.loads.values().flat_map(BTreeMap::values) {
+            for (name, unit) in [(&load.voltage_channel, "V"), (&load.current_channel, "A")] {
+                if runtime
+                    .truth_id(name)
+                    .and_then(|id| runtime.truth_spec(id))
+                    .is_none_or(|spec| spec.unit != unit)
+                {
+                    return Err(format!("отсутствует фактическая проба «{name}»"));
+                }
+            }
         }
         self.files.verify()?;
         self.installed = Some(identity.clone());
@@ -300,6 +277,7 @@ impl Installation {
                     complete: run.reached_horizon() && end.steps > 0,
                     journal: Fingerprint::from_fnv1a(run.log().fingerprint()),
                     summary: LiveSummary::from(rt),
+                    loads: self.loads.clone(),
                 })
             }
             _ => return Err("журнал требует разрешённого профиля и горизонта".into()),

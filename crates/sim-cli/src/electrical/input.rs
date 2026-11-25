@@ -4,11 +4,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sim_process::{SourcedRange, schematic::*};
 use sim_runtime::electrical::BoardElectricalProfile;
 use sim_signal::Time;
 use sim_world::{Provenance, WorldWithSchematics};
+
+use crate::tasks::processes::Inputs;
 
 // Версия первого дискового формата схемы и каталога, независимая от формата мира.
 const FORMAT: u32 = 1;
@@ -26,6 +28,204 @@ pub struct SchematicInput {
 pub struct CatalogInput {
     pub sources: BTreeMap<PathBuf, Vec<u8>>,
     pub catalog: Catalog,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Profile {
+    pub(super) format: u32,
+    pub(super) step_ns: u64,
+    pub(super) source: String,
+    pub(super) control: PathBuf,
+    pub(super) stimuli: Option<PathBuf>,
+    pub(super) measurements: Option<PathBuf>,
+    pub(super) legacy_measurements: Option<PathBuf>,
+    pub(super) parts: Option<PathBuf>,
+    #[serde(default)]
+    pub(super) sampled: BTreeMap<String, PathBuf>,
+    pub(super) circuits: BTreeMap<String, CircuitProfile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CircuitProfile {
+    #[serde(default)]
+    pub(super) loads: BTreeMap<String, LoadEquivalent>,
+    #[serde(default)]
+    pub(super) drives: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(super) reference_drive_min_v: BTreeMap<String, f64>,
+    pub(super) diagnostic_connections: Option<DiagnosticConnections>,
+    #[serde(default)]
+    pub(super) boards: BTreeMap<String, BoardSupply>,
+    #[serde(default)]
+    pub(super) observed_boards: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(super) steps: Vec<Step>,
+    #[serde(default)]
+    pub(super) probes: BTreeMap<String, ProfileProbe>,
+    #[serde(default)]
+    pub(super) meters: BTreeMap<String, Meter>,
+    #[serde(default)]
+    pub(super) voltage_observations: BTreeMap<String, VoltageObservation>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct DiagnosticConnections {
+    pub(super) ohm: f64,
+    pub(super) source: String,
+    pub(super) parameters: Option<PathBuf>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Step {
+    pub(super) branch: String,
+    pub(super) at_ns: u64,
+    pub(super) value: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum ProfileProbe {
+    Voltage { ends: [String; 2] },
+    Current { branch: String },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Meter {
+    pub(super) rate_hz: u64,
+    pub(super) minimum_v: f64,
+    pub(super) source: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct VoltageObservation {
+    pub(super) ends: [String; 2],
+    pub(super) meter: Meter,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BoardSupply {
+    pub(super) rail: String,
+    pub(super) branch: String,
+    pub(super) currents_a: [f64; 4],
+    pub(super) boot_ns: u64,
+    pub(super) initially_in_reset: bool,
+    pub(super) reference_reset: Option<ReferenceReset>,
+    pub(super) phase_source: Option<ConfirmedSource>,
+    #[serde(default)]
+    pub(super) live_pins: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ConfirmedSource {
+    Datasheet(String),
+    Measured(String),
+}
+
+impl From<ConfirmedSource> for Provenance {
+    fn from(source: ConfirmedSource) -> Self {
+        match source {
+            ConfirmedSource::Datasheet(value) => Self::Datasheet(value),
+            ConfirmedSource::Measured(value) => Self::Measured(value),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ReferenceReset {
+    pub(super) falling_v: f64,
+    pub(super) rising_v: f64,
+    pub(super) assert_ns: u64,
+    pub(super) release_ns: u64,
+    pub(super) source: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct LoadEquivalent {
+    pub(super) branch: String,
+    pub(super) role: LoadRole,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum LoadRole {
+    Resistive,
+    Current,
+}
+
+pub(super) struct ProfileInput {
+    pub(super) data: Profile,
+    pub(super) bytes: Vec<u8>,
+    pub(super) dir: PathBuf,
+}
+
+impl ProfileInput {
+    pub(super) fn load<'a>(
+        path: &Path,
+        files: &mut Inputs,
+        instances: impl Iterator<Item = &'a String>,
+    ) -> Result<Self, String> {
+        let bytes = files.capture(path)?.to_vec();
+        let data: Profile = parse(path, &bytes)?;
+        check_version(path, data.format)?;
+        if data.step_ns == 0 || data.source.trim().is_empty() {
+            return Err(located(path, "нужны ненулевой шаг и источник постановки"));
+        }
+        if data.circuits.is_empty() || data.circuits.keys().ne(instances) {
+            return Err(located(
+                path,
+                "профиль должен покрывать все подключённые схемы мира",
+            ));
+        }
+        Ok(Self {
+            data,
+            bytes,
+            dir: path.parent().unwrap_or_else(|| Path::new(".")).into(),
+        })
+    }
+
+    pub(super) fn control(&self, files: &mut Inputs) -> Result<(PathBuf, Vec<u8>), String> {
+        let path = self.dir.join(&self.data.control);
+        let mut bytes = files.capture(&path)?.to_vec();
+        if let Some(stimuli) = &self.data.stimuli {
+            bytes.push(b'\n');
+            bytes.extend(files.capture(&self.dir.join(stimuli))?);
+        }
+        Ok((path, bytes))
+    }
+}
+
+impl CatalogInput {
+    pub(super) fn for_profile(
+        root: &Path,
+        profile: Option<&ProfileInput>,
+        files: &mut Inputs,
+    ) -> Result<Self, String> {
+        // Поле parts в формате 1 указывает самостоятельный каталог старого профиля.
+        if let Some(path) = profile.and_then(|p| p.data.parts.as_ref().map(|f| p.dir.join(f))) {
+            let bytes = files.capture(&path)?.to_vec();
+            return Ok(Self {
+                catalog: parse_catalog(&path, &bytes)?,
+                sources: BTreeMap::from([(path, bytes)]),
+            });
+        }
+        let input = load_catalog(&root.join("electrical"))?;
+        for (path, bytes) in &input.sources {
+            if files.capture(path)? != bytes {
+                return Err(located(path, "изменился каталог"));
+            }
+        }
+        Ok(input)
+    }
 }
 
 pub fn parse_catalog(path: &Path, bytes: &[u8]) -> Result<Catalog, String> {
@@ -109,6 +309,38 @@ impl SchematicInput {
         })
     }
 
+    pub(super) fn definition(&self) -> Result<Schematic, String> {
+        let data: SchematicData = parse(&self.path, &self.bytes)?;
+        data.convert().map_err(|error| located(&self.path, error))
+    }
+
+    pub(super) fn live_netlist(
+        &self,
+        catalog: &Catalog,
+        diagnostic: Option<&DiagnosticConnections>,
+        dir: &Path,
+        files: &mut Inputs,
+    ) -> Result<ExpandedNetlist, String> {
+        if let Some(assumption) = diagnostic {
+            let file = assumption.parameters.as_ref().map(|path| dir.join(path));
+            let bytes = file
+                .as_deref()
+                .map(|path| files.capture(path))
+                .transpose()?;
+            self.diagnostic_netlist(
+                catalog,
+                assumption.ohm,
+                &assumption.source,
+                file.as_deref().zip(bytes),
+            )
+        } else {
+            match self.compiled.netlist() {
+                sim_process::Analysis::Analyzed { value, .. } => Ok(value),
+                sim_process::Analysis::NotAnalyzed { reason } => Err(reason),
+            }
+        }
+    }
+
     /// Подставляет сопротивление численного опыта только в ветви без замера.
     /// Исходная схема, режимы доказательства и сборочный лист этого значения не получают.
     pub(super) fn diagnostic_netlist(
@@ -121,11 +353,10 @@ impl SchematicInput {
         if !ohm.is_finite() || ohm <= 0.0 || source.trim().is_empty() {
             return Err("нужны конечное положительное сопротивление и источник опыта".into());
         }
-        let data: SchematicData = parse(&self.path, &self.bytes)?;
-        if data.scope != Scope::Assembly {
+        let mut schematic = self.definition()?;
+        if schematic.scope != Scope::Assembly {
             return Err("подстановка предназначена для монтажной схемы".into());
         }
-        let mut schematic = data.convert()?;
         let mut applied = false;
         for joint in schematic.connections.values_mut() {
             if joint.resistance_ohm.range.is_none() {
@@ -244,9 +475,32 @@ fn located(path: &Path, error: impl std::fmt::Display) -> String {
     format!("{}: {error}", path.display())
 }
 
-fn parse<T: DeserializeOwned>(path: &Path, bytes: &[u8]) -> Result<T, String> {
+pub(super) fn parse<T: DeserializeOwned>(path: &Path, bytes: &[u8]) -> Result<T, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| located(path, e))?;
-    toml::from_str(text).map_err(|e| located(path, e))
+    let table: toml::Table = toml::from_str(text).map_err(|e| located(path, e))?;
+    fn nonfinite(value: &toml::Value) -> Option<String> {
+        match value {
+            toml::Value::Float(value) if !value.is_finite() => Some(String::new()),
+            toml::Value::Array(values) => values
+                .iter()
+                .enumerate()
+                .find_map(|(i, value)| nonfinite(value).map(|suffix| format!("[{i}]{suffix}"))),
+            toml::Value::Table(values) => values
+                .iter()
+                .find_map(|(key, value)| nonfinite(value).map(|suffix| format!(".{key}{suffix}"))),
+            _ => None,
+        }
+    }
+    if let Some(field) = table
+        .iter()
+        .find_map(|(key, value)| nonfinite(value).map(|suffix| format!("{key}{suffix}")))
+    {
+        return Err(located(
+            path,
+            format!("{field}: допустимы только конечные числа"),
+        ));
+    }
+    table.try_into().map_err(|e| located(path, e))
 }
 
 fn check_version(path: &Path, format: u32) -> Result<(), String> {

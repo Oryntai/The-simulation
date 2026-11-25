@@ -6,6 +6,7 @@ mod catalog;
 mod checks;
 mod clock;
 mod device;
+pub mod esp_memory;
 mod fault;
 mod image;
 mod memory;
@@ -21,6 +22,7 @@ pub use catalog::{
 };
 pub use device::{BoardSim, new_board};
 pub use fault::BoardFault;
+pub use image::esp_image;
 pub use ports::*;
 pub use wiring::{Connection, Outcome, WiringFinding, WiringRule, check_wiring, wiring_outcome};
 

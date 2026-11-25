@@ -1,0 +1,316 @@
+format = 1
+scope = "assembly"
+name = "Питание одноосного подвеса и интерфейсы датчиков"
+# Условный монтажный эскиз стенда. Артикулы источников, защиты, моста,
+# платы и RGB-модуля должны быть подтверждены до подачи питания.
+# Две отдельные шины, общий возврат в точке star_return. DIR датчика
+# к GND (CW), OUT и PGO открыты по схеме I²C, ams AS5600 v1-06, рис. 38.
+# Камера и питание контроллера резервируются без операций подключения
+# до выбора интерфейса, питающих шин, последовательности и распиновки.
+nets = ["camera_data_reserved", "camera_return_reserved", "camera_vdd_reserved", "camera_vddio_reserved", "controller_power_reserved", "dir", "en", "motor_a", "motor_b", "out_nc", "pgo_nc", "protected6", "pwm", "return", "scl", "sda", "supply33", "supply6"]
+
+[components.motor_supply]
+part = "bench_supply"
+nets = { plus = "supply6", minus = "return" }
+
+[components.angle_supply]
+part = "as5600_fixture_supply"
+nets = { plus = "supply33", minus = "return" }
+
+[components.feed]
+part = "harness_copper"
+nets = { a = "supply6", b = "supply6" }
+
+[components.motor_return]
+part = "harness_copper"
+nets = { a = "return", b = "return" }
+
+[components.star_return]
+part = "harness_copper"
+nets = { a = "return", b = "return" }
+
+[components.angle_feed]
+part = "harness_copper"
+nets = { a = "supply33", b = "supply33" }
+
+[components.angle_return]
+part = "harness_copper"
+nets = { a = "return", b = "return" }
+
+[components.fuse]
+part = "fuse_series"
+nets = { input = "supply6", output = "protected6" }
+
+[components.bridge]
+part = "dc_hbridge_unspecified"
+nets = { p = "protected6", g = "return", out1 = "motor_a", out2 = "motor_b", pwm = "pwm", dir = "dir", en = "en" }
+
+[components.motor]
+part = "pololu_2214_brushed"
+nets = { m1 = "motor_a", m2 = "motor_b" }
+
+[components.controller]
+part = "external_control_unspecified"
+nets = { p = "controller_power_reserved", g = "return", pwm = "pwm", dir = "dir", en = "en", sda = "sda", scl = "scl", camera_data = "camera_data_reserved" }
+
+[components.rgb]
+part = "rgb_rails_unspecified"
+nets = { vdd = "camera_vdd_reserved", vddio = "camera_vddio_reserved", g = "camera_return_reserved", data = "camera_data_reserved" }
+
+[components.angle]
+part = "as5600_bare_3v3"
+nets = { vdd5v = "supply33", vdd3v3 = "supply33", g = "return", sda = "sda", scl = "scl", dir = "return", pgo = "pgo_nc", out = "out_nc" }
+
+[components.sda_pull]
+part = "as5600_pullup_unspecified"
+nets = { p = "supply33", s = "sda" }
+
+[components.scl_pull]
+part = "as5600_pullup_unspecified"
+nets = { p = "supply33", s = "scl" }
+
+[components.bypass]
+part = "as5600_bypass"
+nets = { p = "supply33", g = "return" }
+
+[components.bulk]
+part = "supply_fixture_bulk"
+nets = { p = "supply33", g = "return" }
+
+[connections.feed_source]
+kind = "terminal"
+ends = ["motor_supply/plus", "feed/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+
+[connections.return_source]
+kind = "terminal"
+ends = ["motor_supply/minus", "motor_return/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+
+[connections.star_motor]
+kind = "terminal"
+ends = ["motor_supply/minus", "star_return/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+
+[connections.star_angle]
+kind = "terminal"
+ends = ["angle_supply/minus", "star_return/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["star_motor"]
+
+[connections.angle_power_source]
+kind = "terminal"
+ends = ["angle_supply/plus", "angle_feed/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+
+[connections.angle_return_source]
+kind = "terminal"
+ends = ["angle_supply/minus", "angle_return/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+
+[connections.feed_fuse]
+kind = "solder"
+ends = ["feed/b", "fuse/input"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+after = ["feed_source"]
+
+[connections.fuse_bridge]
+kind = "solder"
+ends = ["fuse/output", "bridge/p"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+after = ["feed_fuse"]
+
+[connections.return_bridge]
+kind = "solder"
+ends = ["motor_return/b", "bridge/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+after = ["return_source"]
+
+[connections.motor_a]
+kind = "solder"
+ends = ["bridge/out1", "motor/m1"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+after = ["return_bridge"]
+
+[connections.motor_b]
+kind = "solder"
+ends = ["bridge/out2", "motor/m2"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем." }
+after = ["return_bridge"]
+
+[connections.controller_return]
+kind = "solder"
+ends = ["controller/g", "star_return/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["star_motor"]
+
+[connections.bridge_en]
+kind = "solder"
+ends = ["controller/en", "bridge/en"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["return_bridge", "controller_return"]
+
+[connections.bridge_pwm]
+kind = "solder"
+ends = ["controller/pwm", "bridge/pwm"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["return_bridge", "controller_return"]
+
+[connections.bridge_dir]
+kind = "solder"
+ends = ["controller/dir", "bridge/dir"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["return_bridge", "controller_return"]
+
+[connections.angle_return]
+kind = "solder"
+ends = ["angle_return/b", "angle/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_return_source"]
+
+[connections.angle_vdd5v]
+kind = "solder"
+ends = ["angle_feed/b", "angle/vdd5v"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_power_source", "angle_return"]
+
+[connections.angle_vdd3v3]
+kind = "solder"
+ends = ["angle_feed/b", "angle/vdd3v3"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_vdd5v"]
+
+[connections.angle_dir_cw]
+kind = "solder"
+ends = ["angle_return/b", "angle/dir"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_return"]
+
+[connections.angle_sda]
+kind = "solder"
+ends = ["controller/sda", "angle/sda"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["star_angle", "angle_return", "controller_return"]
+
+[connections.angle_scl]
+kind = "solder"
+ends = ["controller/scl", "angle/scl"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["star_angle", "angle_return", "controller_return"]
+
+[connections.sda_pull_signal]
+kind = "solder"
+ends = ["sda_pull/s", "angle/sda"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_sda"]
+
+[connections.sda_pull_supply]
+kind = "solder"
+ends = ["sda_pull/p", "angle_feed/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["sda_pull_signal", "angle_vdd3v3"]
+
+[connections.scl_pull_signal]
+kind = "solder"
+ends = ["scl_pull/s", "angle/scl"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_scl"]
+
+[connections.scl_pull_supply]
+kind = "solder"
+ends = ["scl_pull/p", "angle_feed/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["scl_pull_signal", "angle_vdd3v3"]
+
+[connections.bypass_ground]
+kind = "solder"
+ends = ["bypass/g", "angle/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_return"]
+
+[connections.bypass_supply]
+kind = "solder"
+ends = ["bypass/p", "angle/vdd5v"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["bypass_ground", "angle_vdd3v3"]
+
+[connections.bulk_ground]
+kind = "solder"
+ends = ["bulk/g", "angle_return/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["angle_return"]
+
+[connections.bulk_supply]
+kind = "solder"
+ends = ["bulk/p", "angle_feed/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить стык без параллельных путей, при снятом питании." }
+current_limit_a = { measurement = "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток." }
+after = ["bulk_ground", "angle_vdd3v3"]
+
+[rails.supply6]
+ends = ["motor_supply/plus", "motor_supply/minus"]
+reverse_limit_v = { measurement = "Проверить обратную ВАХ источника и способность принять ток при торможении." }
+
+[rails.vm]
+ends = ["bridge/p", "bridge/g"]
+reverse_limit_v = { measurement = "Подтвердить предел обратного напряжения VM фактического моста." }
+
+[rails.angle_supply]
+ends = ["angle_supply/plus", "angle_supply/minus"]
+reverse_limit_v = { measurement = "Проверить обратный предел источника при снятии и восстановлении питания." }
+
+[rails.angle_vdd]
+ends = ["angle/vdd5v", "angle/g"]
+reverse_limit_v = { measurement = "Проверить предел обратной полярности AS5600 в установленном модуле." }
+
+[rails.angle_vdd3v3]
+ends = ["angle/vdd3v3", "angle/g"]
+reverse_limit_v = { measurement = "Проверить VDD3V3, привязку к VDD5V и обратный предел на фактическом модуле." }
+
+[rails.camera_vdd_reserved]
+ends = ["rgb/vdd", "rgb/g"]
+reverse_limit_v = { measurement = "Выбрать модуль, сверить наличие шины, назначение клемм и обратный предел." }
+
+[rails.camera_vddio_reserved]
+ends = ["rgb/vddio", "rgb/g"]
+reverse_limit_v = { measurement = "Выбрать модуль, сверить наличие VDDIO, порядок питания и обратный предел." }
+
+[rails.controller_power_reserved]
+ends = ["controller/p", "controller/g"]
+reverse_limit_v = { measurement = "Выбрать вход питания и источник. Сверить допустимую полярность и условия совместной работы с внешним хостом." }
+
+[[bindings]]
+target = { kind = "drive_power", drive = "мотор" }
+ends = ["bridge/p", "bridge/g"]
+
+[[bindings]]
+target = { kind = "sensor_power", sensor = "угол" }
+ends = ["angle/vdd5v", "angle/g"]

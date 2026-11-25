@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
     path::{Path, PathBuf},
 };
 
@@ -9,9 +8,10 @@ use sim_drive::{DriveHandle, sampled};
 use sim_process::{
     Analysis, SourcedRange,
     schematic::{
-        BindingTarget, BoardContact, Endpoint, ExpandedNetlist, Mode, Parameter, PinFunction,
-        PinPhase, ResetProfile, Scope, Section,
-        sim_circuit::netlist::{Analysis as NetAnalysis, ElementKind, Netlist, Waveform},
+        BindingTarget, BoardContact, Catalog, Endpoint, ExpandedNetlist, Mode, Parameter,
+        PinFunction, PinPhase, PinRole, Primitive, PrimitiveKind, ResetProfile, Schematic, Scope,
+        Section,
+        sim_circuit::netlist::{Analysis as NetAnalysis, Element, ElementKind, Netlist, Waveform},
     },
 };
 use sim_runtime::{
@@ -23,9 +23,14 @@ use sim_runtime::{
     },
 };
 use sim_signal::{Rate, Rng, SignalId, Time};
+use sim_task::Outcome;
 use sim_world::{CompiledWorld, Provenance, Simplification, WorldWithSchematics};
 
-use super::{CatalogInput, SchematicInput};
+use super::input::{
+    CatalogInput, CircuitProfile, LoadEquivalent, LoadRole, Meter, ProfileInput, ProfileProbe,
+    SchematicInput, parse,
+};
+use crate::tasks::processes::Inputs;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LivePath {
@@ -81,123 +86,7 @@ impl From<&Runtime> for LiveSummary {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Profile {
-    format: u32,
-    step_ns: u64,
-    source: String,
-    control: PathBuf,
-    stimuli: Option<PathBuf>,
-    measurements: Option<PathBuf>,
-    legacy_measurements: Option<PathBuf>,
-    parts: Option<PathBuf>,
-    #[serde(default)]
-    sampled: BTreeMap<String, PathBuf>,
-    circuits: BTreeMap<String, CircuitProfile>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CircuitProfile {
-    #[serde(default)]
-    drives: BTreeMap<String, String>,
-    #[serde(default)]
-    reference_drive_min_v: BTreeMap<String, f64>,
-    diagnostic_connections: Option<DiagnosticConnections>,
-    #[serde(default)]
-    boards: BTreeMap<String, BoardSupply>,
-    #[serde(default)]
-    observed_boards: BTreeMap<String, String>,
-    #[serde(default)]
-    steps: Vec<Step>,
-    #[serde(default)]
-    probes: BTreeMap<String, Probe>,
-    #[serde(default)]
-    meters: BTreeMap<String, Meter>,
-    #[serde(default)]
-    voltage_observations: BTreeMap<String, VoltageObservation>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DiagnosticConnections {
-    ohm: f64,
-    source: String,
-    parameters: Option<PathBuf>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Step {
-    branch: String,
-    at_ns: u64,
-    value: f64,
-}
-
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum Probe {
-    Voltage { ends: [String; 2] },
-    Current { branch: String },
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Meter {
-    rate_hz: u64,
-    minimum_v: f64,
-    source: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct VoltageObservation {
-    ends: [String; 2],
-    meter: Meter,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BoardSupply {
-    rail: String,
-    branch: String,
-    currents_a: [f64; 4],
-    boot_ns: u64,
-    initially_in_reset: bool,
-    reference_reset: Option<ReferenceReset>,
-    phase_source: Option<ConfirmedSource>,
-    #[serde(default)]
-    live_pins: Vec<u32>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ConfirmedSource {
-    Datasheet(String),
-    Measured(String),
-}
-
-impl From<ConfirmedSource> for Provenance {
-    fn from(source: ConfirmedSource) -> Self {
-        match source {
-            ConfirmedSource::Datasheet(value) => Self::Datasheet(value),
-            ConfirmedSource::Measured(value) => Self::Measured(value),
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ReferenceReset {
-    falling_v: f64,
-    rising_v: f64,
-    assert_ns: u64,
-    release_ns: u64,
-    source: String,
-}
-
-#[derive(Deserialize)]
-struct Wiring {
+pub(super) struct Wiring {
     #[serde(default)]
     board: Vec<InstalledBoard>,
     #[serde(default)]
@@ -229,12 +118,24 @@ struct InstalledDriver {
 }
 
 impl Wiring {
-    fn board(&self, name: &str) -> Result<&str, String> {
+    pub(super) fn board(&self, name: &str) -> Result<&str, String> {
         self.board
             .iter()
             .find(|b| b.name == name)
             .map(|b| b.catalog.as_str())
             .ok_or_else(|| format!("нет установленной платы «{name}»"))
+    }
+
+    pub(super) fn board_profile(&self, board: &str, catalog: &Path) -> Result<PathBuf, String> {
+        let part = self.board(board)?;
+        if Path::new(part).file_name().and_then(|name| name.to_str()) != Some(part)
+            || part.chars().any(char::is_control)
+        {
+            return Err("ожидалось имя позиции каталога платы".into());
+        }
+        Ok(catalog
+            .join("boards/electrical")
+            .join(format!("{part}.toml")))
     }
 
     fn pins(&self, board: &str) -> Result<BTreeSet<BindingTarget>, String> {
@@ -281,108 +182,6 @@ impl Wiring {
         }
         Ok(result)
     }
-}
-
-#[derive(Deserialize)]
-struct SchematicBindings {
-    scope: ScopeName,
-    #[serde(default)]
-    bindings: Vec<DiskBinding>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ScopeName {
-    Assembly,
-    Reference,
-}
-
-#[derive(Deserialize)]
-struct DiskBinding {
-    ends: Vec<String>,
-    target: DiskTarget,
-}
-
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum DiskTarget {
-    BoardPin {
-        board: String,
-        pin: String,
-        function: Function,
-    },
-    BoardPower {
-        board: String,
-        rail: String,
-    },
-    DrivePower {
-        drive: String,
-    },
-    SensorPower {
-        sensor: String,
-    },
-}
-
-#[derive(Deserialize)]
-#[serde(remote = "PinFunction", rename_all = "snake_case")]
-enum FunctionData {
-    GpioInput,
-    GpioOutput,
-    Adc,
-    Pwm,
-    Uart,
-    I2c,
-    Spi,
-}
-
-#[derive(Deserialize)]
-#[serde(transparent)]
-struct Function(#[serde(with = "FunctionData")] PinFunction);
-
-impl From<DiskTarget> for BindingTarget {
-    fn from(item: DiskTarget) -> Self {
-        match item {
-            DiskTarget::BoardPin {
-                board,
-                pin,
-                function,
-            } => Self::BoardPin {
-                board,
-                pin,
-                function: function.0,
-            },
-            DiskTarget::BoardPower { board, rail } => Self::BoardPower { board, rail },
-            DiskTarget::DrivePower { drive } => Self::DrivePower { drive },
-            DiskTarget::SensorPower { sensor } => Self::SensorPower { sensor },
-        }
-    }
-}
-
-fn parse<T: serde::de::DeserializeOwned>(path: &Path, bytes: &[u8]) -> Result<T, String> {
-    let text = std::str::from_utf8(bytes).map_err(|e| format!("{}: {e}", path.display()))?;
-    let table: toml::Table =
-        toml::from_str(text).map_err(|e| format!("{}: {e}", path.display()))?;
-    fn finite(value: &toml::Value) -> bool {
-        match value {
-            toml::Value::Float(value) => value.is_finite(),
-            toml::Value::Array(values) => values.iter().all(finite),
-            toml::Value::Table(values) => values.values().all(finite),
-            _ => true,
-        }
-    }
-    if !table.values().all(finite) {
-        return Err(format!(
-            "{}: обнаружено неконечное значение",
-            path.display()
-        ));
-    }
-    table
-        .try_into()
-        .map_err(|e| format!("{}: {e}", path.display()))
-}
-
-fn read(path: &Path) -> Result<Vec<u8>, String> {
-    fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn base(path: &Path) -> &Path {
@@ -435,6 +234,168 @@ fn pair(net: &ExpandedNetlist, ends: &[String]) -> Result<[String; 2], String> {
         return Err("питанию нужна пара клемм".into());
     };
     Ok([node(net, plus)?, node(net, minus)?])
+}
+
+/// Проверяет полярность физической ветви и её соответствие раскрытию MNA.
+fn power_branch<'a, 'b>(
+    net: &'a ExpandedNetlist,
+    definition: &Schematic,
+    catalog: &'b Catalog,
+    address: &str,
+    role: LoadRole,
+) -> Result<(&'a Element, [String; 2], &'b Primitive), String> {
+    let id = branch(net, address)?;
+    let Section::Element { component, element } = section(address) else {
+        return Err(format!("«{address}»: ожидается ветвь компонента"));
+    };
+    let part = catalog
+        .part(&definition.components[&component].part)
+        .unwrap();
+    let primitive = &part.elements[&element];
+    let expected = match role {
+        LoadRole::Resistive => PrimitiveKind::Resistor,
+        LoadRole::Current => PrimitiveKind::Current,
+    };
+    let el = net
+        .netlist
+        .elements
+        .iter()
+        .find(|el| el.name == id)
+        .ok_or_else(|| format!("нет раскрытой ветви «{address}»"))?;
+    let right_kind = matches!(
+        (role, &el.kind),
+        (LoadRole::Resistive, ElementKind::Resistor { .. })
+            | (LoadRole::Current, ElementKind::CurrentSource(_))
+    );
+    if primitive.kind != expected || primitive.continuity || !right_kind {
+        return Err(format!(
+            "«{address}»: тип ветви не соответствует роли нагрузки"
+        ));
+    }
+    let [plus, minus] = primitive.nodes.as_slice() else {
+        return Err(format!("«{address}»: ожидается двухполюсная ветвь"));
+    };
+    if !part
+        .pins
+        .get(plus)
+        .is_some_and(|p| p.role == PinRole::Power)
+        || !part
+            .pins
+            .get(minus)
+            .is_some_and(|p| p.role == PinRole::Return)
+    {
+        return Err(format!(
+            "«{address}»: нужна ветвь от вывода питания к возврату"
+        ));
+    }
+    let ends = [
+        format!("{component}/{plus}"),
+        format!("{component}/{minus}"),
+    ];
+    let nodes = pair(net, &ends)?;
+    if nodes[0] == nodes[1] || el.nodes != nodes {
+        return Err(format!("«{address}»: клеммы не совпадают с ветвью MNA"));
+    }
+    Ok((el, ends, primitive))
+}
+
+fn current_supply(
+    net: &ExpandedNetlist,
+    definition: &Schematic,
+    catalog: &Catalog,
+    address: &str,
+    bound_ends: &[String],
+) -> Result<([String; 2], String), String> {
+    let (element, ends, _) = power_branch(net, definition, catalog, address, LoadRole::Current)?;
+    if ends != bound_ends {
+        return Err(format!("«{address}»: питание привязано к другим клеммам"));
+    }
+    Ok((pair(net, &ends)?, element.name.clone()))
+}
+
+pub(super) fn validate_owners(cfg: &CircuitProfile) -> Result<(), String> {
+    let mut claimed = BTreeSet::new();
+    let steps: BTreeSet<_> = cfg.steps.iter().map(|step| &step.branch).collect();
+    for branch in cfg
+        .drives
+        .values()
+        .chain(cfg.boards.values().map(|board| &board.branch))
+        .chain(cfg.loads.values().map(|load| &load.branch))
+        .chain(steps)
+    {
+        if !claimed.insert(branch) {
+            return Err(format!("у ветви «{branch}» два владельца питания"));
+        }
+    }
+    for name in cfg.loads.keys() {
+        if name.trim().is_empty()
+            || name.trim() != name
+            || name.contains('/')
+            || name.chars().any(char::is_control)
+        {
+            return Err(format!(
+                "некорректное имя нагрузочного эквивалента «{name}»"
+            ));
+        }
+        if cfg.drives.contains_key(name)
+            || cfg.boards.contains_key(name)
+            || cfg.observed_boards.contains_key(name)
+        {
+            return Err(format!("у нагрузки «{name}» два владельца питания"));
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+pub(super) struct BoundLoad {
+    branch: String,
+    role: LoadRole,
+    voltage_ends: [String; 2],
+    pub(super) voltage_channel: String,
+    pub(super) current_channel: String,
+    physical_outcome: Outcome,
+    measurement: String,
+    #[serde(skip)]
+    nodes: [String; 2],
+    #[serde(skip)]
+    current_branch: String,
+}
+
+pub(super) fn bound_loads(
+    instance: &str,
+    loads: &BTreeMap<String, LoadEquivalent>,
+    net: &ExpandedNetlist,
+    definition: &Schematic,
+    catalog: &Catalog,
+) -> Result<BTreeMap<String, BoundLoad>, String> {
+    loads
+        .iter()
+        .map(|(name, load)| {
+            let (el, voltage_ends, primitive) =
+                power_branch(net, definition, catalog, &load.branch, load.role)?;
+            let key = match load.role {
+                LoadRole::Resistive => "ohm",
+                LoadRole::Current => "ampere",
+            };
+            let measurement = primitive.parameters[key].measurement.clone();
+            let prefix = format!("{instance}/{name}");
+            Ok((
+                name.clone(),
+                BoundLoad {
+                    branch: load.branch.clone(),
+                    role: load.role,
+                    nodes: pair(net, &voltage_ends)?,
+                    voltage_ends,
+                    voltage_channel: format!("{prefix}/напряжение нагрузки"),
+                    current_channel: format!("{prefix}/ток нагрузки"),
+                    physical_outcome: Outcome::NotAnalyzed,
+                    measurement,
+                    current_branch: el.name.clone(),
+                },
+            ))
+        })
+        .collect()
 }
 
 fn external(net: &mut ExpandedNetlist, name: &str) -> Result<(), String> {
@@ -563,10 +524,12 @@ impl Assembly {
         parts: &sim_process::schematic::Catalog,
         profile_dir: &Path,
         source: &str,
+        files: &mut Inputs,
         identity: &mut Vec<u8>,
     ) -> Result<(), String> {
-        let SchematicBindings { scope, bindings } = parse(&input.path, &input.bytes)?;
-        let reference = matches!(scope, ScopeName::Reference);
+        validate_owners(&cfg)?;
+        let definition = input.definition()?;
+        let reference = definition.scope == Scope::Reference;
         let diagnostic = cfg.diagnostic_connections.is_some();
         let mut installed = BTreeSet::new();
         let mut boards = BTreeMap::new();
@@ -631,37 +594,65 @@ impl Assembly {
             .compiled
             .validate_bindings(&installed)
             .map_err(|e| e.to_string())?;
-        let mut ends = BTreeMap::new();
-        for item in bindings {
-            ends.insert(BindingTarget::from(item.target), item.ends);
+        let ends = definition
+            .bindings
+            .iter()
+            .map(|binding| {
+                (
+                    binding.target.clone(),
+                    binding
+                        .ends
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut net = input.live_netlist(
+            parts,
+            cfg.diagnostic_connections.as_ref(),
+            profile_dir,
+            files,
+        )?;
+        if let Some(path) = cfg
+            .diagnostic_connections
+            .as_ref()
+            .and_then(|d| d.parameters.as_ref())
+        {
+            frame(identity, files.capture(&profile_dir.join(path))?);
         }
-        let mut net = if let Some(assumption) = cfg.diagnostic_connections {
-            let file = assumption.parameters.map(|path| profile_dir.join(path));
-            let bytes = file.as_deref().map(read).transpose()?;
-            if let Some(bytes) = &bytes {
-                frame(identity, bytes);
-            }
-            input.diagnostic_netlist(
-                parts,
-                assumption.ohm,
-                &assumption.source,
-                file.as_deref().zip(bytes.as_deref()),
-            )?
-        } else {
-            match input.compiled.netlist() {
-                Analysis::Analyzed { value, .. } => value,
-                Analysis::NotAnalyzed { reason } => return Err(reason),
-            }
-        };
         rename(&mut net, index);
+        for (name, load) in bound_loads(instance, &cfg.loads, &net, &definition, parts)? {
+            let [plus, minus] = load.nodes;
+            self.probe(
+                load.voltage_channel,
+                ElectricalProbe::Voltage { plus, minus },
+            )?;
+            self.probe(
+                load.current_channel,
+                ElectricalProbe::Current {
+                    branch: load.current_branch,
+                },
+            )?;
+            self.notes.push(Simplification {
+                subject: format!("{instance}/{name}"),
+                text: format!(
+                    "Электрический эквивалент «{}». {}",
+                    load.branch, load.measurement
+                ),
+                blocks_proof: true,
+            });
+        }
         for (drive, address) in cfg.drives {
-            let nodes = pair(
+            let (nodes, name) = current_supply(
                 &net,
+                &definition,
+                parts,
+                &address,
                 &ends[&BindingTarget::DrivePower {
                     drive: drive.clone(),
                 }],
             )?;
-            let name = branch(&net, &address)?;
             external(&mut net, &name)?;
             let full = format!("{instance}/{drive}");
             self.probe(
@@ -683,31 +674,32 @@ impl Assembly {
                 return Err("платы одного опыта требуют разных областей модели сброса".into());
             }
             self.setup.scope = scope;
-            let [plus, minus] = pair(
+            let ([plus, minus], current_source) = current_supply(
                 &net,
+                &definition,
+                parts,
+                &data.branch,
                 &ends[&BindingTarget::BoardPower {
                     board: name.clone(),
                     rail: data.rail.clone(),
                 }],
             )?;
-            let current_source = branch(&net, &data.branch)?;
             external(&mut net, &current_source)?;
             if data.currents_a.iter().any(|&current| current < 0.0) {
                 return Err("ожидался неотрицательный ток потребления платы".into());
             }
-            let profile_path = catalog
-                .join("boards/electrical")
-                .join(format!("{board_type}.toml"));
-            let catalog_board = match fs::read(&profile_path) {
-                Ok(bytes) => {
-                    let profile = CatalogInput::parse_board_profile(&profile_path, &bytes)?;
+            let profile_path = wiring.board_profile(&name, catalog)?;
+            let catalog_board = match profile_path.try_exists() {
+                Ok(true) => {
+                    let bytes = files.capture(&profile_path)?;
+                    let profile = CatalogInput::parse_board_profile(&profile_path, bytes)?;
                     if profile.board != board_type {
                         return Err("профиль записан для другой платы".into());
                     }
-                    frame(identity, &bytes);
+                    frame(identity, bytes);
                     Some(profile)
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Ok(false) => None,
                 Err(e) => return Err(format!("{}: {e}", profile_path.display())),
             };
             let reset = if let Some(reset) = data.reference_reset {
@@ -853,11 +845,11 @@ impl Assembly {
         }
         for (name, probe) in cfg.probes {
             let probe = match probe {
-                Probe::Voltage { ends } => {
+                ProfileProbe::Voltage { ends } => {
                     let [plus, minus] = pair(&net, &ends)?;
                     ElectricalProbe::Voltage { plus, minus }
                 }
-                Probe::Current { branch: address } => ElectricalProbe::Current {
+                ProfileProbe::Current { branch: address } => ElectricalProbe::Current {
                     branch: branch(&net, &address)?,
                 },
             };
@@ -956,21 +948,24 @@ impl LiveExperiment {
         if let Some(seed) = seed {
             world.seed = seed;
         }
-        let profile_bytes = read(profile_path)?;
-        let profile: Profile = parse(profile_path, &profile_bytes)?;
-        if profile.format != 1 || profile.step_ns == 0 || profile.source.trim().is_empty() {
-            return Err("нужны версия 1, ненулевой шаг и источник постановки".into());
-        }
-        if schematics.is_empty() || schematics.keys().ne(profile.circuits.keys()) {
-            return Err("профиль должен покрывать все подключённые схемы мира".into());
-        }
-        let dir = base(profile_path);
-        let control_path = dir.join(&profile.control);
-        let mut control_bytes = read(&control_path)?;
-        if let Some(stimuli) = profile.stimuli {
-            control_bytes.push(b'\n');
-            control_bytes.extend(read(&dir.join(stimuli))?);
-        }
+        let mut files = Inputs::default();
+        let inputs = ProfileInput::load(profile_path, &mut files, schematics.keys())?;
+        let (control_path, control_bytes) = inputs.control(&mut files)?;
+        let wiring: Wiring = parse(&control_path, &control_bytes)?;
+        let parts = if path == LivePath::Full {
+            Some(CatalogInput::for_profile(
+                catalog,
+                Some(&inputs),
+                &mut files,
+            )?)
+        } else {
+            None
+        };
+        let ProfileInput {
+            data: profile,
+            bytes: profile_bytes,
+            dir,
+        } = inputs;
         let config =
             ControlConfig::parse(std::str::from_utf8(&control_bytes).map_err(|e| e.to_string())?)?;
         let models = crate::tasks::Models::load(catalog)?;
@@ -983,31 +978,25 @@ impl LiveExperiment {
             format!("{:?}{:?}", world.drives, world.sensors).as_bytes(),
         );
         let mut assembly = Assembly::new(Time(profile.step_ns));
-        if path == LivePath::Full {
-            let wiring: Wiring = parse(&control_path, &control_bytes)?;
-            let parts = if let Some(parts) = profile.parts {
-                let file = dir.join(parts);
-                let bytes = read(&file)?;
-                let parts = super::parse_catalog(&file, &bytes)?;
-                frame(&mut identity, &bytes);
-                parts
-            } else {
-                let CatalogInput { sources, catalog } =
-                    super::load_catalog(&catalog.join("electrical"))?;
-                for (path, bytes) in sources {
+        if let Some(CatalogInput {
+            sources,
+            catalog: parts,
+        }) = parts
+        {
+            for (path, bytes) in sources {
+                if profile.parts.is_none() {
                     frame(
                         &mut identity,
                         path.file_name()
                             .ok_or("нет имени файла каталога")?
                             .as_encoded_bytes(),
                     );
-                    frame(&mut identity, &bytes);
                 }
-                catalog
-            };
+                frame(&mut identity, &bytes);
+            }
             for (index, (instance, cfg)) in profile.circuits.into_iter().enumerate() {
                 let scheme = &schematics[&instance];
-                let input = super::load_schematic(scheme, &parts)?;
+                let input = SchematicInput::parse(scheme, files.capture(scheme)?.to_vec(), &parts)?;
                 assembly
                     .append(
                         &instance,
@@ -1018,8 +1007,9 @@ impl LiveExperiment {
                         &wiring,
                         catalog,
                         &parts,
-                        dir,
+                        &dir,
                         &profile.source,
+                        &mut files,
                         &mut identity,
                     )
                     .map_err(|e| format!("{}: {e}", scheme.display()))?;
@@ -1028,9 +1018,9 @@ impl LiveExperiment {
         let mut sampled = BTreeMap::new();
         for (name, file) in profile.sampled {
             let file = dir.join(file);
-            let bytes = read(&file)?;
-            sampled.insert(name, parse::<sampled::Spec>(&file, &bytes)?);
-            frame(&mut identity, &bytes);
+            let bytes = files.capture(&file)?;
+            sampled.insert(name, parse::<sampled::Spec>(&file, bytes)?);
+            frame(&mut identity, bytes);
         }
         let mut general_world = world.clone();
         general_world

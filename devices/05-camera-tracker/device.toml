@@ -1,5 +1,6 @@
 format = 3
 name = "Одноосный подвес RGB-камеры"
+schematic = "electrical-scheme.toml"
 
 [[links]]
 name = "головка"

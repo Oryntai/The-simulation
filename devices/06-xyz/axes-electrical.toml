@@ -1,0 +1,545 @@
+# Порты X/Y/Z описывают ходовые каналы, а не количество и тип моторов. Outlet — граница питания. Проверять снятие разрешения до размыкания фланца. В численном опыте на outlet только разрядная ветвь.
+format = 1
+scope = "assembly"
+name = "Питание портала и граница сменной оснастки"
+nets = ["raw","return","protected","enable","lx","ly","lz","switched"]
+bindings = [] # В механической сцене нет установленных электрических моделей привода или платы.
+
+[components.supply]
+part = "xyz_supply"
+nets = { p = "raw", g = "return" }
+
+[components.fuse]
+part = "xyz_fuse"
+nets = { input = "raw", output = "protected" }
+
+[components.protected_trunk]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.feed]
+part = "xyz_cable"
+nets = { a = "raw", b = "raw" }
+
+[components.return_trunk]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.control]
+part = "xyz_controller"
+nets = { p = "protected", g = "return", enable = "enable", limit_x = "lx", limit_y = "ly", limit_z = "lz" }
+
+[components.control-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.control-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.drive-x]
+part = "xyz_axis_channel"
+nets = { p = "protected", g = "return" }
+
+[components.endstop-x]
+part = "xyz_endstop"
+nets = { p = "protected", g = "return", state = "lx" }
+
+[components.drive-x-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.drive-x-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.endstop-x-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.endstop-x-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.limit-x]
+part = "xyz_cable"
+nets = { a = "lx", b = "lx" }
+
+[components.drive-y]
+part = "xyz_axis_channel"
+nets = { p = "protected", g = "return" }
+
+[components.endstop-y]
+part = "xyz_endstop"
+nets = { p = "protected", g = "return", state = "ly" }
+
+[components.drive-y-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.drive-y-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.endstop-y-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.endstop-y-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.limit-y]
+part = "xyz_cable"
+nets = { a = "ly", b = "ly" }
+
+[components.drive-z]
+part = "xyz_axis_channel"
+nets = { p = "protected", g = "return" }
+
+[components.endstop-z]
+part = "xyz_endstop"
+nets = { p = "protected", g = "return", state = "lz" }
+
+[components.drive-z-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.drive-z-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.endstop-z-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.endstop-z-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.limit-z]
+part = "xyz_cable"
+nets = { a = "lz", b = "lz" }
+
+[components.key]
+part = "xyz_power_gate"
+nets = { input = "protected", output = "switched", enable = "enable", g = "return" }
+
+[components.key-feed]
+part = "xyz_cable"
+nets = { a = "protected", b = "protected" }
+
+[components.key-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.permission]
+part = "xyz_cable"
+nets = { a = "enable", b = "enable" }
+
+[components.outlet]
+part = "xyz_portal_connector"
+nets = { p = "switched", g = "return", p_tail = "switched", g_tail = "return" }
+
+[components.outlet-feed]
+part = "xyz_cable"
+nets = { a = "switched", b = "switched" }
+
+[components.outlet-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.monitor]
+part = "xyz_outlet_monitor"
+nets = { p = "switched", g = "return" }
+
+[connections.feed-from]
+kind = "terminal"
+ends = ["supply/p","feed/a"]
+after = []
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.feed-to]
+kind = "solder"
+ends = ["feed/b","fuse/input"]
+after = ["feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.protected-entry]
+kind = "solder"
+ends = ["fuse/output", "protected_trunk/a"]
+after = ["feed-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.return-entry]
+kind = "terminal"
+ends = ["return_trunk/a","supply/g"]
+after = []
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.control-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "control-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.control-feed-to]
+kind = "terminal"
+ends = ["control-feed/b","control/p"]
+after = ["control-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.control-return-from]
+kind = "splice"
+ends = ["return_trunk/b","control-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.control-return-to]
+kind = "terminal"
+ends = ["control-return/b","control/g"]
+after = ["control-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-x-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "drive-x-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-x-feed-to]
+kind = "terminal"
+ends = ["drive-x-feed/b","drive-x/p"]
+after = ["drive-x-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-x-return-from]
+kind = "splice"
+ends = ["return_trunk/b","drive-x-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-x-return-to]
+kind = "terminal"
+ends = ["drive-x-return/b","drive-x/g"]
+after = ["drive-x-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-x-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "endstop-x-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-x-feed-to]
+kind = "terminal"
+ends = ["endstop-x-feed/b","endstop-x/p"]
+after = ["endstop-x-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-x-return-from]
+kind = "splice"
+ends = ["return_trunk/b","endstop-x-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-x-return-to]
+kind = "terminal"
+ends = ["endstop-x-return/b","endstop-x/g"]
+after = ["endstop-x-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.limit-x-from]
+kind = "solder"
+ends = ["endstop-x/state","limit-x/a"]
+after = ["endstop-x-return-to","control-return-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.limit-x-to]
+kind = "solder"
+ends = ["limit-x/b","control/limit_x"]
+after = ["limit-x-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-y-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "drive-y-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-y-feed-to]
+kind = "terminal"
+ends = ["drive-y-feed/b","drive-y/p"]
+after = ["drive-y-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-y-return-from]
+kind = "splice"
+ends = ["return_trunk/b","drive-y-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-y-return-to]
+kind = "terminal"
+ends = ["drive-y-return/b","drive-y/g"]
+after = ["drive-y-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-y-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "endstop-y-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-y-feed-to]
+kind = "terminal"
+ends = ["endstop-y-feed/b","endstop-y/p"]
+after = ["endstop-y-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-y-return-from]
+kind = "splice"
+ends = ["return_trunk/b","endstop-y-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-y-return-to]
+kind = "terminal"
+ends = ["endstop-y-return/b","endstop-y/g"]
+after = ["endstop-y-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.limit-y-from]
+kind = "solder"
+ends = ["endstop-y/state","limit-y/a"]
+after = ["endstop-y-return-to","control-return-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.limit-y-to]
+kind = "solder"
+ends = ["limit-y/b","control/limit_y"]
+after = ["limit-y-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-z-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "drive-z-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-z-feed-to]
+kind = "terminal"
+ends = ["drive-z-feed/b","drive-z/p"]
+after = ["drive-z-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-z-return-from]
+kind = "splice"
+ends = ["return_trunk/b","drive-z-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.drive-z-return-to]
+kind = "terminal"
+ends = ["drive-z-return/b","drive-z/g"]
+after = ["drive-z-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-z-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "endstop-z-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-z-feed-to]
+kind = "terminal"
+ends = ["endstop-z-feed/b","endstop-z/p"]
+after = ["endstop-z-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-z-return-from]
+kind = "splice"
+ends = ["return_trunk/b","endstop-z-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.endstop-z-return-to]
+kind = "terminal"
+ends = ["endstop-z-return/b","endstop-z/g"]
+after = ["endstop-z-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.limit-z-from]
+kind = "solder"
+ends = ["endstop-z/state","limit-z/a"]
+after = ["endstop-z-return-to","control-return-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.limit-z-to]
+kind = "solder"
+ends = ["limit-z/b","control/limit_z"]
+after = ["limit-z-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.key-feed-from]
+kind = "splice"
+ends = ["protected_trunk/b", "key-feed/a"]
+after = ["protected-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.key-feed-to]
+kind = "terminal"
+ends = ["key-feed/b","key/input"]
+after = ["key-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.key-return-from]
+kind = "splice"
+ends = ["return_trunk/b","key-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.key-return-to]
+kind = "terminal"
+ends = ["key-return/b","key/g"]
+after = ["key-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.permission-from]
+kind = "solder"
+ends = ["control/enable","permission/a"]
+after = ["control-return-to","key-return-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.permission-to]
+kind = "solder"
+ends = ["permission/b","key/enable"]
+after = ["permission-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.outlet-feed-from]
+kind = "terminal"
+ends = ["key/output","outlet-feed/a"]
+after = ["permission-to","key-feed-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.outlet-feed-to]
+kind = "solder"
+ends = ["outlet-feed/b","outlet/p_tail"]
+after = ["outlet-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.outlet-return-from]
+kind = "splice"
+ends = ["return_trunk/b","outlet-return/a"]
+after = ["return-entry"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.outlet-return-to]
+kind = "solder"
+ends = ["outlet-return/b","outlet/g_tail"]
+after = ["outlet-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.monitor-feed]
+kind = "solder"
+ends = ["monitor/p","outlet/p_tail"]
+after = ["outlet-feed-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.monitor-return]
+kind = "solder"
+ends = ["monitor/g","outlet/g_tail"]
+after = ["outlet-return-to"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[rails.protected]
+ends = ["key/input", "key/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
+
+[rails.outlet]
+ends = ["outlet/p","outlet/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
+
+[rails.drive-x]
+ends = ["drive-x/p","drive-x/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
+
+[rails.drive-y]
+ends = ["drive-y/p","drive-y/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
+
+[rails.drive-z]
+ends = ["drive-z/p","drive-z/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
+
+[rails.control]
+ends = ["control/p","control/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }

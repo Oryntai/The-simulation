@@ -8,9 +8,9 @@ use sim_process::{
     Analysis, SourcedRange,
     schematic::{PinPhase, PinProfile, PinState, Pull, ResetProfile, Scope},
 };
-use sim_signal::{ChannelId, Clock, Command, Phase, SignalId, Time, fnv1a};
+use sim_signal::{ChannelId, Command, Phase, SignalId, Time, fnv1a};
 
-use crate::{LogKind, Output, Runtime, Status, TruthId, checked_due};
+use crate::{LogEntry, LogKind, Output, Runtime, Status, TruthId, control};
 
 use super::rail::{Rail, after, duration, exact};
 
@@ -293,7 +293,6 @@ pub(crate) struct Electrical {
     pub identity: u64,
     pub due: Option<Time>,
     pub probes: Vec<(crate::TruthId, ElectricalProbe)>,
-    load_clock: Option<Clock>,
     loads: Vec<LoadConnection>,
 }
 
@@ -392,7 +391,6 @@ impl Electrical {
             identity,
             due: Some(Time::ZERO),
             probes: Vec::new(),
-            load_clock: None,
             loads: Vec::new(),
         })
     }
@@ -407,14 +405,6 @@ impl Electrical {
         }
         for board in &self.boards {
             if let Some(time) = board.next(at)? {
-                next = next.min(time);
-            }
-        }
-        if let Some(mut clock) = self.load_clock {
-            if checked_due(&clock)? == Some(at) {
-                clock.advance();
-            }
-            if let Some(time) = checked_due(&clock)? {
                 next = next.min(time);
             }
         }
@@ -441,11 +431,6 @@ impl Electrical {
     }
 
     pub fn close(&mut self, at: Time) -> Result<(), String> {
-        if let Some(clock) = &self.load_clock
-            && checked_due(clock)?.is_some_and(|due| due < at)
-        {
-            return Err("пропущен ток нагрузки: нужен run_electrical_until".into());
-        }
         self.circuit.advance_to(at)?;
         self.last = Some(at);
         Ok(())
@@ -531,6 +516,45 @@ impl Electrical {
         }
         Ok(())
     }
+
+    pub fn has_loads(&self) -> bool {
+        !self.loads.is_empty()
+    }
+
+    pub fn check_load_inputs(&self, control: &control::Engine) -> Result<(), String> {
+        if self
+            .loads
+            .iter()
+            .any(|load| control.owns(load.voltage_input))
+        {
+            return Err("вход напряжения нагрузки уже занят контуром".into());
+        }
+        Ok(())
+    }
+
+    pub fn latch_loads(&mut self, at: Time, entries: &[LogEntry]) -> Result<(), String> {
+        for load in &self.loads {
+            let current = entries
+                .iter()
+                .rev()
+                .find(|entry| {
+                    entry.at == at
+                        && entry.kind == LogKind::Truth
+                        && entry.id == load.next_current.0
+                })
+                .filter(|entry| entry.valid)
+                .map(|entry| entry.value)
+                .ok_or_else(|| {
+                    format!(
+                        "«{}»: нагрузка не опубликовала ток шины на такте {} нс",
+                        load.current_source, at.0
+                    )
+                })?;
+            self.circuit
+                .set_source_step(&load.current_source, finite(current)?)?;
+        }
+        Ok(())
+    }
 }
 
 impl Runtime {
@@ -548,7 +572,7 @@ impl Runtime {
             .electrical
             .as_ref()
             .ok_or("цепь не установлена")?;
-        if electrical.load_clock.is_some() {
+        if electrical.has_loads() {
             return Err("нагрузки цепи уже подключены".into());
         }
         let mut branches: BTreeSet<_> = electrical
@@ -623,7 +647,6 @@ impl Runtime {
                     .chain(format!("{loads:?}").bytes()),
             );
             electrical.loads = loads;
-            electrical.load_clock = Some(Clock::new(rate));
             Ok(())
         })();
         if result.is_err() {
@@ -632,84 +655,9 @@ impl Runtime {
         result
     }
 
-    /// Стыкует удержанные токи с физическими тактами. Между ними обычный
-    /// планировщик закрывает электрические фронты, шаги платы и выдержки сброса.
+    /// Дойти до абсолютного момента по общему расписанию, включая обмен со схемой.
     pub fn run_electrical_until(&mut self, until: Time) -> Result<Status, String> {
-        if self
-            .state
-            .electrical
-            .as_ref()
-            .is_none_or(|circuit| circuit.load_clock.is_none())
-        {
-            return self.run_until(until);
-        }
-        let electrical = self
-            .state
-            .electrical
-            .as_ref()
-            .expect("нагрузки установлены");
-        if electrical.loads.iter().any(|load| {
-            self.state
-                .control
-                .as_ref()
-                .is_some_and(|control| control.owns(load.voltage_input))
-        }) {
-            return Err("вход напряжения нагрузки уже занят контуром".into());
-        }
-        while let Some(electrical) = &self.state.electrical {
-            let Some(clock) = &electrical.load_clock else {
-                break;
-            };
-            let Some(at) = checked_due(clock)?.filter(|&at| at <= until) else {
-                break;
-            };
-            let start = self.state.log.entries().len();
-            if self.run_until(at)? != Status::Running {
-                return Ok(self.status());
-            }
-            if let Err(reason) = self.latch_electrical_loads(at, start) {
-                self.stop(Status::ComponentFailure, reason);
-                return Ok(self.status());
-            }
-        }
-        if self.time() == until && self.state.log.end().started {
-            return Ok(self.status());
-        }
         self.run_until(until)
-    }
-
-    fn latch_electrical_loads(&mut self, at: Time, start: usize) -> Result<(), String> {
-        let electrical = self
-            .state
-            .electrical
-            .as_mut()
-            .expect("нагрузки установлены");
-        let entries = &self.state.log.entries()[start..];
-        for load in &electrical.loads {
-            let current = entries
-                .iter()
-                .rev()
-                .take_while(|entry| entry.at == at)
-                .find(|entry| {
-                    entry.kind == LogKind::Truth && entry.id == load.next_current.0 && entry.valid
-                })
-                .map(|entry| entry.value)
-                .ok_or_else(|| {
-                    format!(
-                        "«{}»: привод не опубликовал ток шины на такте {} нс",
-                        load.current_source, at.0
-                    )
-                })?;
-            electrical
-                .circuit
-                .set_source_step(&load.current_source, finite(current)?)?;
-        }
-        electrical
-            .load_clock
-            .as_mut()
-            .expect("часы нагрузки установлены")
-            .advance();
-        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-//! Загрузка прошивки: ELF32 (ARM, RISC-V, AVR) и Intel HEX.
+//! Загрузка прошивки: ELF32 (ARM, RISC-V, AVR), Intel HEX и raw-образы ESP32-C3.
 //!
 //! Формат ELF — System V ABI, ELF-32. Берём только то, что прошивальщик положил бы
 //! в память: сегменты `PT_LOAD` с ненулевым содержимым по физическому адресу (LMA).
@@ -6,6 +6,13 @@
 //! контрольная сумма каждой записи проверяется.
 
 use crate::fault::BoardFault;
+
+#[path = "esp_image.rs"]
+#[allow(
+    dead_code,
+    reason = "подключение raw-образов к BoardSim запланировано в Т2.4 и Т2.10"
+)]
+pub mod esp_image;
 
 /// Архитектура образа (поле `e_machine`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

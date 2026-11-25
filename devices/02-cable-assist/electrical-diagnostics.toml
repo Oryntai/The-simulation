@@ -1,0 +1,58 @@
+format = 1
+# Полки и импедансы задают численный опыт. Реальные диапазоны оставлены
+# открытыми в catalog/electrical/depth-modules.toml, чтобы оценка не закрывала опасность.
+
+[parts.cell_1s_candidate.emf]
+volt = { min = 3.7, nominal = 3.7, max = 3.7, source = { estimate = "Одна номинальная полка из бюджета 0,5 А·ч × 3,7 В в setup.toml. OCV по SOC и температуре замерить." } }
+
+[parts.cell_1s_candidate.series]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Резистивный эквивалент Э1: 0,1 Ом. Снять импульсный R выбранной ячейки, значение опыта не является паспортом." } }
+
+[parts.cell_protection.closed]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Пассивный участок 0,1 Ом из Э1. Снять ВАХ защитного модуля, отключение не моделируется." } }
+
+[parts.fuse_inline_candidate.closed]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из диагностической позиции fuse_series в catalog/electrical/diagnostics/nominal.toml. Холодное сопротивление и I²t замерить." } }
+
+[parts.flexible_harness_wire.copper]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из диагностической позиции harness_copper в catalog/electrical/diagnostics/nominal.toml. Замерить собранную жилу." } }
+
+[parts.motor_boost.emf]
+# Запас численной полки до 6 В = (1 Ом + две жилы по три участка 0,1 Ом) × 0,40 А.
+volt = { min = 5.36, nominal = 5.36, max = 5.36, source = { estimate = "Полка опыта 6 В − (1 Ом + 6 × 0,1 Ом) × 0,40 А = 5,36 В. Это расчётный запас для модели, ВАХ реального выхода при рекуперации замерить." } }
+
+[parts.motor_boost.series]
+ohm = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "1 Ом из стенда Э3, catalog/electrical/diagnostics/nominal.toml, wearable_ldo_33.series. Выходной импеданс выбранного преобразователя замерить." } }
+
+[parts.motor_boost.filter]
+farad = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { estimate = "100 мкФ из стенда Э3, catalog/electrical/diagnostics/nominal.toml, imu_decoupling.cap. C и ESR на физическом выходе замерить." } }
+
+[parts.motor_boost.input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Импеданс пассивной нагрузки 1 МОм из стенда Э3, servo_buck_boost.input. Это завершение входа, входной ток под нагрузкой замерить." } }
+
+[parts.motor_controller.load]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение 1 МОм из Э3, virtual_controller_io.pwm. Потребление контроллера замерить отдельно." } }
+
+[parts.motor_h_bridge.dc_load]
+ampere = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "Начальный ток при нулевой команде в электрическом опыте. Последующие значения приходят из привода, фактический ток замерить." } }
+
+[parts.motor_h_bridge.pwm_input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение 1 МОм из Э3, virtual_controller_io.pwm. Импеданс и уровни физического входа замерить." } }
+
+[parts.motor_h_bridge.dir_input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение 1 МОм из Э3, virtual_controller_io.dir. Импеданс и уровни физического входа замерить." } }
+
+[parts.motor_h_bridge.enable_input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение 1 МОм из Э3, virtual_controller_io.enable. Импеданс, уровни и безопасное состояние физического входа замерить." } }
+
+[parts.motor_h_bridge.off_a]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Привязка потенциала 1 МОм из Э3, mg90s_servo.load_bleed. Не передаёт ток электромеханической модели на вывод A. Утечку и защитные пути замерить." } }
+
+[parts.motor_h_bridge.off_b]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Привязка потенциала 1 МОм из Э3, mg90s_servo.load_bleed. Фактические выключенные пути вывода B замерить." } }
+
+[parts.pololu_2214.copper]
+ohm = { min = 3.75, nominal = 3.75, max = 3.75, source = { estimate = "6 В / 1,60 А = 3,75 Ом, эквивалент по экстраполированному стопу https://www.pololu.com/product/2214. R(T) и зависимость от положения ротора замерить." } }
+
+[parts.pololu_2214.inductance]
+henry = { min = 0.001875, nominal = 0.001875, max = 0.001875, source = { estimate = "L = Rτ = 3,75 Ом × 0,5 мс, гипотеза device.toml. Измерить L на положениях ротора." } }

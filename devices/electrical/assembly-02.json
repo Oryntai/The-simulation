@@ -1,0 +1,2313 @@
+{
+  "устройство": {
+    "proof_scope": "сборка",
+    "schematic": 17867588290347467351,
+    "sheet": {
+      "bindings": [
+        {
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "target": "DrivePower { drive: \"двигатель\" }"
+        }
+      ],
+      "inspections": [
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "g"
+            },
+            {
+              "component": "cell_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "cell_return_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cell_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "cell_return_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "g"
+            },
+            {
+              "component": "bms_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bms_return_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bms_return",
+              "pin": "b"
+            },
+            {
+              "component": "bms",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bms_return_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "bridge_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_return_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_return_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "p"
+            },
+            {
+              "component": "cell_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "cell_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "cell_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bms",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "cell_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bms",
+              "pin": "output"
+            },
+            {
+              "component": "bms_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bms_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bms_feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bms_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "controller_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "controller_return_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "controller_return_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "fused_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "fused_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "fused_feed",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "fused_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "output"
+            },
+            {
+              "component": "bridge_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "input"
+            },
+            {
+              "component": "controller_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "controller_feed_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller_feed",
+              "pin": "b"
+            },
+            {
+              "component": "controller",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "controller_feed_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "dir"
+            },
+            {
+              "component": "dir_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "dir_lead_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "dir_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "dir_lead_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "enable"
+            },
+            {
+              "component": "enable_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "enable_lead_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "enable_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "enable"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "enable_lead_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "a"
+            },
+            {
+              "component": "motor_a_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "motor_a_lead_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "motor_a_lead",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "motor_a_lead_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "b"
+            },
+            {
+              "component": "motor_b_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "motor_b_lead_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "motor_b_lead",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "motor_b_lead_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "pwm"
+            },
+            {
+              "component": "pwm_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "pwm_lead_start",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "pwm_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "limit": {
+            "measurement": "Измерить переходное сопротивление стыка четырёхпроводно без питания.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "pwm_lead_finish",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "input"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «boost_input»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "input"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «boost_input»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «bridge»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «bridge»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "p"
+            },
+            {
+              "component": "cell",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «cell»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "p"
+            },
+            {
+              "component": "cell",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «cell»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "p"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «controller»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "p"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «controller»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/dir → bridge/dir",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/enable → bridge/enable",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/pwm → bridge/pwm",
+          "test": "continuity"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "g"
+            },
+            {
+              "component": "cell_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "cell_return_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cell_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "cell_return_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "g"
+            },
+            {
+              "component": "bms_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bms_return_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bms_return",
+              "pin": "b"
+            },
+            {
+              "component": "bms",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bms_return_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "bridge_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_return_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_return_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "p"
+            },
+            {
+              "component": "cell_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "cell_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "cell_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bms",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "cell_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bms",
+              "pin": "output"
+            },
+            {
+              "component": "bms_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bms_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bms_feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bms_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "controller_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "controller_return_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "controller_return_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "fused_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "fused_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "fused_feed",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "fused_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "output"
+            },
+            {
+              "component": "bridge_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "input"
+            },
+            {
+              "component": "controller_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "controller_feed_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller_feed",
+              "pin": "b"
+            },
+            {
+              "component": "controller",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "controller_feed_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "dir"
+            },
+            {
+              "component": "dir_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "dir_lead_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "dir_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "dir_lead_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "enable"
+            },
+            {
+              "component": "enable_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "enable_lead_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "enable_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "enable"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "enable_lead_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "a"
+            },
+            {
+              "component": "motor_a_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "motor_a_lead_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "motor_a_lead",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "motor_a_lead_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "b"
+            },
+            {
+              "component": "motor_b_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "motor_b_lead_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "motor_b_lead",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "motor_b_lead_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "pwm"
+            },
+            {
+              "component": "pwm_lead",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "pwm_lead_start",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "pwm_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "limit": {
+            "measurement": "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "pwm_lead_finish",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "input"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Уточнить стойкость входа к обратному напряжению и реакцию защиты.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «boost_input»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Уточнить допустимое обратное напряжение физического моста.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «bridge»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "p"
+            },
+            {
+              "component": "cell",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Проверить обратную полярность по данным выбранной ячейки и защиты.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «cell»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "p"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Установить допустимое питание и обратный предел физического контроллера.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «controller»",
+          "test": "reverse_voltage"
+        }
+      ],
+      "operations": [
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "g"
+            },
+            {
+              "component": "cell_return",
+              "pin": "a"
+            }
+          ],
+          "id": "cell_return_start",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "cell_return_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cell_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "id": "cell_return_finish",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "cell_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "g"
+            },
+            {
+              "component": "bms_return",
+              "pin": "a"
+            }
+          ],
+          "id": "bms_return_start",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "bms_return_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bms_return",
+              "pin": "b"
+            },
+            {
+              "component": "bms",
+              "pin": "g"
+            }
+          ],
+          "id": "bms_return_finish",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "cell_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "g"
+            },
+            {
+              "component": "bridge_return",
+              "pin": "a"
+            }
+          ],
+          "id": "bridge_return_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "bridge_return_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "id": "bridge_return_finish",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "bms_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cell",
+              "pin": "p"
+            },
+            {
+              "component": "cell_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "cell_feed_start",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "cell_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "cell_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bms",
+              "pin": "input"
+            }
+          ],
+          "id": "cell_feed_finish",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "cell_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bms",
+              "pin": "output"
+            },
+            {
+              "component": "bms_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "bms_feed_start",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "bms_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bms_feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "id": "bms_feed_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "bridge_return_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "controller_return",
+              "pin": "a"
+            }
+          ],
+          "id": "controller_return_start",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "controller_return_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller_return",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "g"
+            }
+          ],
+          "id": "controller_return_finish",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "bms_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "fused_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "fused_feed_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "fused_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "fused_feed",
+              "pin": "b"
+            },
+            {
+              "component": "boost",
+              "pin": "input"
+            }
+          ],
+          "id": "fused_feed_finish",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "bridge_return_finish",
+            "fused_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "output"
+            },
+            {
+              "component": "bridge_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "bridge_feed_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "bridge_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge_feed",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "id": "bridge_feed_finish",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "controller_return_finish",
+            "fused_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "boost",
+              "pin": "input"
+            },
+            {
+              "component": "controller_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "controller_feed_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "controller_feed_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller_feed",
+              "pin": "b"
+            },
+            {
+              "component": "controller",
+              "pin": "p"
+            }
+          ],
+          "id": "controller_feed_finish",
+          "kind": "Crimp"
+        },
+        {
+          "after": [
+            "controller_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "dir"
+            },
+            {
+              "component": "dir_lead",
+              "pin": "a"
+            }
+          ],
+          "id": "dir_lead_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "dir_lead_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "dir_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "id": "dir_lead_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "controller_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "enable"
+            },
+            {
+              "component": "enable_lead",
+              "pin": "a"
+            }
+          ],
+          "id": "enable_lead_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "enable_lead_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "enable_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "enable"
+            }
+          ],
+          "id": "enable_lead_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "bridge_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "a"
+            },
+            {
+              "component": "motor_a_lead",
+              "pin": "a"
+            }
+          ],
+          "id": "motor_a_lead_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "motor_a_lead_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "motor_a_lead",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "a"
+            }
+          ],
+          "id": "motor_a_lead_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "bridge_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "b"
+            },
+            {
+              "component": "motor_b_lead",
+              "pin": "a"
+            }
+          ],
+          "id": "motor_b_lead_start",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "motor_b_lead_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "motor_b_lead",
+              "pin": "b"
+            },
+            {
+              "component": "motor",
+              "pin": "b"
+            }
+          ],
+          "id": "motor_b_lead_finish",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "controller_feed_finish"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "pwm"
+            },
+            {
+              "component": "pwm_lead",
+              "pin": "a"
+            }
+          ],
+          "id": "pwm_lead_start",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "pwm_lead_start"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "pwm_lead",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "id": "pwm_lead_finish",
+          "kind": "Solder"
+        }
+      ],
+      "parts": [
+        {
+          "component": "bms",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/closed/ohm": "Измерить сопротивление открытых ключей защиты четырёхпроводно при безопасном тестовом токе."
+          },
+          "model_gap": "Подтвердить топологию, распиновку, двустороннюю ВАХ, пороги и выдержки отключения и восстановления. Опыт использует замкнутую ветвь.",
+          "part": "cell_protection",
+          "pins": {
+            "g": "return",
+            "input": "cell_p",
+            "output": "protected"
+          },
+          "source": "Монтажный эскиз. Защита одной ячейки показана в плюсовой ветви с общей опорой. Выбор модуля и расположение ключей открыты."
+        },
+        {
+          "component": "bms_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "protected",
+            "b": "protected"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "bms_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "boost",
+          "kind": "SwitchingRegulator",
+          "missing_parameters": {
+            "elements/emf/volt": "Снять выходное напряжение и его режимы, включая запрещённый обратный ток и выключение.",
+            "elements/filter/farad": "Подтвердить эффективную выходную ёмкость, ESR и утечку в рабочем диапазоне.",
+            "elements/input/ohm": "Снять входную ВАХ с реальной выходной нагрузкой и при выключении.",
+            "elements/series/ohm": "Снять выходной импеданс по фронту нагрузки и при возврате энергии.",
+            "ratings/output": "Уточнить допустимый выходной ток и длительность по Vin и температуре."
+          },
+          "model_gap": "Измерить Vin/Iin, Vout/Iout, пуск, токоограничение, C/ESR и обратный ток. Диагностический выход Тевенина питается независимо от входа и может поглощать энергию.",
+          "part": "motor_boost",
+          "pins": {
+            "g": "return",
+            "input": "feed",
+            "output": "motor_bus"
+          },
+          "source": "Монтажный эскиз: повышение от одной ячейки до номинальной шины двигателя по паспорту Pololu #2214 https://www.pololu.com/product/2214. Модуль и фильтр не выбраны."
+        },
+        {
+          "component": "bridge",
+          "kind": "SwitchModule",
+          "missing_parameters": {
+            "elements/dc_load/ampere": "Записать знаковый ток шины вместе с напряжением в пуске, реверсе, останове и отказах.",
+            "elements/dir_input/ohm": "Измерить вход направления в обоих состояниях питания.",
+            "elements/enable_input/ohm": "Снять вход разрешения, порог и состояние при обесточенном контроллере.",
+            "elements/off_a/ohm": "Снять пути утечки и защитные пути выхода A выключенного моста.",
+            "elements/off_b/ohm": "Снять пути утечки и защитные пути выхода B выключенного моста.",
+            "elements/pwm_input/ohm": "Измерить вход ШИМ, уровень, ток и состояние при отключении.",
+            "ratings/bus": "Получить пределы питающего и обратного тока, температуры и времени для выбранного моста."
+          },
+          "model_gap": "Выбрать мост и защиту. Снять ВАХ, пуск, межключевые паузы, сброс, порог отключения, торможение и выбросы. Живой опыт связывает только шину DC; выходы A/B оставлены без коммутации.",
+          "part": "motor_h_bridge",
+          "pins": {
+            "a": "motor_a",
+            "b": "motor_b",
+            "dir": "dir",
+            "enable": "enable",
+            "g": "return",
+            "p": "motor_bus",
+            "pwm": "pwm"
+          },
+          "source": "Функциональные клеммы коллекторного Н-моста из двуполярной команды ШИМ control.toml. ШИМ/направление/разрешение являются проектной распиновкой."
+        },
+        {
+          "component": "bridge_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "motor_bus",
+            "b": "motor_bus"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "bridge_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "cell",
+          "kind": "Battery",
+          "missing_parameters": {
+            "elements/emf/volt": "Снять OCV на выбранной ячейке по заряду и температуре.",
+            "elements/series/ohm": "Снять импульсное сопротивление на той же сетке SOC и температур.",
+            "ratings/current": "Получить огибающие заряда и разряда по паспорту и замеру."
+          },
+          "model_gap": "Выбрать ячейку. Снять OCV, R и допустимые длительности тока по SOC и температуре в обоих направлениях.",
+          "part": "cell_1s_candidate",
+          "pins": {
+            "g": "return",
+            "p": "cell_p"
+          },
+          "source": "Топология с одной ячейкой следует из эскиза энергии 0,5 А·ч × 3,7 В в setup.toml. Артикул и химия открыты."
+        },
+        {
+          "component": "cell_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "cell_p",
+            "b": "cell_p"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "cell_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "controller",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/load/ohm": "Снять ток питания по режимам и при провале напряжения."
+          },
+          "model_gap": "Выбрать контроллер и его питание. Подтвердить уровни, распиновку, сброс, сторож, безопасные состояния выходов и независимое снятие разрешения.",
+          "part": "motor_controller",
+          "pins": {
+            "dir": "dir",
+            "enable": "enable",
+            "g": "return",
+            "p": "feed",
+            "pwm": "pwm"
+          },
+          "source": "Контроллер на защищённой шине ячейки в монтажном эскизе. Исполнительный опыт берёт команду из файла стимулов."
+        },
+        {
+          "component": "controller_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "feed",
+            "b": "feed"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "controller_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "dir_lead",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "dir",
+            "b": "dir"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "enable_lead",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "enable",
+            "b": "enable"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "fuse",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/closed/ohm": "Измерить холодное сопротивление предохранителя и держателя.",
+            "ratings/current": "Сверить номинал и кривую отключения с жгутом."
+          },
+          "model_gap": "Выбрать артикул по отключающей способности, напряжению, энергии I²t и фактическому жгуту.",
+          "part": "fuse_inline_candidate",
+          "pins": {
+            "input": "protected",
+            "output": "feed"
+          },
+          "source": "Позиция последовательного предохранителя по монтажному эскизу. Семейство-кандидат и кривые см. в catalog/electrical/components.toml, fuse_series."
+        },
+        {
+          "component": "fused_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "feed",
+            "b": "feed"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "motor",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление обмотки по положениям ротора и температуре.",
+            "elements/inductance/henry": "Снять LCR или короткую ступень тока на разных положениях ротора.",
+            "ratings/winding": "Определить огибающую тока по длительности и температуре. 0,40 А — численный длительный предел из device.toml, 1,60 А — экстраполяция, а не разрешённый стоповый ток."
+          },
+          "model_gap": "Снять R(T) и L по положениям ротора, пуск и реверс, обратную ЭДС и нагрев. Обмотка в монтажном графе пассивная, живой ток приходит из электромеханической модели device.toml.",
+          "part": "pololu_2214",
+          "pins": {
+            "a": "motor_a",
+            "b": "motor_b"
+          },
+          "source": "Pololu #2214, HP 6 В, холостой ход 0,10 А, стоповый ток 1,60 А экстраполирован https://www.pololu.com/product/2214. A/B обозначают выводы обмотки, полярность меняется мостом."
+        },
+        {
+          "component": "motor_a_lead",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "motor_a",
+            "b": "motor_a"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "motor_b_lead",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "motor_b",
+            "b": "motor_b"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        },
+        {
+          "component": "pwm_lead",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении.",
+            "ratings/current": "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке."
+          },
+          "model_gap": "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте.",
+          "part": "flexible_harness_wire",
+          "pins": {
+            "a": "pwm",
+            "b": "pwm"
+          },
+          "source": "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,88 @@
+# Mating обозначает ответную половину portal/outlet. Она здесь представлена отдельно для испытания входа. Не включать диагностический источник в реальный монтаж.
+format = 1
+scope = "assembly"
+name = "Шпиндель отвёртки — локальный тракт питания"
+nets = ["input","return"]
+bindings = [] # В механической сцене нет установленных электрических моделей привода или платы.
+
+[components.mating]
+part = "xyz_mating_boundary"
+nets = { p = "input", g = "return" }
+
+[components.inlet]
+part = "xyz_tool_connector"
+nets = { p = "input", g = "return", p_tail = "input", g_tail = "return" }
+
+[components.load]
+part = "xyz_spindle_channel"
+nets = { p = "input", g = "return" }
+
+[components.load-return]
+part = "xyz_cable"
+nets = { a = "return", b = "return" }
+
+[components.feed-tail]
+part = "xyz_cable"
+nets = { a = "input", b = "input" }
+
+[components.load-feed]
+part = "xyz_cable"
+nets = { a = "input", b = "input" }
+
+[connections.load-return-from]
+kind = "solder"
+ends = ["inlet/g_tail","load-return/a"]
+after = []
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.load-return-to]
+kind = "terminal"
+ends = ["load-return/b","load/g"]
+after = ["load-return-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.load-feed-from]
+kind = "splice"
+ends = ["feed-tail/b","load-feed/a"]
+after = ["prepare-feed"]
+crimp = true
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.load-feed-to]
+kind = "terminal"
+ends = ["load-feed/b","load/p"]
+after = ["load-feed-from"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.prepare-feed]
+kind = "solder"
+ends = ["feed-tail/a","inlet/p_tail"]
+after = []
+resistance_ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.dock-return]
+kind = "plug"
+ends = ["mating/g","inlet/g"]
+after = ["load-return-to"]
+resistance_ohm = { measurement = "Замерить сопротивление контакта возврата при каждом ходе и цикле стыковки" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[connections.dock-feed]
+kind = "plug"
+ends = ["mating/p","inlet/p"]
+after = ["dock-return","load-feed-to"]
+resistance_ohm = { measurement = "Замерить сопротивление силового контакта при каждом ходе и цикле стыковки" }
+current_limit_a = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }
+
+[rails.inlet]
+ends = ["inlet/p","inlet/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
+
+[rails.load]
+ends = ["load/p","load/g"]
+reverse_limit_v = { measurement = "Определить допустимое обратное напряжение по паспорту нагрузки и проверить маркировку до включения" }
