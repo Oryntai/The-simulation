@@ -1,0 +1,64 @@
+# Паспорт выгружен из sim_actuators::sensors(). Динамика требует отдельной калибровки.
+id = "bmi270"
+kind = "imu"
+name = "BMI270"
+
+[model]
+bias = "unknown"
+drift_per_s = "unknown"
+drift_rw_std = "unknown"
+drop_probability = "unknown"
+fault = "unknown"
+latency_s = "unknown"
+noise_std = "unknown"
+quantum = "unknown"
+rate_hz = "unknown"
+saturation = "unknown"
+
+[passport]
+accuracy_unit = "°/с/√Гц"
+caveats = ["Предел питания 3.6 В: от 5 В напрямую питать нельзя."]
+current_peak_a = "unknown"
+interface = "SPI, I²C"
+kind = "imu"
+range_unit = "°/с (акселерометр до ±16 g)"
+resolution_unit = "°/с"
+sources = ["Bosch BST-BMI270-DS000-08: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"]
+what_is = "Современный экономичный шестиосевой датчик движения."
+
+[passport.accuracy]
+provenance = "datasheet"
+source = "Bosch: шум 0.007 °/с/√Гц, акселерометр 0.16 мg/√Гц"
+value = 0.007
+
+[passport.current_a]
+provenance = "datasheet"
+source = "Bosch: A+G, обычный режим"
+value = 0.000685
+
+[passport.range_max]
+provenance = "datasheet"
+source = "Bosch BST-BMI270-DS000-08: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+value = 2000.0
+
+[passport.range_min]
+provenance = "datasheet"
+source = "Bosch BST-BMI270-DS000-08: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+value = -2000.0
+
+[passport.resolution]
+provenance = "derived"
+source = "16 бит на ±2000 °/с"
+value = 0.06103515625
+
+[[passport.supply_ranges]]
+
+[passport.supply_ranges.max]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): Bosch BST-BMI270-DS000-08: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+value = 3.6
+
+[passport.supply_ranges.min]
+provenance = "datasheet"
+source = "Паспорт из sim_actuators::sensors(): Bosch BST-BMI270-DS000-08: https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+value = 1.71

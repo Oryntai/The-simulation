@@ -1,16 +1,24 @@
 //! ESP32-C3 TRM: IO MUX/GPIO, Timer Group, MWDT, UART,
 //! LEDC и ADC. Поля GPIO, LEDC и UART сверены с ESP-IDF v6.1.1.
 
+use super::esp_assist::EspAssist;
 use super::esp_bus::EspBuses;
 use super::esp_dma::EspDma;
+use super::esp_pms::EspPms;
+use super::esp_rtc::EspRtc;
+use super::esp_sar_digital::{self, EspSarDigital};
+use super::esp_sha::EspSha;
+use super::esp_sleep::{GPIO_HIGH, GPIO_LOW, RTC_GPIO_COUNT};
+use super::esp_sleep_regs::EspSleepRegisters;
+use super::esp_timg::{self, EspTimg, MwdtReset};
 use super::esp_uart::EspUart;
 use super::{
     esp_flash::EspFlash,
     esp_system::{EspSystem, SystimerPhase},
 };
-use crate::esp_clock::{EspClockRates, QUARTERS_PER_SECOND, XTAL_HZ};
+use crate::esp_clock::{EspClockRates, EspClockSource, QUARTERS_PER_SECOND, XTAL_HZ};
 use crate::esp_memory::EspMemory;
-use crate::{BoardFault, InputOutcome, PwmOutput};
+use crate::{BoardFault, EspSleepMode, GpioMode, InputOutcome, PwmOutput};
 use std::collections::VecDeque;
 
 use super::{Access, Adc, Pins, Uart, checked_rw, command, invalid, ro, rw, unsupported};
@@ -24,17 +32,22 @@ const PERIP_CLK_EN0: u32 = crate::esp_clock::SYSTEM + 0x10;
 const PERIP_CLK_EN1: u32 = crate::esp_clock::SYSTEM + 0x14;
 const PERIP_RST_EN1: u32 = crate::esp_clock::SYSTEM + 0x1c;
 const GDMA_GATE: u32 = 1 << 6;
+const SHA_GATE: u32 = 1 << 2; // SYSTEM_CRYPTO_SHA_{CLK_EN,RST}.
+// system_reg.h, SYSTEM_CRYPTO_{DS,HMAC}_RST, и esp32c3/hal/sha_ll.h:
+// SHA удерживается в сбросе, если активен любой из этих двух сбросов.
+const SHA_DEPENDENCY_RESETS: u32 = (1 << 4) | (1 << 5);
 const PERIP_RST_EN1_RESET: u32 = 0x1fe; // SYSTEM_PERIP_RST_EN1: биты 1…8 сброшены в 1.
 const PERIP_RST_EN0: u32 = crate::esp_clock::SYSTEM + 0x18;
 const PERIP_CLK_EN0_RESET: u32 = 0xf9c1_e06f;
+const PERIP_EN0_RW: u32 = u32::MAX & !(1 << 4); // system_reg.h: бит 4 зарезервирован.
+const PERIP_EN1_RW: u32 = 0x1fe | (1 << 10); // system_reg.h: биты 1…8 и TSENS.
+const SPI01_GATE: u32 = 1 << 1;
 const UART_GATE: [u32; 2] = [1 << 2, 1 << 5];
 const UART_MEM: u32 = 1 << 24;
 const I2C_GATE: u32 = 1 << 7;
 const LEDC_GATE: u32 = 1 << 11;
 const SPI_GATE: u32 = 1 << 6;
 const SPI_DMA_GATE: u32 = 1 << 22;
-const IO_GATES: u32 =
-    UART_GATE[0] | UART_GATE[1] | UART_MEM | I2C_GATE | LEDC_GATE | SPI_GATE | SPI_DMA_GATE;
 // gpio_sig_map.h: индексы GPIO Matrix.
 const UART_DATA: [u32; 2] = [6, 9];
 const I2C_LINES: [u32; 2] = [53, 54];
@@ -56,6 +69,10 @@ const OUTPUT_INVERT: u32 = 1 << 8;
 const ENABLE_FROM_GPIO: u32 = 1 << 9;
 const ENABLE_INVERT: u32 = 1 << 10;
 const PAD_OPEN_DRAIN: u32 = 1 << 2;
+// TRM регистр GPIO_PINn_REG и gpio_reg.h: пробуждение цифрового GPIO.
+const PIN_WAKE_ENABLE: u32 = 1 << 10;
+const PIN_INT_SHIFT: u32 = 7;
+const PIN_INT_TYPE: u32 = 0b111 << PIN_INT_SHIFT;
 // io_mux_reg.h: поля IO_MUX_GPIOn.
 const INPUT_ENABLE: u32 = 1 << 9;
 const GPIO_FUNC: u32 = 1;
@@ -63,6 +80,14 @@ const MUX_FUNC_SHIFT: u32 = 12;
 const PULL_UP: u32 = 1 << 8;
 const PULL_DOWN: u32 = 1 << 7;
 const PAD_ACTIVE_MASK: u32 = 0x7fff;
+// io_mux_reg.h: FUNC_SPI{HD,WP,CS0,CLK,D,Q}_SPI* — прямая шина SPI0/1.
+const FLASH_PADS: std::ops::RangeInclusive<usize> = 12..=17;
+const SLEEP_OUTPUT_ENABLE: u32 = 1;
+const SLEEP_SELECT: u32 = 1 << 1;
+const SLEEP_PULL_DOWN: u32 = 1 << 2;
+const SLEEP_PULL_UP: u32 = 1 << 3;
+const SLEEP_INPUT_ENABLE: u32 = 1 << 4;
+const PAD_SLEEP_FIELDS: u32 = 0x7f; // io_mux_reg.h: SLP_DRV[6:5], SLP_IE…SLP_OE[4:0].
 // ledc_reg.h: LSTIMERx_CONF, LSCHx_CONF0/1.
 const LED_TIMER_RESET: u32 = 1 << 23;
 const LED_TIMER_PAUSE: u32 = 1 << 22;
@@ -77,9 +102,12 @@ const LED_CHANNEL_UPDATE: u32 = 1 << 4;
 const PLL80_HZ: u32 = 80_000_000;
 // ESP-IDF soc/esp32c3/register/soc/reg_base.h, DR_REG_SYSTIMER_BASE и SPI2.
 const SYSTIMER_WINDOW: std::ops::Range<u32> = 0x6002_3000..0x6002_4000;
-// ESP-IDF soc/esp32c3/register/soc/extmem_reg.h, EXTMEM_ICACHE_CTRL_REG.
-const ICACHE_CTRL: u32 = 0x600c_4000;
-const ICACHE_ENABLE: u32 = 1;
+// ESP-IDF usb_serial_jtag_reg.h, TRM §30.3.2 и рег. 30.11.
+const USB_EP1_FIFO: u32 = 0x6004_3000;
+const USB_EP1_CONF: u32 = USB_EP1_FIFO + 4;
+const USB_WR_DONE: u32 = 1 << 0;
+const USB_IN_FREE: u32 = 1 << 1;
+const USB_CDC_PACKET: u8 = 64;
 
 #[derive(Clone)]
 struct Group {
@@ -429,64 +457,157 @@ impl Serial {
 
 #[derive(Clone)]
 pub(crate) struct BootPeripherals {
+    pub(crate) reset_values: crate::esp_reset_profile::EspResetValues,
+    pub(crate) virtual_rng: Option<crate::esp_rng::EspVirtualRng>,
+    pub(super) timg: [EspTimg; esp_timg::BASES.len()],
+    sar: EspSarDigital,
+    sleep_regs: EspSleepRegisters,
     pub(crate) system: EspSystem,
-    flash: EspFlash,
+    pub(crate) flash: EspFlash,
+    pub(crate) pms: EspPms,
     pub(crate) wdt_delay_sel: u8,
     pub(crate) pc: u32,
     clk_io: u32,
     rst_io: u32,
-    clk_dma: bool,
-    rst_dma: bool,
+    clk_en1: u32,
+    rst_en1: u32,
+    sha: EspSha,
     has_systimer_phase: bool,
+    usb_ep1_bytes: u8,
+    assist: EspAssist,
 }
 
 impl BootPeripherals {
-    pub(super) fn new(flash: EspFlash, phase: Option<SystimerPhase>, wdt_delay_sel: u8) -> Self {
+    pub(super) fn new(
+        flash: EspFlash,
+        phase: Option<SystimerPhase>,
+        wdt_delay_sel: u8,
+        profile: Option<crate::EspResetProfile>,
+    ) -> Self {
         Self {
+            reset_values: crate::esp_reset_profile::EspResetValues::new(profile),
+            virtual_rng: None,
+            timg: std::array::from_fn(|_| EspTimg::default()),
+            sar: EspSarDigital::default(),
+            sleep_regs: EspSleepRegisters::default(),
             // TRM §10.3 задаёт /2 и /3. Без входной фазы доступна только
             // шкала CPU и общие поля SYSREG, не состояние SYSTIMER.
             system: EspSystem::new(phase.unwrap_or(SystimerPhase::FirstAfterTwoXtalCycles)),
             has_systimer_phase: phase.is_some(),
             flash,
+            pms: EspPms::default(),
             wdt_delay_sel,
             pc: 0,
-            clk_io: PERIP_CLK_EN0_RESET & IO_GATES,
+            clk_io: PERIP_CLK_EN0_RESET & !EspSystem::shared_sysreg_mask(PERIP_CLK_EN0),
             rst_io: 0,
-            clk_dma: false,
-            rst_dma: true,
+            clk_en1: 0,
+            rst_en1: PERIP_RST_EN1_RESET,
+            sha: EspSha::default(),
+            usb_ep1_bytes: 0,
+            assist: EspAssist::default(),
         }
     }
 
     pub(super) fn reset(&mut self) {
         self.flash.reset();
+        self.pms = EspPms::default();
         self.system.reset();
-        self.clk_io = PERIP_CLK_EN0_RESET & IO_GATES;
+        self.clk_io = PERIP_CLK_EN0_RESET & !EspSystem::shared_sysreg_mask(PERIP_CLK_EN0);
         self.rst_io = 0;
-        self.clk_dma = false;
-        self.rst_dma = true;
+        self.clk_en1 = 0;
+        self.rst_en1 = PERIP_RST_EN1_RESET;
+        self.sha = EspSha::default();
+        self.usb_ep1_bytes = 0;
+        self.assist = EspAssist::default();
+        self.timg = std::array::from_fn(|_| EspTimg::default());
+        self.sar = EspSarDigital::default();
+        self.sleep_regs = EspSleepRegisters::default();
+    }
+
+    pub(crate) fn assist_interrupt(&self) -> bool {
+        self.assist.interrupt()
+    }
+
+    pub(crate) fn observe_cpu(&mut self, pc: u32, sp: u32) {
+        self.assist.observe(pc, sp);
+    }
+
+    pub(crate) fn systimer_interrupt_status(&self) -> Option<u32> {
+        self.has_systimer_phase
+            .then(|| self.system.interrupt_status())
     }
 
     pub(super) fn access(
         &mut self,
         chip: &mut Esp,
+        rtc: Option<&EspRtc>,
         now: u64,
         addr: u32,
         size: u8,
         value: Option<u32>,
     ) -> Access {
-        // TRM §3.3.3: включение кэша меняет отображение обоих окон.
-        // Bus ещё обслуживает эти окна через регионы ELF.
-        if addr == ICACHE_CTRL && value.is_some_and(|bits| bits & ICACHE_ENABLE != 0) {
-            return Err(BoardFault::UnsupportedRegister {
-                pc: self.pc,
+        if let Some(word) =
+            self.sleep_regs
+                .access(self.pc, addr, size, value, &mut self.reset_values)?
+        {
+            return Ok(Some(word));
+        }
+        if addr == crate::esp_rng::ADDRESS {
+            if size as usize != size_of::<u32>() || value.is_some() {
+                return Err(BoardFault::UnsupportedRegister {
+                    pc: self.pc,
+                    addr,
+                    size,
+                    write: value.is_some(),
+                    block: "RNG_DATA_REG",
+                });
+            }
+            return self
+                .virtual_rng
+                .as_mut()
+                .ok_or_else(|| BoardFault::Unsupported("RNG: источник энтропии не задан".into()))?
+                .read()
+                .map(Some);
+        }
+        if addr & !0xfff == esp_sar_digital::BASE {
+            // bootloader_random_esp32c3.c: после закрытия APB_SARADC_CLK_EN
+            // SDK снимает TIMER_EN и очищает таблицу. Доступна конфигурация
+            // выключенного автомата, а результаты преобразования не доступны.
+            return self.sar.access(
+                self.pc,
                 addr,
                 size,
-                write: true,
-                block: "EXTMEM: окна IROM/DROM не подключены к шине CPU",
-            });
+                value,
+                self.rst_io & esp_sar_digital::ADC_GATE == 0,
+            );
         }
-        if let Some(result) = self.flash.access(self.pc, addr, size, value)? {
+        if let Some(group) = esp_timg::BASES
+            .iter()
+            .position(|&base| addr & !0xfff == base)
+        {
+            let enabled = self.enabled(esp_timg::GATES[group]);
+            return self.timg[group].access(
+                self.pc,
+                addr,
+                addr - esp_timg::BASES[group],
+                size,
+                value,
+                enabled,
+            );
+        }
+        if let Some(result) = self.assist.access(self.pc, addr, size, value)? {
             return Ok(Some(result));
+        }
+        if let Some(result) = self.pms.access(self.pc, addr, size, value)? {
+            return Ok(Some(result));
+        }
+        let sha_enabled =
+            self.clk_en1 & SHA_GATE != 0 && self.rst_en1 & (SHA_GATE | SHA_DEPENDENCY_RESETS) == 0;
+        if let Some(result) = self.sha.access(self.pc, addr, size, value, sha_enabled)? {
+            return Ok(Some(result));
+        }
+        if matches!(addr, USB_EP1_FIFO | USB_EP1_CONF) {
+            return self.usb_ep1_access(addr, size, value);
         }
         if !self.has_systimer_phase && SYSTIMER_WINDOW.contains(&addr) {
             return Err(BoardFault::UnsupportedRegister {
@@ -498,7 +619,7 @@ impl BootPeripherals {
             });
         }
         if [PERIP_CLK_EN1, PERIP_RST_EN1].contains(&addr) {
-            return self.access_gdma_gate(chip, now, addr, size, value);
+            return self.access_accelerator_gates(chip, now, addr, size, value);
         }
         let mask = EspSystem::shared_sysreg_mask(addr);
         if mask == 0 {
@@ -514,8 +635,14 @@ impl BootPeripherals {
             {
                 let mut next = self.system.clone();
                 let result = next.access(self.pc, addr, size, value)?;
-                if bus_active && next.clocks().cpu_hz() != self.system.clocks().cpu_hz() {
+                let clocks = next.clocks();
+                if bus_active && clocks.cpu_hz() != self.system.clocks().cpu_hz() {
                     return Err(invalid("смена частоты CPU во время обмена I²C/SPI"));
+                }
+                if clocks.source() == EspClockSource::Pll
+                    && let Some(rtc) = rtc
+                {
+                    rtc.check_pll_selection(clocks.pll_selected_hz())?;
                 }
                 self.system = next;
                 return Ok(result);
@@ -523,9 +650,9 @@ impl BootPeripherals {
             return self.system.access(self.pc, addr, size, value);
         }
 
-        let (external, previous) = match addr {
-            PERIP_CLK_EN0 => (PERIP_CLK_EN0_RESET & !(mask | IO_GATES), self.clk_io),
-            PERIP_RST_EN0 => (0, self.rst_io),
+        let previous = match addr {
+            PERIP_CLK_EN0 => self.clk_io,
+            PERIP_RST_EN0 => self.rst_io,
             _ => unreachable!("известные общие регистры ESP32-C3"),
         };
         let unknown = || BoardFault::UnsupportedRegister {
@@ -535,7 +662,7 @@ impl BootPeripherals {
             write: value.is_some(),
             block: "поля SYSREG других блоков",
         };
-        if value.is_some_and(|bits| (bits ^ external) & !(mask | IO_GATES) != 0) {
+        if value.is_some_and(|bits| bits & !PERIP_EN0_RW != 0) {
             return Err(unknown());
         }
         if addr == PERIP_CLK_EN0
@@ -553,9 +680,19 @@ impl BootPeripherals {
             .system
             .access(self.pc, addr, size, value.map(|bits| bits & mask))?;
         if let Some(bits) = value {
-            let io = bits & IO_GATES;
+            // esp_system/port/soc/esp32c3/clk.c использует общее слово.
+            // Доступ к регистрам каждого неподдержанного блока остаётся ошибкой.
+            let io = bits & !mask;
             if addr == PERIP_RST_EN0 {
                 let asserted = io & !previous;
+                if asserted & esp_sar_digital::ADC_GATE != 0 {
+                    self.sar = EspSarDigital::default();
+                }
+                for (group, gate) in esp_timg::GATES.into_iter().enumerate() {
+                    if asserted & gate != 0 {
+                        self.timg[group] = EspTimg::default();
+                    }
+                }
                 for (port, bit) in UART_GATE.into_iter().enumerate() {
                     if asserted & (bit | UART_MEM) != 0 {
                         chip.sdk_uart[port] = sdk_uart();
@@ -577,17 +714,53 @@ impl BootPeripherals {
             } else {
                 self.clk_io = io;
             }
+            self.flash
+                .set_spi01_control(self.clk_io & SPI01_GATE != 0, self.rst_io & SPI01_GATE != 0);
         }
         Ok(result.map(|bits| {
             if value.is_none() {
-                bits | external | previous
+                bits | previous
             } else {
                 bits
             }
         }))
     }
 
-    fn access_gdma_gate(
+    fn usb_ep1_access(&mut self, addr: u32, size: u8, value: Option<u32>) -> Access {
+        // TRM §30.3.2: без USB-хоста OUT пуст, а отправленный пакет IN не
+        // освобождает буфер. Пакет готов после WR_DONE или заполнения 64 байт.
+        if size as usize == size_of::<u32>() {
+            match (addr, value) {
+                (USB_EP1_CONF, None) => {
+                    return Ok(Some(
+                        u32::from(self.usb_ep1_bytes < USB_CDC_PACKET) * USB_IN_FREE,
+                    ));
+                }
+                (USB_EP1_CONF, Some(bits)) if bits & !(USB_WR_DONE | USB_IN_FREE) == 0 => {
+                    if bits & USB_WR_DONE != 0 {
+                        self.usb_ep1_bytes = USB_CDC_PACKET;
+                    }
+                    return Ok(Some(0));
+                }
+                (USB_EP1_FIFO, Some(byte))
+                    if byte <= u32::from(u8::MAX) && self.usb_ep1_bytes < USB_CDC_PACKET =>
+                {
+                    self.usb_ep1_bytes += 1;
+                    return Ok(Some(0));
+                }
+                _ => {}
+            }
+        }
+        Err(BoardFault::UnsupportedRegister {
+            pc: self.pc,
+            addr,
+            size,
+            write: value.is_some(),
+            block: "USB Serial/JTAG EP1 без хоста",
+        })
+    }
+
+    fn access_accelerator_gates(
         &mut self,
         chip: &mut Esp,
         now: u64,
@@ -595,12 +768,8 @@ impl BootPeripherals {
         size: u8,
         value: Option<u32>,
     ) -> Access {
-        let (other, flag) = if addr == PERIP_CLK_EN1 {
-            (0, &mut self.clk_dma)
-        } else {
-            (PERIP_RST_EN1_RESET & !GDMA_GATE, &mut self.rst_dma)
-        };
-        if size as usize != size_of::<u32>() || value.is_some_and(|bits| bits & !GDMA_GATE != other)
+        let clock = addr == PERIP_CLK_EN1;
+        if size as usize != size_of::<u32>() || value.is_some_and(|bits| bits & !PERIP_EN1_RW != 0)
         {
             return Err(BoardFault::UnsupportedRegister {
                 pc: self.pc,
@@ -611,17 +780,29 @@ impl BootPeripherals {
             });
         }
         let Some(bits) = value else {
-            return ro(value, other | u32::from(*flag) * GDMA_GATE);
+            return Ok(Some(if clock { self.clk_en1 } else { self.rst_en1 }));
         };
-        let next = bits & GDMA_GATE != 0;
-        if addr == PERIP_CLK_EN1 && !next && *flag && chip.buses.spi_dma_active() {
-            return Err(unsupported("закрытие тактов GDMA во время SPI2"));
+        if clock {
+            if self.clk_en1 & !bits & GDMA_GATE != 0 && chip.buses.spi_dma_active() {
+                return Err(unsupported("закрытие тактов GDMA во время SPI2"));
+            }
+            self.clk_en1 = bits;
+        } else {
+            let asserted = bits & !self.rst_en1;
+            if asserted & esp_sar_digital::TSENS_GATE != 0 {
+                self.sar.reset_tsens();
+            }
+            if asserted & (SHA_GATE | SHA_DEPENDENCY_RESETS) != 0 {
+                self.sha = EspSha::default();
+            }
+            self.rst_en1 = bits;
         }
-        *flag = next;
-        if self.rst_dma && chip.buses.spi_dma_active() {
+        let rst_dma = self.rst_en1 & GDMA_GATE != 0;
+        if rst_dma && chip.buses.spi_dma_active() {
             chip.buses.reset_io(false, true, now);
         }
-        chip.dma.set_bus_control(self.clk_dma, self.rst_dma);
+        chip.dma
+            .set_bus_control(self.clk_en1 & GDMA_GATE != 0, rst_dma);
         Ok(Some(0))
     }
 }
@@ -969,6 +1150,11 @@ impl Esp {
         (self.pin_config[pin] & PAD_OPEN_DRAIN == 0 || !level).then_some(level)
     }
 
+    pub(super) fn pad_is_flash(&self, pin: u32) -> bool {
+        let pin = pin as usize;
+        FLASH_PADS.contains(&pin) && self.mux_func(pin) == 0
+    }
+
     pub(super) fn passive_pin(&self, pin: u32) -> Option<crate::GpioMode> {
         use crate::GpioMode::*;
         let pin = pin as usize;
@@ -987,6 +1173,91 @@ impl Esp {
             0 => Some(HighImpedance),
             _ => None,
         }
+    }
+
+    pub(super) fn digital_wakeup_level(&self, pin: usize) -> Option<bool> {
+        let config = self.pin_config[pin];
+        (config & PIN_WAKE_ENABLE != 0).then(|| config & PIN_INT_TYPE == GPIO_HIGH << PIN_INT_SHIFT)
+    }
+
+    pub(super) fn sleep_pad_mode(&self, pin: u32, mode: EspSleepMode) -> Option<GpioMode> {
+        let mux = *self.mux.get(pin as usize)?;
+        // TRM §§5.11, 9.4. В Light-sleep IO MUX может выбрать настройки сна.
+        // В Deep-sleep цифровые маршруты и удержание выходов пока не наблюдаемы.
+        let selected = mux & SLEEP_SELECT != 0;
+        if mode == EspSleepMode::Light {
+            if self.output_route(pin as usize).is_some()
+                && (!selected || mux & SLEEP_OUTPUT_ENABLE != 0)
+            {
+                // У спящего LEDC или пакетной линии нет доказанного уровня.
+                if self.output_route(pin as usize)?.0 != GPIO_OUT {
+                    return None;
+                }
+                if let Some(level) = self.output(pin) {
+                    return Some(GpioMode::Output(level));
+                }
+            } else if selected && mux & SLEEP_OUTPUT_ENABLE != 0 {
+                return None;
+            }
+        } else if pin as usize >= RTC_GPIO_COUNT {
+            return None;
+        }
+        let (up, down, input) = if selected {
+            (SLEEP_PULL_UP, SLEEP_PULL_DOWN, SLEEP_INPUT_ENABLE)
+        } else {
+            (PULL_UP, PULL_DOWN, INPUT_ENABLE)
+        };
+        match mux & (up | down) {
+            bits if bits == up => Some(GpioMode::PullUp),
+            bits if bits == down => Some(GpioMode::PullDown),
+            0 if mux & input != 0 => Some(GpioMode::Input),
+            0 => Some(GpioMode::HighImpedance),
+            _ => None,
+        }
+    }
+
+    pub(super) fn active_wake_pins(
+        &self,
+        low: u32,
+        high: u32,
+        mode: EspSleepMode,
+    ) -> Result<u32, BoardFault> {
+        let mut candidate = low | high;
+        let mut active = 0;
+        while candidate != 0 {
+            let pin = candidate.trailing_zeros();
+            let bit = 1 << pin;
+            candidate &= !bit;
+            let mux = self.mux[pin as usize];
+            let input_enabled = if mux & SLEEP_SELECT != 0 {
+                mux & SLEEP_INPUT_ENABLE != 0
+            } else {
+                mux & INPUT_ENABLE != 0
+            };
+            if !input_enabled {
+                return Err(unsupported(&format!(
+                    "GPIO{pin}: вход пробуждения выключен"
+                )));
+            }
+            let level = match self.sleep_pad_mode(pin, mode) {
+                Some(GpioMode::Input | GpioMode::PullUp | GpioMode::PullDown)
+                    if self.pins.driven & bit != 0 =>
+                {
+                    self.pins.input & bit != 0
+                }
+                Some(GpioMode::PullUp) => true,
+                Some(GpioMode::PullDown) => false,
+                _ => {
+                    return Err(unsupported(&format!(
+                        "GPIO{pin}: уровень пробуждения не определён"
+                    )));
+                }
+            };
+            if level == (high & bit != 0) {
+                active |= bit;
+            }
+        }
+        Ok(active)
     }
 
     fn check_i2c_routes(&self) -> Result<(), BoardFault> {
@@ -1032,26 +1303,6 @@ impl Esp {
     ) -> Access {
         let o = addr & 0xfff;
         let block = addr & !0xfff;
-        // Блоки прежней модели используют сроки в фиксированных тактах 80 МГц.
-        // Базы регистров: ESP-IDF soc/esp32c3/register/soc/reg_base.h.
-        if let Some(boot) = boot {
-            let pc = boot.pc;
-            let unsupported_block = match block {
-                0x6001_f000 | 0x6002_0000 | 0x6004_0000 => {
-                    "периферия с тактовым деревом холодной загрузки"
-                }
-                _ => "",
-            };
-            if !unsupported_block.is_empty() {
-                return Err(BoardFault::UnsupportedRegister {
-                    pc,
-                    addr,
-                    size: size_of::<u32>() as u8,
-                    write: v.is_some(),
-                    block: unsupported_block,
-                });
-            }
-        }
         if boot.is_some()
             && v.is_some()
             && self.buses.active()
@@ -1081,12 +1332,27 @@ impl Esp {
                         all | (u32::from(high) << i)
                     }),
                 ),
-                0x74..=0xc8 => checked_rw(
-                    v,
-                    &mut self.pin_config[((o - 0x74) / 4) as usize],
-                    PAD_OPEN_DRAIN,
-                    "GPIO_PIN: синхронизация, прерывания и sleep",
-                ),
+                0x74..=0xc8 => {
+                    if v.is_some_and(|bits| {
+                        let kind = (bits & PIN_INT_TYPE) >> PIN_INT_SHIFT;
+                        let wake = bits & PIN_WAKE_ENABLE != 0;
+                        if wake {
+                            !matches!(kind, GPIO_LOW | GPIO_HIGH)
+                        } else {
+                            !matches!(kind, 0 | GPIO_LOW | GPIO_HIGH)
+                        }
+                    }) {
+                        return Err(unsupported(
+                            "GPIO_PIN: поддерживается пробуждение по уровню",
+                        ));
+                    }
+                    checked_rw(
+                        v,
+                        &mut self.pin_config[((o - 0x74) / 4) as usize],
+                        PAD_OPEN_DRAIN | PIN_WAKE_ENABLE | PIN_INT_TYPE,
+                        "GPIO_PIN: синхронизация и прерывания",
+                    )
+                }
                 0x154..=0x350 => {
                     if v.is_some_and(|value| {
                         value & MATRIX_IN != 0
@@ -1117,12 +1383,17 @@ impl Esp {
             0x6000_9000 if (4..=88).contains(&o) => {
                 let pin = (o / 4 - 1) as usize;
                 // Функции платы: TRM §5.12, io_mux_reg.h. Нижние биты хранят
-                // конфигурацию сна, которую активирует отдельный домен (Т2.16).
+                // конфигурацию сна, которую активирует RTC_CNTL.
                 if let Some(value) = v {
                     let function = value >> MUX_FUNC_SHIFT & 7;
                     let supported = function == GPIO_FUNC
-                        || matches!((function, pin), (0, 0..=3 | 8..=11 | 20 | 21) | (2, 2 | 6 | 7 | 10));
-                    if !supported {
+                        || matches!((function, pin), (0, 0..=3 | 8..=11 | 20 | 21) | (2, 2 | 6 | 7 | 10))
+                        || (boot.is_some() && function == 0 && FLASH_PADS.contains(&pin));
+                    // gpio_sleep_{input,output}_disable изменяют конфигурацию
+                    // сна и сохраняют выбранную при сбросе прямую функцию.
+                    let sleep_only =
+                        boot.is_some() && (value ^ self.mux[pin]) & !PAD_SLEEP_FIELDS == 0;
+                    if !supported && !sleep_only {
                         return Err(unsupported("IO MUX: выбранная прямая функция"));
                     }
                     if value & (PULL_UP | PULL_DOWN) == (PULL_UP | PULL_DOWN) {
@@ -1389,7 +1660,22 @@ impl Esp {
                     {
                         return Err(unsupported("смена источника UART при непустом RX FIFO"));
                     }
-                    let result = serial.access(o, v, at)?;
+                    let result = serial.access(o, v, at).map_err(|fault| {
+                        let operation = if v.is_some() {
+                            "запись"
+                        } else {
+                            "чтение"
+                        };
+                        match fault {
+                            BoardFault::Misconfigured(reason) => BoardFault::Misconfigured(
+                                format!("{operation} UART MMIO {addr:#010x}: {reason}"),
+                            ),
+                            BoardFault::Unsupported(reason) => BoardFault::Unsupported(format!(
+                                "{operation} UART MMIO {addr:#010x}: {reason}"
+                            )),
+                            fault => fault,
+                        }
+                    })?;
                     if let Some(source) = source {
                         self.uart_source[i] = source;
                     }
@@ -1464,6 +1750,21 @@ impl Esp {
 }
 
 impl BootPeripherals {
+    pub(super) fn advance_timg(
+        &mut self,
+        elapsed: u128,
+        rates: EspClockRates,
+    ) -> Option<(usize, MwdtReset)> {
+        for (group, gate) in esp_timg::GATES.into_iter().enumerate() {
+            if self.enabled(gate)
+                && let Some(action) = self.timg[group].advance(elapsed, rates)
+            {
+                return Some((group, action));
+            }
+        }
+        None
+    }
+
     fn enabled(&self, mask: u32) -> bool {
         self.clk_io & mask == mask && self.rst_io & mask == 0
     }

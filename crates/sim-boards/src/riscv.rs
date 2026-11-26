@@ -1,7 +1,7 @@
 //! RV32IMC: Unprivileged ISA §§2, 13, 16, 27 и Privileged ISA §3.
 //! Декодирование разделено с sim-mcu, карта памяти и прерывания принадлежат ESP32-C3.
 
-use crate::{BoardFault, memory::Bus};
+use crate::{BoardFault, memory::Bus, peripheral::esp_pms::PmsOp};
 use sim_mcu::cpu::{Op, cause, decode};
 
 #[path = "peripheral/esp_irq.rs"]
@@ -41,7 +41,10 @@ pub(crate) struct Riscv {
     pmp: Pmp,
     irq: EspIrq,
     sleeping: bool,
+    wfi_cycles: u8,
     rom_profile: bool,
+    rom_handoff_done: bool,
+    rom_callback_returns: Vec<u32>,
 }
 
 impl Riscv {
@@ -60,6 +63,14 @@ impl Riscv {
             cycle_offset: 0u64.wrapping_sub(bus.hw.cycles),
             ..Self::default()
         })
+    }
+
+    pub(crate) fn finish_rom_handoff(&mut self) {
+        self.rom_handoff_done = true;
+    }
+
+    pub(crate) fn clock_stalled(&self, wait_gate_cycles: Option<u8>) -> bool {
+        self.sleeping && wait_gate_cycles.is_some_and(|delay| self.wfi_cycles > delay)
     }
 
     fn trap(&mut self, bus: &Bus, code: u32, tval: u32) -> Result<(), BoardFault> {
@@ -115,6 +126,7 @@ impl Riscv {
             }
         }
         if self.sleeping {
+            self.wfi_cycles = self.wfi_cycles.saturating_add(1);
             return Ok(1);
         }
 
@@ -164,6 +176,10 @@ impl Riscv {
                 }
             }
         }
+        if let Some(boot) = &mut bus.hw.esp_boot {
+            // RISC-V psABI: x2 — SP. Выборка модели после действия инструкции.
+            boot.observe_cpu(pc, self.r[2]);
+        }
         self.perf.tick();
         // Оценка времени: один такт на инструкцию, задержки шины не моделируются.
         Ok(1)
@@ -172,12 +188,21 @@ impl Riscv {
     fn fetch(&self, bus: &Bus) -> Result<u32, BoardFault> {
         let pc = self.pc;
         self.pmp.check(self.user, pc, pc, 2, Pmp::X)?;
+        self.check_pms(bus, pc, 2, PmsOp::Fetch)?;
         let low = bus.fetch(pc, 2)?;
         if low & 3 != 3 {
             return Ok(low);
         }
         self.pmp.check(self.user, pc, pc, 4, Pmp::X)?;
+        self.check_pms(bus, pc, 4, PmsOp::Fetch)?;
         Ok(low | bus.fetch(pc.wrapping_add(2), 2)? << 16)
+    }
+
+    fn check_pms(&self, bus: &Bus, addr: u32, size: u8, op: PmsOp) -> Result<(), BoardFault> {
+        if let Some(boot) = &bus.hw.esp_boot {
+            boot.pms.check(self.user, self.pc, addr, size, op)?;
+        }
+        Ok(())
     }
 
     fn sample_irq(
@@ -186,9 +211,25 @@ impl Riscv {
         pc: u32,
         status: Option<u32>,
     ) -> Result<(), BoardFault> {
-        self.irq.sample(pc, status, |addr| {
-            bus.read(pc, addr, size_of::<u32>() as u8)
-        })
+        let boot = bus.hw.esp_boot.as_deref();
+        let systimer = boot.and_then(|boot| boot.systimer_interrupt_status());
+        let assist = boot.map(|boot| boot.assist_interrupt());
+        let memory = boot.map(|boot| (boot.flash.interrupt_levels(), boot.pms.interrupts()));
+        self.irq.sample_with_boot_sources(
+            pc,
+            status,
+            bus.hw.rtc_interrupt_pending(),
+            assist,
+            memory,
+            |addr| {
+                if addr == esp_irq::SYSTIMER_STATUS
+                    && let Some(levels) = systimer
+                {
+                    return Ok(levels);
+                }
+                bus.read(pc, addr, size_of::<u32>() as u8)
+            },
+        )
     }
 
     fn execute(&mut self, bus: &mut Bus, raw: u32) -> Result<bool, BoardFault> {
@@ -208,11 +249,26 @@ impl Riscv {
         let value = match d.op {
             Li => i,
             Jal | Jalr => {
-                self.pc = if d.op == Jal {
+                let target = if d.op == Jal {
                     i
                 } else {
                     a.wrapping_add(i) & !1
                 };
+                if self.rom_handoff_done {
+                    use crate::esp_rom;
+                    match (esp_rom::contains(pc), esp_rom::contains(target)) {
+                        (true, false) if matches!(d.rd, 1 | 5) => {
+                            // RISC-V ISA JAL/JALR: x1 и x5 — регистры связи.
+                            self.rom_callback_returns.push(next);
+                        }
+                        (false, true) if self.rom_callback_returns.last() == Some(&target) => {
+                            self.rom_callback_returns.pop();
+                        }
+                        (false, true) => esp_rom::check_guest_entry(target)?,
+                        _ => {}
+                    }
+                }
+                self.pc = target;
                 next
             }
             Beq | Bne | Blt | Bge | Bltu | Bgeu => {
@@ -237,6 +293,7 @@ impl Riscv {
                 };
                 let addr = a.wrapping_add(i);
                 self.pmp.check(self.user, pc, addr, size, Pmp::R)?;
+                self.check_pms(bus, addr, size, PmsOp::Read)?;
                 let v = if EspIrq::handles(addr) {
                     self.sample_irq(bus, pc, Some(addr))?;
                     self.irq.access(pc, addr, size, None)?
@@ -257,6 +314,7 @@ impl Riscv {
                 };
                 let addr = a.wrapping_add(i);
                 self.pmp.check(self.user, pc, addr, size, Pmp::W)?;
+                self.check_pms(bus, addr, size, PmsOp::Write)?;
                 if EspIrq::handles(addr) {
                     self.irq.access(pc, addr, size, Some(b))?;
                 } else {
@@ -311,6 +369,7 @@ impl Riscv {
                     return Ok(false);
                 }
                 self.sleeping = true;
+                self.wfi_cycles = 0;
                 return Ok(true);
             }
             // Прежний стенд завершал программы EBREAK. В холодном ROM-профиле

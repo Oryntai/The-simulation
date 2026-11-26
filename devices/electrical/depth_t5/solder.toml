@@ -1,0 +1,10 @@
+format = 1
+
+[alloys.indalloy-256]
+# Паспортная строка SAC305 из общего каталога Т5.2. T/K = t/°C + 273,15.
+solidus_k = { min = 490.15, nominal = 490.15, max = 490.15, source.datasheet = "Indium 97720 R9, стр. 3, Indalloy 256: https://www.indium.com/wp-content/uploads/2025/03/Solder-Alloy-Directory-97720-A4-R9.pdf" }
+liquidus_k = { min = 493.15, nominal = 493.15, max = 493.15, source.datasheet = "Indium 97720 R9, стр. 3, Indalloy 256: https://www.indium.com/wp-content/uploads/2025/03/Solder-Alloy-Directory-97720-A4-R9.pdf" }
+
+[tools.bench-t5-r1]
+tip_capacity_j_k = { min = 0.04, nominal = 0.04, max = 0.04, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+max_thermal_power_w = { min = 21.6, nominal = 21.6, max = 21.6, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: предел тепла в жале" }

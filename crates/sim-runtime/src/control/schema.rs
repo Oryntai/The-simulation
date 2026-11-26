@@ -2,9 +2,31 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use sim_control::{Delay, InputKind};
+use sim_process::schematic::mcu_energy::{McuCurrent, McuCurrentKind, McuPowerProfile};
+use sim_radio::timed::{
+    AttemptLink, EspNowConfirmation, EspNowInterface, EspNowLink, EspNowPeer, EspNowProfile,
+    EspNowVersion,
+};
 use sim_signal::{PixelFormat, Rate, Time};
+use sim_world::Provenance;
 
 /// Документ версии 1. Неизвестные, повторные и неприменимые поля отклоняются.
+/// `[[board]]` использует прежнюю загрузку ELF/HEX. `catalog_asset` задаёт свой
+/// каталог, а `flash_profile`, `rom` и `efuse` вместе включают загрузку raw flash.
+/// `power_profile` и `power_schedule` задают точки тока и график расчёта заряда.
+/// `[[external_board]]` объявляет диагностическую плату и её `profile`, с
+/// необязательными `image` и `efuse` QEMU. Все ссылки разрешаются относительно графа.
+/// У `[[packet]] kind = "esp_now"` `profile_asset` задаёт адресата, каналы,
+/// правило подтверждения, длительность попытки и модель потерь.
+/// В профиле `format = 1`, `kind = "esp_now"` обязательны `sender_version`,
+/// `wifi_channel`, `station_enabled`, `soft_ap_enabled`, `queue_capacity`,
+/// `attempt_ns`, `destination` (шесть октетов), `interface` (station или
+/// soft_ap), `peer_channel`, `encrypted`, `loss`, `rssi_dbm`, `source`.
+/// Unicast использует `mac_attempts` и `mac_ack_loss`. Без `receiver_channel`
+/// на линии нет приёмника. `receiver_version` нужен для длинных v2-пакетов.
+/// При `confirmation = "application"` нужны `timeout_ns` и `transmissions`.
+/// Путь ответа задаётся вместе полями `reply_attempt_ns`, `reply_loss`,
+/// `reply_rssi_dbm`. При его отсутствии вызов ACK виден как пропуск ответа.
 #[derive(Clone, Debug)]
 pub struct ControlConfig {
     pub(super) text: String,
@@ -19,6 +41,11 @@ impl ControlConfig {
             return Err("неподдержанная версия control.toml".into());
         }
         header.finish()?;
+        let boards = tables
+            .iter()
+            .filter(|t| t.kind == "board")
+            .map(|t| board(t.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
         for table in &tables {
             match table.kind.as_str() {
                 "controller" => {
@@ -30,8 +57,9 @@ impl ControlConfig {
                 "output" | "driver" => {
                     output(table.clone())?;
                 }
-                "board" => {
-                    board(table.clone())?;
+                "board" => {}
+                "external_board" => {
+                    external_board(table.clone())?;
                 }
                 "board_input" => {
                     board_input(table.clone())?;
@@ -43,7 +71,36 @@ impl ControlConfig {
                     bus(table.clone())?;
                 }
                 "packet" => {
-                    packet(table.clone())?;
+                    let spec = packet(table.clone())?;
+                    let expected = match table.clone().text("kind")?.as_str() {
+                        "wifi" => Some(sim_boards::EspRadioPort::Wifi),
+                        "ble" => Some(sim_boards::EspRadioPort::Ble),
+                        "esp_now" => Some(sim_boards::EspRadioPort::EspNow),
+                        _ => None,
+                    };
+                    for (name, port) in [
+                        (spec.from.as_deref(), spec.from_port),
+                        (spec.to.as_deref(), spec.to_port),
+                    ] {
+                        let c3 = boards.iter().any(|board| {
+                            Some(board.name.as_str()) == name
+                                && board.catalog == sim_boards::BoardId::Esp32C3.key()
+                                && board.catalog_asset.is_none()
+                        });
+                        if let (Some(_), Some(expected)) = (name, expected) {
+                            let legacy_port =
+                                port == 0 && !c3 && expected != sim_boards::EspRadioPort::EspNow;
+                            let c3_port = port == expected as u32
+                                && spec.profile.is_none_or(|profile| {
+                                    profile.max_bytes <= expected.max_bytes()
+                                });
+                            if !(legacy_port || c3_port) {
+                                return Err(table.error(
+                                    "пакетный канал не соответствует порту или пределу C3",
+                                ));
+                            }
+                        }
+                    }
                 }
                 "transmission" => {
                     transmission(table.clone())?;
@@ -96,6 +153,18 @@ impl ControlConfig {
             let item = item?;
             names.insert(item.image);
             names.extend(item.config);
+            names.extend(item.catalog_asset);
+            names.extend(item.flash_profile);
+            names.extend(item.rom);
+            names.extend(item.efuse);
+            names.extend(item.power_profile);
+            names.extend(item.power_schedule);
+        }
+        for item in self.get("external_board").map(external_board) {
+            let item = item?;
+            names.insert(item.profile);
+            names.extend(item.image);
+            names.extend(item.efuse);
         }
         for item in self.get("bus").map(bus) {
             names.insert(item?.model);
@@ -107,6 +176,48 @@ impl ControlConfig {
             names.insert(item?.program);
         }
         Ok(names)
+    }
+
+    /// Каталожные точки тока из отдельного документа `*-power.toml`, формат 1.
+    pub fn parse_mcu_power_profile(text: &str) -> Result<McuPowerProfile, String> {
+        let (mut header, states) = profile_tables(text)?;
+        let board = header.text("board")?;
+        let datasheet = header.text("datasheet")?;
+        header.finish()?;
+        let points = states
+            .into_iter()
+            .map(|mut t| {
+                if t.kind != "states" {
+                    return Err(t.error("ожидается [[states]]"));
+                }
+                let id = t.text("id")?;
+                let current_a = t.finite("current_a")?;
+                let kind = match t.text("kind")?.as_str() {
+                    "typical" => McuCurrentKind::Typical,
+                    "peak" => McuCurrentKind::Peak,
+                    _ => return Err(t.error("неизвестный вид точки тока МК")),
+                };
+                let section = t.text("section")?;
+                let table = t.text("table")?;
+                let conditions = t.text("conditions")?;
+                t.finish()?;
+                Ok((
+                    id,
+                    McuCurrent {
+                        current_a,
+                        kind,
+                        source: Provenance::Datasheet(format!(
+                            "{datasheet}, §{section}, табл. {table}"
+                        )),
+                        conditions,
+                    },
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if points.is_empty() {
+            return Err("профиль потребления не содержит точек тока МК".into());
+        }
+        McuPowerProfile::new(board, points).map_err(|e| e.to_string())
     }
 
     /// Базовые задержки маршрутов с фиксированным временем доставки.
@@ -183,6 +294,10 @@ impl Table {
     pub fn number<T: FromStr>(&mut self, key: &str) -> Result<T, String> {
         let raw = self.take(key)?;
         parse_number(&raw).ok_or_else(|| self.error(&format!("неверное число «{key}»")))
+    }
+
+    fn opt_number<T: FromStr>(&mut self, key: &str) -> Result<Option<T>, String> {
+        self.has(key).then(|| self.number(key)).transpose()
     }
 
     pub fn finite(&mut self, key: &str) -> Result<f64, String> {
@@ -645,6 +760,12 @@ pub(super) struct BoardSpec {
     pub catalog: String,
     pub image: String,
     pub config: Option<String>,
+    pub catalog_asset: Option<String>,
+    pub flash_profile: Option<String>,
+    pub rom: Option<String>,
+    pub efuse: Option<String>,
+    pub power_profile: Option<String>,
+    pub power_schedule: Option<String>,
     pub rate: Rate,
     pub end_sample: bool,
 }
@@ -655,6 +776,12 @@ pub(super) fn board(mut t: Table) -> Result<BoardSpec, String> {
         catalog: t.text("catalog")?,
         image: t.text("image")?,
         config: t.opt_text("config")?,
+        catalog_asset: t.opt_text("catalog_asset")?,
+        flash_profile: t.opt_text("flash_profile")?,
+        rom: t.opt_text("rom")?,
+        efuse: t.opt_text("efuse")?,
+        power_profile: t.opt_text("power_profile")?,
+        power_schedule: t.opt_text("power_schedule")?,
         rate: t.rate()?,
         end_sample: if t.has("end_sample") {
             t.boolean("end_sample")?
@@ -662,9 +789,254 @@ pub(super) fn board(mut t: Table) -> Result<BoardSpec, String> {
             false
         },
     };
+    if (item.rom.is_some(), item.efuse.is_some())
+        != (item.flash_profile.is_some(), item.flash_profile.is_some())
+    {
+        return Err(t.error("flash_profile, rom и efuse задаются вместе"));
+    }
+    if item.power_schedule.is_some() && item.power_profile.is_none() {
+        return Err(t.error("power_schedule требует power_profile"));
+    }
     t.source()?;
     t.finish()?;
     Ok(item)
+}
+
+fn profile_tables(text: &str) -> Result<(Table, Vec<Table>), String> {
+    let mut tables = tables(text)?;
+    let mut header = tables.remove(0);
+    if header.number::<u32>("format")? != 1 {
+        return Err(header.error("неподдержанная версия профиля платы"));
+    }
+    Ok((header, tables))
+}
+
+fn profile_header(text: &str) -> Result<Table, String> {
+    let (header, tables) = profile_tables(text)?;
+    if let Some(table) = tables.first() {
+        return Err(table.error("лишняя таблица в профиле платы"));
+    }
+    Ok(header)
+}
+
+pub(super) struct FlashProfile {
+    pub board: String,
+    pub partition_table_offset: u32,
+    pub straps: [bool; 3],
+    pub options: sim_boards::EspBootOptions,
+}
+
+pub(super) fn flash_profile(text: &str) -> Result<FlashProfile, String> {
+    use sim_boards::{EspBootOptions, SystimerPhase, esp_flash::EspFlashReadback};
+
+    let mut t = profile_header(text)?;
+    let board = t.text("board")?;
+    // ESP-IDF components/partition_table/Kconfig.projbuild: CONFIG_PARTITION_TABLE_OFFSET.
+    let partition_table_offset = t.number("partition_table_offset")?;
+    // ESP32-C3 TRM §5.8 GPIO_STRAP_REG. Порядок входов задаёт BoardSim::load_esp_flash.
+    let straps = [
+        t.boolean("gpio2")?,
+        t.boolean("gpio8")?,
+        t.boolean("gpio9")?,
+    ];
+    // ESP32-C3 TRM §10.3: счётчик использует два делителя тактов XTAL.
+    let systimer_phase = match t.opt_number::<u8>("systimer_first_xtal_cycles")? {
+        None => None,
+        Some(2) => Some(SystimerPhase::FirstAfterTwoXtalCycles),
+        Some(3) => Some(SystimerPhase::FirstAfterThreeXtalCycles),
+        Some(_) => return Err(t.error("неверная начальная фаза SYSTIMER")),
+    };
+    // ESP-IDF components/spi_flash/{spi_flash_chip_generic,memspi_host_driver}.c:
+    // RDSR/RDSR2 и RDID. Значения и порядок байтов берутся из паспорта выбранной flash.
+    // Значения берутся из профиля конкретной flash, в порядке байтов на шине.
+    let flash_readback = if t.has("flash_jedec_id") {
+        Some(EspFlashReadback {
+            jedec_id: t
+                .bytes("flash_jedec_id")?
+                .try_into()
+                .map_err(|_| t.error("RDID ожидает три байта JEDEC"))?,
+            status1: t.number("flash_status1")?,
+            status2: t.opt_number("flash_status2")?,
+        })
+    } else {
+        None
+    };
+    t.source()?;
+    t.finish()?;
+    Ok(FlashProfile {
+        board,
+        partition_table_offset,
+        straps,
+        options: EspBootOptions {
+            systimer_phase,
+            flash_readback,
+        },
+    })
+}
+
+pub(super) struct PowerSchedule {
+    pub states: Vec<(String, Time)>,
+    pub repeat: bool,
+    pub source: Provenance,
+}
+
+pub(super) fn power_schedule(text: &str) -> Result<PowerSchedule, String> {
+    let (mut header, rows) = profile_tables(text)?;
+    let repeat = header.boolean("repeat")?;
+    let source = Provenance::Estimate(header.source()?);
+    header.finish()?;
+    let states = rows
+        .into_iter()
+        .map(|mut t| {
+            if t.kind != "states" {
+                return Err(t.error("ожидается [[states]]"));
+            }
+            let id = t.text("id")?;
+            let duration = Time(t.number("duration_ns")?);
+            if duration == Time::ZERO {
+                return Err(t.error("пустой интервал состояния МК"));
+            }
+            t.finish()?;
+            Ok((id, duration))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if states.is_empty() {
+        return Err("график потребления не содержит состояний МК".into());
+    }
+    Ok(PowerSchedule {
+        states,
+        repeat,
+        source,
+    })
+}
+
+pub(super) struct ExternalBoardSpec {
+    pub name: String,
+    pub catalog: String,
+    pub profile: String,
+    pub image: Option<String>,
+    pub efuse: Option<String>,
+}
+
+pub(super) fn external_board(mut t: Table) -> Result<ExternalBoardSpec, String> {
+    let item = ExternalBoardSpec {
+        name: t.text("name")?,
+        catalog: t.text("catalog")?,
+        profile: t.text("profile")?,
+        image: t.opt_text("image")?,
+        efuse: t.opt_text("efuse")?,
+    };
+    t.source()?;
+    t.finish()?;
+    Ok(item)
+}
+
+pub(super) struct ExternalProfile {
+    pub board: String,
+    pub qemu: String,
+    pub flash_boot: bool,
+    pub psram: Option<super::external_board::Psram>,
+    pub clock: super::external_board::GuestClock,
+    pub seed: u64,
+    pub limits: super::external_board::Limits,
+    pub ports: Vec<String>,
+}
+
+pub(super) fn external_profile(text: &str) -> Result<ExternalProfile, String> {
+    use super::external_board::{
+        BlockCoverage, EXTERNAL_BOARD_PORTS, GuestClock, Limits, Psram, esp32s3_coverage,
+    };
+
+    let mut t = profile_header(text)?;
+    let board = t.text("board")?;
+    let qemu = t.text("qemu")?;
+    // ESP-IDF, руководство ESP32-S3 «Run QEMU», машина esp32s3.
+    if t.text("machine")? != "esp32s3" {
+        return Err(t.error("несовместимая машина внешней платы"));
+    }
+    let flash_boot = match t.text("boot")?.as_str() {
+        "flash" => true,
+        "uart_download" => false,
+        _ => return Err(t.error("неизвестный режим загрузки QEMU")),
+    };
+    let psram = if let Some(mib) = t.opt_number("psram_mib")? {
+        // QEMU Espressif для S3, «Adding PSRAM».
+        if ![2, 4, 8, 16, 32].contains(&mib) {
+            return Err(t.error("неподдержанный объём PSRAM"));
+        }
+        Some(Psram {
+            mib,
+            octal: t.boolean("psram_octal")?,
+        })
+    } else {
+        None
+    };
+    let clock = match t.text("clock")?.as_str() {
+        "icount" => {
+            let shift = t.number("icount_shift")?;
+            // QEMU Espressif, accel/tcg/icount-common.c, MAX_ICOUNT_SHIFT.
+            if shift > 10 {
+                return Err(t.error("icount_shift вне диапазона 0–10"));
+            }
+            GuestClock::InstructionCount { shift }
+        }
+        "diagnostic" => GuestClock::Diagnostic,
+        _ => return Err(t.error("неизвестные часы гостя QEMU")),
+    };
+    let seed = t.number("seed")?;
+    let limits = Limits {
+        wall_time: std::time::Duration::from_millis(t.number("wall_time_ms")?),
+        address_space_bytes: t.number("address_space_bytes")?,
+        uart_bytes: t.number("uart_bytes")?,
+        stderr_bytes: t.number("stderr_bytes")?,
+    };
+    // sys/resource.h Darwin: RLIM_INFINITY = INT64_MAX.
+    if limits.wall_time.is_zero()
+        || limits.address_space_bytes == 0
+        || limits.address_space_bytes >= i64::MAX as u64
+        || limits.uart_bytes == 0
+        || limits.stderr_bytes == 0
+    {
+        return Err(t.error("нужны положительные конечные лимиты QEMU"));
+    }
+    let blocks = t.array("required_blocks", quoted)?;
+    let ports = t.array("required_ports", quoted)?;
+    if blocks.iter().collect::<BTreeSet<_>>().len() != blocks.len()
+        || ports.iter().collect::<BTreeSet<_>>().len() != ports.len()
+    {
+        return Err(t.error("повтор блока или порта QEMU"));
+    }
+    for block in &blocks {
+        if let BlockCoverage::NotAnalyzed { reason } = esp32s3_coverage(block) {
+            return Err(t.error(&format!("несовместимый блок «{block}»: {reason}")));
+        }
+        let compatible = match block.as_str() {
+            "psram_qpi" => psram.is_some_and(|p| !p.octal),
+            "psram_opi" => psram.is_some_and(|p| p.octal),
+            "psram_mmu" => psram.is_some(),
+            _ => true,
+        };
+        if !compatible {
+            return Err(t.error(&format!("блок «{block}» несовместим с настройками PSRAM")));
+        }
+    }
+    for port in &ports {
+        if !EXTERNAL_BOARD_PORTS.contains(&port.as_str()) {
+            return Err(t.error(&format!("порт «{port}» не подключён адаптером QEMU")));
+        }
+    }
+    t.source()?;
+    t.finish()?;
+    Ok(ExternalProfile {
+        board,
+        qemu,
+        flash_boot,
+        psram,
+        clock,
+        seed,
+        limits,
+        ports,
+    })
 }
 
 pub(super) struct BoardWire {
@@ -784,7 +1156,7 @@ pub(super) fn packet(mut t: Table) -> Result<PacketSpec, String> {
     use sim_radio::timed::{Profile, Protocol};
     let kind = t.text("kind")?;
     let profile = match kind.as_str() {
-        "uart" | "scheduled_radio" => None,
+        "uart" | "scheduled_radio" | "esp_now" => None,
         "ble" | "wifi" => Some(Profile {
             protocol: if kind == "ble" {
                 Protocol::Ble {
@@ -812,7 +1184,9 @@ pub(super) fn packet(mut t: Table) -> Result<PacketSpec, String> {
     } else {
         None
     };
-    let scheduled_max_bytes = scheduled_rssi.map(|_| t.number("max_bytes")).transpose()?;
+    let scheduled_max_bytes = (scheduled_rssi.is_some() || kind == "esp_now")
+        .then(|| t.number("max_bytes"))
+        .transpose()?;
     if scheduled_max_bytes == Some(0) {
         return Err(t.error("пакетный канал требует положительный предел размера"));
     }
@@ -835,10 +1209,10 @@ pub(super) fn packet(mut t: Table) -> Result<PacketSpec, String> {
         t.number("capacity")?
     };
     let max_age_ns = t.number("max_age_ns")?;
-    let slots_asset = if kind == "scheduled_radio" {
-        t.opt_text("slots_asset")?
-    } else {
-        None
+    let slots_asset = match kind.as_str() {
+        "scheduled_radio" => t.opt_text("slots_asset")?,
+        "esp_now" => Some(t.text("profile_asset")?),
+        _ => None,
     };
     // Календарь задаёт моменты доставки. Постоянная задержка задаёт другой режим канала.
     let delay_ns = if profile.is_none() && slots_asset.is_none() {
@@ -849,7 +1223,7 @@ pub(super) fn packet(mut t: Table) -> Result<PacketSpec, String> {
     // Внешний приёмник принимает пакеты через журнал доставки штатного канала.
     let to_host = t.has("to_host") && t.boolean("to_host")?;
     if capacity == 0
-        || (to_host && (to.is_some() || profile.is_none()))
+        || (to_host && (to.is_some() || (profile.is_none() && kind != "esp_now")))
         || (from.is_none() && to.is_none() && !to_host)
     {
         return Err(t.error("у канала нет ни одного подключённого порта"));
@@ -878,13 +1252,122 @@ pub(super) struct DeliverySlot {
     pub delivers_at: Time,
 }
 
+#[derive(Clone)]
+pub(super) struct EspNowPacketProfile {
+    pub sender: EspNowProfile,
+    pub peer: EspNowPeer,
+    pub link: EspNowLink,
+    pub confirmation: EspNowConfirmation,
+    pub reply: Option<sim_radio::timed::Profile>,
+}
+
+fn esp_now_version(t: &Table, version: u32) -> Result<EspNowVersion, String> {
+    match version {
+        // ESP-IDF v6.1.1, esp_now.rst, Frame Format.
+        1 => Ok(EspNowVersion::V1),
+        2 => Ok(EspNowVersion::V2),
+        _ => Err(t.error("версия ESP-NOW вне диапазона")),
+    }
+}
+
+fn esp_now_packet_profile(text: &str) -> Result<EspNowPacketProfile, String> {
+    let mut t = profile_header(text)?;
+    if t.text("kind")? != "esp_now" {
+        return Err(t.error("ожидается профиль ESP-NOW"));
+    }
+    let version = t.number("sender_version")?;
+    let sender = EspNowProfile {
+        version: esp_now_version(&t, version)?,
+        wifi_channel: t.number("wifi_channel")?,
+        station_enabled: t.boolean("station_enabled")?,
+        soft_ap_enabled: t.boolean("soft_ap_enabled")?,
+        queue_capacity: Some(t.number("queue_capacity")?),
+        attempt_ns: Some(t.number("attempt_ns")?),
+        mac_attempts: t.opt_number("mac_attempts")?,
+    };
+    if sender.queue_capacity == Some(0)
+        || sender.attempt_ns == Some(0)
+        || sender.mac_attempts == Some(0)
+    {
+        return Err(t.error("очередь, длительность и лимит попыток должны быть положительными"));
+    }
+    let address = t
+        .bytes("destination")?
+        .try_into()
+        .map_err(|_| t.error("ожидается MAC-адрес из шести октетов"))?;
+    let peer = EspNowPeer {
+        address,
+        interface: match t.text("interface")?.as_str() {
+            "station" => EspNowInterface::Station,
+            "soft_ap" => EspNowInterface::SoftAp,
+            _ => return Err(t.error("неизвестный интерфейс ESP-NOW")),
+        },
+        channel: t.number("peer_channel")?,
+        encrypted: t.boolean("encrypted")?,
+    };
+    let version = t.opt_number("receiver_version")?;
+    let link = EspNowLink {
+        frame: AttemptLink {
+            loss: t.finite("loss")?,
+            rssi_dbm: t.number("rssi_dbm")?,
+        },
+        receiver_channel: t.opt_number("receiver_channel")?,
+        receiver_version: version.map(|v| esp_now_version(&t, v)).transpose()?,
+        mac_ack_loss: t.opt_finite("mac_ack_loss")?,
+    };
+    // ESP-IDF, Send ESP-NOW Data: ответ приложения передаётся отдельно от MAC ACK.
+    let confirmation = match t.text("confirmation")?.as_str() {
+        "driver" => EspNowConfirmation::Driver,
+        "application" => EspNowConfirmation::Application {
+            timeout_ns: Some(t.number("timeout_ns")?),
+            transmissions: Some(t.number("transmissions")?),
+        },
+        _ => return Err(t.error("неизвестный тип подтверждения ESP-NOW")),
+    };
+    let reply = if matches!(confirmation, EspNowConfirmation::Application { .. })
+        && t.has("reply_attempt_ns")
+    {
+        let attempt_ns = t.number("reply_attempt_ns")?;
+        let loss = t.finite("reply_loss")?;
+        if attempt_ns == 0 || !(0.0..=1.0).contains(&loss) {
+            return Err(t.error("некорректные длительность и потери ответа приложения"));
+        }
+        Some(sim_radio::timed::Profile {
+            protocol: sim_radio::timed::Protocol::Wifi { attempt_ns },
+            loss,
+            rssi_dbm: t.number("reply_rssi_dbm")?,
+            // Один прикладной ответ на вызов ACK. Нагрузка адаптера
+            // содержит сквозной u64; реальный формат задаёт приложение.
+            attempts: 1,
+            capacity: sender.queue_capacity.expect("обязательное поле профиля"),
+            max_bytes: size_of::<u64>(),
+        })
+    } else {
+        None
+    };
+    if !(0.0..=1.0).contains(&link.frame.loss)
+        || link.mac_ack_loss.is_some_and(|v| !(0.0..=1.0).contains(&v))
+    {
+        return Err(t.error("вероятность потери вне диапазона 0…1"));
+    }
+    t.source()?;
+    t.finish()?;
+    Ok(EspNowPacketProfile {
+        sender,
+        peer,
+        link,
+        confirmation,
+        reply,
+    })
+}
+
 /// Для каждого слота заданы последние допустимые наносекунды готовности и
 /// момент доставки. Обе колонки строго возрастают, готовность включительна.
-pub(super) fn delivery_slots(bytes: &[u8]) -> Result<Vec<DeliverySlot>, String> {
+pub(super) fn delivery_slots(bytes: &[u8]) -> Result<super::board::PacketPlan, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| e.to_string())?;
     let mut lines = text.lines();
     if lines.next() != Some("accepts_through_ns,delivers_at_ns") {
-        return Err("неверный заголовок календаря доставки".into());
+        return esp_now_packet_profile(text).map(super::board::PacketPlan::esp_now);
     }
     let mut slots = Vec::<DeliverySlot>::new();
     for (i, line) in lines.enumerate() {
@@ -910,7 +1393,7 @@ pub(super) fn delivery_slots(bytes: &[u8]) -> Result<Vec<DeliverySlot>, String> 
     if slots.is_empty() {
         return Err("пустой календарь доставки".into());
     }
-    Ok(slots)
+    Ok(super::board::PacketPlan::Calendar(slots.into()))
 }
 
 pub(super) fn transmission(mut t: Table) -> Result<(Time, String, Vec<u8>), String> {

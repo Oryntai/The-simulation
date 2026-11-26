@@ -55,6 +55,11 @@ impl Region {
         Some(read_value(&self.data[offset..end], size))
     }
 
+    pub(crate) fn initialized_byte(&self, addr: u32) -> Option<u8> {
+        let offset = self.offset(addr, 1)?;
+        self.initialized[offset].then_some(self.data[offset])
+    }
+
     pub(crate) fn write(&mut self, addr: u32, size: u8, value: u32) -> Option<()> {
         let offset = self.offset(addr, size.into())?;
         let end = offset + usize::from(size);
@@ -73,6 +78,16 @@ pub(crate) struct Bus {
 }
 
 impl Bus {
+    pub(crate) fn new_esp_flash(memory: EspMemory) -> Self {
+        let id = BoardId::Esp32C3;
+        Self {
+            hw: Hardware::new(id),
+            id,
+            esp_memory: Some(memory),
+            regions: Vec::new(),
+        }
+    }
+
     pub fn new(id: BoardId, image: &Image) -> Result<Self, BoardFault> {
         use BoardId::*;
         // RP2040 §2.2 / Pico flash; RM0008 §3 / DS5319; 7810D §7.
@@ -123,6 +138,11 @@ impl Bus {
     }
 
     pub fn fetch(&self, pc: u32, size: u8) -> Result<u32, BoardFault> {
+        if let Some(flash) = &self.hw.esp_boot
+            && let Some(value) = flash.flash.fetch(pc, size)?
+        {
+            return Ok(value);
+        }
         if let Some(memory) = &self.esp_memory
             && !self.regions.iter().any(|r| r.contains(pc, 1))
         {
@@ -156,9 +176,19 @@ impl Bus {
         size: u8,
         value: Option<u32>,
     ) -> Result<u32, BoardFault> {
-        check_data_alignment(pc, addr, size)?;
+        if self.hw.esp_boot.is_none() || !crate::esp_memory::supports_unaligned_dram(addr, size) {
+            check_data_alignment(pc, addr, size)?;
+        }
+        if let Some(boot) = &mut self.hw.esp_boot
+            && let Some(result) =
+                boot.flash
+                    .access_with_profile(pc, addr, size, value, &mut boot.reset_values)?
+        {
+            return Ok(result);
+        }
+        let profile = self.hw.esp_boot.as_mut().map(|boot| &mut boot.reset_values);
         if let Some(memory) = &mut self.esp_memory
-            && let Some(result) = memory.access(pc, addr, size, value)?
+            && let Some(result) = memory.access_with_profile(pc, addr, size, value, profile)?
         {
             return Ok(result);
         }

@@ -1,0 +1,18 @@
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["стык"]
+
+[components."площадка"]
+part = "t5-pad"
+nets = { p = "стык" }
+
+[components."вывод"]
+part = "t5-lead"
+nets = { p = "стык" }
+
+[connections."стык-т5-эталон"]
+kind = "solder"
+ends = ["площадка/p", "вывод/p"]
+resistance_ohm = { measurement = "Четырёхпроводный замер на контрольной серии bench-t5-r1" }
+current_limit_a = { measurement = "Замер допустимого тока на контрольной серии bench-t5-r1" }

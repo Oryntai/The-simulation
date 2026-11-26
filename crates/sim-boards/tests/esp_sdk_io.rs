@@ -236,6 +236,17 @@ fn spi_probe(mode: SpiMode, valid_cs: bool, dma: bool) -> (Probe, u32) {
     p.put(SPI + 0x3c, 0); // spi_ll_clear_int_stat.
     p.expect(SPI + 0x40, 0);
     if dma {
+        // system_reg.h DMA_CLK_EN/DMA_RST; gdma_reg.h DMA_INT_ENA_CH0.
+        const GDMA_IRQ_ENA: u32 = 0x6003_f008;
+        const SYS1_RESET: u32 = 0x1fe;
+        p.expect(SYSTEM + 0x1c, SYS1_RESET);
+        p.put(SYSTEM + 0x14, 1 << 6);
+        p.put(SYSTEM + 0x1c, SYS1_RESET & !(1 << 6));
+        p.put(GDMA_IRQ_ENA, 1 << 1); // DMA_IN_SUC_EOF_INT_ENA.
+        p.expect(GDMA_IRQ_ENA, 1 << 1);
+        p.put(SYSTEM + 0x1c, SYS1_RESET);
+        p.expect(GDMA_IRQ_ENA, 0);
+        p.put(SYSTEM + 0x1c, SYS1_RESET & !(1 << 6));
         p.put(SPI + 0x30, (1 << 28) | (1 << 27));
     }
     p.put(SPI, 1 << 23); // CMD.UPDATE.

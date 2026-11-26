@@ -1,6 +1,8 @@
 //! Цифровая часть RTC_CNTL ESP32-C3. TRM v1.4, §§6.1, 9.3, 9.7 и 12.2.
 
-use super::{Access, Hardware};
+use super::{Access, Hardware, esp_regi2c::EspRegi2c};
+use crate::esp_clock::EspClockSource;
+use crate::esp_reset_profile::EspResetValues;
 use crate::{BoardFault, BoardOutput, OutputEvent, ResetCause};
 
 // TRM §9.7; ESP-IDF v6.1.1, soc/esp32c3/register/soc/{reg_base,rtc_cntl_reg}.h.
@@ -38,9 +40,13 @@ const STORE4: u32 = 0xb8;
 const STORE7: u32 = 0xc4;
 const RTC_PAD_HOLD: u32 = 0xd0;
 const DIG_PAD_HOLD: u32 = 0xd4;
+const BROWN_OUT: u32 = 0xd8;
 const INT_ENA_SET: u32 = 0x100;
 const INT_ENA_CLEAR: u32 = 0x104;
 const FIB_SEL: u32 = 0x10c;
+// ESP-IDF rtc_cntl_reg.h, RTC_CNTL_SENSOR_CTRL_REG; reset обоих полей 0.
+const SENSOR_CTRL: u32 = 0x11c;
+const SENSOR_CTRL_RW: u32 = 0x1f << 27;
 
 const WORD: u8 = size_of::<u32>() as u8;
 
@@ -50,6 +56,9 @@ const SW_CORE_RESET: u32 = 1 << 31;
 const SW_CPU_RESET: u32 = 1 << 5;
 const OPTIONS_RW: u32 = (0x7ff << 20) | (0x0fff << 6) | (0b11 << 2);
 const OPTIONS_RESET: u32 = (0b111 << 26) | (2 << 14) | (1 << 13);
+// rtc_cntl_reg.h:101–118, clk_tree_ll.h:69–84. Отключение BBPLL и её REGI2C.
+const BBPLL_FORCE_PD: u32 = 1 << 10;
+const BBPLL_I2C_FORCE_PD: u32 = 1 << 8;
 const RESET_CAUSE_MASK: u32 = 0x3f;
 const STATIC_VECTOR: u32 = 1 << 13;
 const RESET_FLAG: u32 = 1 << 14;
@@ -60,6 +69,7 @@ const TIME_MASK: u64 = (1 << 48) - 1;
 
 // TRM регистры 9.14–9.17, 9.31–9.39; rtc_cntl_reg.h для CHIP_RESET_EN.
 const WDT_INT: u32 = 1 << 3;
+const BROWN_OUT_INT: u32 = 1 << 9; // rtc_cntl_reg.h: BROWN_OUT_INT_{ENA,RAW,ST,CLR}.
 const WDT_ENABLE: u32 = 1 << 31;
 const FLASHBOOT_ENABLE: u32 = 1 << 12;
 const PROCPU_RESET_EN: u32 = 1 << 11;
@@ -104,7 +114,7 @@ const WAKEUP_STATE_MASK: u32 = 0x1ffff << 15;
 const WAKEUP_STATE_RESET: u32 = 12 << 15;
 
 // TRM §6.2.3, табл. 9.3-1 и даташит v2.5 §4.1.3.3: номинал RC_SLOW_CLK.
-const RC_SLOW_HZ: u32 = 136_000;
+pub(super) const RC_SLOW_HZ: u32 = 136_000;
 // TRM регистр 9.25 и поля CLK_CONF в rtc_cntl_reg.h ESP-IDF.
 const SLOW_SOURCE: u32 = 0b11 << 30;
 const CLK_CONF_RW: u32 = (u32::MAX << 12) | (0x3ff << 1);
@@ -119,6 +129,11 @@ const ANA_CONF_RESET: u32 = (1 << 23) | (1 << 22) | (1 << 18);
 const RTC_PAD_MASK: u32 = (1 << 6) - 1;
 const DIG_PAD_MASK: u32 = (1 << 22) - 1;
 const FIB_SEL_MASK: u32 = 0b111;
+// TRM §9.3.4.3 и rtc_cntl_reg.h: BROWN_OUT_{ENA,RST_WAIT,INT_WAIT}
+// после сброса равны 1, 0x3ff и 1. DET=0 в режиме штатного питания.
+const BROWN_OUT_RESET: u32 = (1 << 30) | (0x3ff << 16) | (1 << 4);
+const BROWN_OUT_RW: u32 = (1 << 30) | (((1 << 25) - 1) << 4); // ENA и [28:4].
+const BROWN_OUT_CNT_CLR: u32 = 1 << 29; // WO, brownout_ll_clear_count.
 
 /// Причина из RTC_CNTL_RESET_CAUSE_PROCPU. TRM табл. 6.1-1 и
 /// ESP-IDF soc/esp32c3/include/soc/reset_reasons.h.
@@ -288,9 +303,11 @@ impl Watchdog {
 #[derive(Clone)]
 pub struct EspRtc {
     options: u32,
+    regi2c: EspRegi2c,
     clk_conf: u32,
     slow_clk_conf: u32,
     ana_conf: u32,
+    sensor_ctrl: u32,
     power_timers: [u32; POWER_TIMERS.len()],
     wakeup_state: u32,
     regulator: u32,
@@ -300,6 +317,7 @@ pub struct EspRtc {
     rtc_pad_hold: u32,
     dig_pad_hold: u32,
     fib_sel: u32,
+    brownout_cfg: u32,
     store: [u32; 8], // TRM §9.3, STORE0–STORE7.
     reason: Option<EspRtcReset>,
     pending_reset: Option<EspRtcReset>,
@@ -319,9 +337,11 @@ impl Default for EspRtc {
     fn default() -> Self {
         Self {
             options: OPTIONS_RESET,
+            regi2c: EspRegi2c::default(),
             clk_conf: CLK_CONF_RESET,
             slow_clk_conf: SLOW_CLK_CONF_RESET,
             ana_conf: ANA_CONF_RESET,
+            sensor_ctrl: 0,
             power_timers: POWER_TIMERS.map(|(_, reset)| reset),
             wakeup_state: WAKEUP_STATE_RESET,
             regulator: REGULATOR_RESET,
@@ -331,6 +351,7 @@ impl Default for EspRtc {
             rtc_pad_hold: 0,
             dig_pad_hold: 0,
             fib_sel: FIB_SEL_MASK,
+            brownout_cfg: BROWN_OUT_RESET,
             store: [0; 8],
             reason: Some(EspRtcReset::PowerOn),
             pending_reset: None,
@@ -398,6 +419,29 @@ impl EspRtc {
         self.int_raw & self.int_enable != 0
     }
 
+    pub(super) fn check_pll_selection(&self, hz: u32) -> Result<(), BoardFault> {
+        if !self.bbpll_powered() {
+            return Err(unsupported("питание BBPLL или её интерфейса отключено"));
+        }
+        self.regi2c.check_pll_selection(hz)
+    }
+
+    fn bbpll_powered(&self) -> bool {
+        self.options & (BBPLL_FORCE_PD | BBPLL_I2C_FORCE_PD) == 0
+    }
+
+    fn regi2c_access(
+        &mut self,
+        pc: u32,
+        addr: u32,
+        size: u8,
+        value: Option<u32>,
+        resets: &mut EspResetValues,
+    ) -> Access {
+        let powered = self.bbpll_powered();
+        self.regi2c.access(pc, addr, size, value, powered, resets)
+    }
+
     pub fn domains(&self) -> EspRtcDomains {
         // RTC_CNTL_DIG_PWC_REG: FORCE_PD для CPU_TOP, DG_WRAP, DG_PERI, WIFI и BT.
         let powered = |force_pd: u32| (self.dig_power & (1 << force_pd)) == 0;
@@ -443,6 +487,11 @@ impl EspRtc {
         size: u8,
         value: Option<u32>,
     ) -> Result<Option<u32>, BoardFault> {
+        if let Some(result) =
+            self.regi2c_access(pc, addr, size, value, &mut EspResetValues::default())?
+        {
+            return Ok(Some(result));
+        }
         if !(BASE..BASE + DATE + u32::from(WORD)).contains(&addr) {
             return Ok(None);
         }
@@ -497,6 +546,7 @@ impl EspRtc {
                 rw(&mut self.store[index as usize], u32::MAX, value)
             }
             ANA_CONF => rw(&mut self.ana_conf, ANA_CONF_RW, value),
+            SENSOR_CTRL => rw(&mut self.sensor_ctrl, SENSOR_CTRL_RW, value),
             CLK_CONF => {
                 if value.is_some_and(|word| word & SLOW_SOURCE == SLOW_SOURCE) {
                     return Err(unsupported("зарезервированный источник RTC_SLOW_CLK"));
@@ -548,6 +598,18 @@ impl EspRtc {
             }
             SWD_WPROTECT => rw(&mut self.swd_key, u32::MAX, value),
             FIB_SEL => rw(&mut self.fib_sel, FIB_SEL_MASK, value),
+            BROWN_OUT => {
+                // brownout_ll.h: независимая установка задержек, IRQ и сброса.
+                // При активном исполнении питание штатное; BoardInput::Brownout
+                // моделирует внешний обрыв питания до следующего такта.
+                // CNT_CLR очищает уже нулевой счётчик в этом режиме.
+                if value.is_some_and(|word| word & !(BROWN_OUT_RW | BROWN_OUT_CNT_CLR) != 0) {
+                    return Err(unsupported(
+                        "запись зарезервированных или RO битов BROWN_OUT",
+                    ));
+                }
+                rw(&mut self.brownout_cfg, BROWN_OUT_RW, value)
+            }
             _ => return Ok(None),
         };
         Ok(Some(result))
@@ -561,6 +623,9 @@ impl EspRtc {
             self.pending_reset = Some(EspRtcReset::SoftwareCore);
         } else if word & SW_CPU_RESET != 0 {
             self.pending_reset = Some(EspRtcReset::SoftwareCpu);
+        }
+        if word & (BBPLL_FORCE_PD | BBPLL_I2C_FORCE_PD) != 0 {
+            self.regi2c.power_down(word & BBPLL_I2C_FORCE_PD != 0);
         }
         Ok(rw(&mut self.options, OPTIONS_RW, value))
     }
@@ -595,8 +660,8 @@ impl EspRtc {
                 0
             });
         };
-        if matches!(offset, INT_ENA | INT_ENA_SET) && word & !WDT_INT != 0 {
-            return Err(unsupported("источник прерывания RTC кроме RWDT"));
+        if matches!(offset, INT_ENA | INT_ENA_SET) && word & !(WDT_INT | BROWN_OUT_INT) != 0 {
+            return Err(unsupported("неподдержанный источник прерывания RTC"));
         }
         match offset {
             INT_ENA => self.int_enable = word,
@@ -646,7 +711,18 @@ impl EspRtc {
         Ok(0)
     }
 
-    fn board_access(&mut self, addr: u32, size: u8, value: Option<u32>) -> Access {
+    fn board_access(
+        &mut self,
+        raw: Option<(u32, &mut EspResetValues)>,
+        addr: u32,
+        size: u8,
+        value: Option<u32>,
+    ) -> Access {
+        if let Some((pc, resets)) = raw
+            && let Some(word) = self.regi2c_access(pc, addr, size, value, resets)?
+        {
+            return Ok(Some(word));
+        }
         let Some(offset) = addr.checked_sub(BASE) else {
             return Ok(None);
         };
@@ -701,10 +777,41 @@ fn unsupported(detail: &str) -> BoardFault {
 }
 
 impl Hardware {
-    pub(super) fn rtc_access(&mut self, addr: u32, size: u8, value: Option<u32>) -> Access {
-        self.rtc
+    pub(super) fn request_mwdt_reset(&mut self, group: usize, action: super::esp_timg::MwdtReset) {
+        use super::esp_timg::MwdtReset;
+        let rtc = self
+            .rtc
             .as_mut()
-            .map_or(Ok(None), |rtc| rtc.board_access(addr, size, value))
+            .expect("RTC установлен вместе с raw flash");
+        rtc.pending_reset = Some(match (group, action) {
+            (_, MwdtReset::Cpu) => EspRtcReset::WatchdogCpu,
+            (0, MwdtReset::Core) => EspRtcReset::MainWatchdog0,
+            (_, MwdtReset::Core) => EspRtcReset::MainWatchdog1,
+        });
+        self.reset_requested = true;
+        self.nvic.watchdog_reset = true;
+    }
+
+    pub(super) fn rtc_access(&mut self, addr: u32, size: u8, value: Option<u32>) -> Access {
+        let Some(rtc) = self.rtc.as_mut() else {
+            return Ok(None);
+        };
+        if let Some(boot) = self.esp_boot.as_mut() {
+            let raw = Some((boot.pc, &mut boot.reset_values));
+            if let Some(word) = value
+                && (addr == BASE + OPTIONS || EspRegi2c::may_change_pll(addr, word))
+                && boot.system.clocks().source() == EspClockSource::Pll
+            {
+                // CPU уже использует PLL. Проверяем настройку до изменения RTC.
+                let mut next = rtc.as_ref().clone();
+                let result = next.board_access(raw, addr, size, value)?;
+                next.check_pll_selection(boot.system.clocks().pll_selected_hz())?;
+                **rtc = next;
+                return Ok(result);
+            }
+            return rtc.board_access(raw, addr, size, value);
+        }
+        rtc.board_access(None, addr, size, value)
     }
 
     pub(super) fn tick_rtc(&mut self, passed: u64) {

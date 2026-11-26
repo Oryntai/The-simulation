@@ -1,0 +1,209 @@
+# Реестр исходных открытых строк из ARCHITECTURE.md §7.7 и stage6/acceptance.toml.
+# key — полный RunKey исходной кампании на штатной выборке и сетке.
+# replacement — ссылка на постановку. Для её выбора взять mode из постановки,
+# path и faults из key. Путь к миру и задаче считается от этого файла.
+# Отдельная постановка подтверждает достижимость эффекта при живом наблюдении.
+# Сочетание исходного режима и отказа остаётся открытым. В отказном опыте
+# требуются полный горизонт, живой обмен до отказа и фактическое применение на
+# заданной цели. Для транспорта дополнительно нужен наблюдаемый исход сообщения.
+# Поле effect уточняет исход при задержке, превышающей срок приёма сообщения.
+version = 1
+baseline = "../stage6.toml"
+
+[placements."01"]
+world = "../01-elbow-assist/closed-world.toml"
+task = "../01-elbow-assist/tasks/depth-open.toml"
+mode = "hold_relaxed"
+
+[placements."04"]
+world = "../04-wall-switch/world.toml"
+task = "../04-wall-switch/tasks/depth-open.toml"
+mode = "нажатие"
+
+[placements."05"]
+world = "../05-camera-tracker/stage6-world.toml"
+task = "../05-camera-tracker/tasks/depth-open.toml"
+mode = "слежение"
+
+[placements."07"]
+world = "../07-balance-cart/stage6-world.toml"
+task = "../07-balance-cart/tasks/depth-open.toml"
+mode = "удержание"
+
+[[rows]]
+key = { station = "01/control", mode = "radio", path = "драйвер", faults = [{ node = "channel:ответ", kind = "packet_delay" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../01-elbow-assist/tasks/radio-wiring.toml"
+reason = "С 1 с ответы отключены. Добавленная в то же время задержка на отключённом маршруте не наблюдается."
+replacement = "01"
+effect = "packet_expired"
+
+[[rows]]
+key = { station = "01/control", mode = "radio", path = "драйвер", faults = [{ node = "channel:радио", kind = "packet_delay" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../01-elbow-assist/tasks/radio-wiring.toml"
+reason = "С 1 с входящие команды отключены. Добавленная в то же время задержка на отключённом маршруте не наблюдается."
+replacement = "01"
+effect = "packet_expired"
+
+[[rows]]
+key = { station = "01/control", mode = "open", path = "драйвер", faults = [{ node = "channel:радио", kind = "packet_loss" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../01-elbow-assist/tasks/open-wiring.toml"
+reason = "Входящий маршрут отключён с нуля. Повторное выключение в 1 с не создаёт перехода."
+replacement = "01"
+
+[[rows]]
+key = { station = "01/control", mode = "open", path = "драйвер", faults = [{ node = "channel:радио", kind = "packet_delay" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../01-elbow-assist/tasks/open-wiring.toml"
+reason = "Входящий маршрут отключён с нуля. При потере всех пакетов задержку измерить нельзя."
+replacement = "01"
+effect = "packet_expired"
+
+[[rows]]
+key = { station = "04/control", mode = "разомкнутый", path = "мост", faults = [{ node = "board:плата", kind = "controller_halted" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../04-wall-switch/tasks/open.toml"
+reason = "Плата остановлена с нуля. В 145 мс повторный останов не создаёт перехода."
+replacement = "04"
+
+[[rows]]
+key = { station = "04/process", mode = "неизвестная пара", path = "неизвестная пара", faults = [], sample = { kind = "nominal" }, grid = "profile" }
+classification = "installation_rejected"
+outcome = "not_analyzed"
+source = "../04-wall-switch/stage4/unknown.toml"
+reason = "Для контакта клавиши со штоком нет объявленной пары материалов. Ожидается отказ установки, поэтому строка не учитывается как физический прогон."
+
+[[rows]]
+key = { station = "05/control", mode = "разомкнутый", path = "привод", faults = [{ node = "transport:зрение/request", kind = "packet_loss" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../05-camera-tracker/tasks/open.toml"
+reason = "Запросы отключены с нуля. Отказ в 150 мс не создаёт нового перехода, задержку отключённого маршрута измерить нельзя."
+replacement = "05"
+
+[[rows]]
+key = { station = "05/control", mode = "разомкнутый", path = "привод", faults = [{ node = "transport:зрение/request", kind = "packet_delay" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../05-camera-tracker/tasks/open.toml"
+reason = "Запросы отключены с нуля. Отказ в 150 мс не создаёт нового перехода, задержку отключённого маршрута измерить нельзя."
+replacement = "05"
+
+[[rows]]
+key = { station = "05/control", mode = "разомкнутый", path = "привод", faults = [{ node = "transport:зрение/response", kind = "packet_loss" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../05-camera-tracker/tasks/open.toml"
+reason = "В режиме с отключёнными запросами контроллер не получает сообщений и не формирует ответов. Нужен отдельный опыт с живым запросом."
+replacement = "05"
+
+[[rows]]
+key = { station = "05/control", mode = "разомкнутый", path = "привод", faults = [{ node = "transport:зрение/response", kind = "packet_delay" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../05-camera-tracker/tasks/open.toml"
+reason = "В режиме с отключёнными запросами контроллер не получает сообщений и не формирует ответов. Нужен отдельный опыт с живым запросом."
+replacement = "05"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост левое", faults = [{ node = "controller:регулятор", kind = "controller_halted" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля. В 300 мс повторный останов не создаёт перехода."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост левое", faults = [{ node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост левое", faults = [{ node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост левое", faults = [{ node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост левое", faults = [{ node = "sensor:тележка/иму/x", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост левое", faults = [{ node = "sensor:тележка/иму/z", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост правое", faults = [{ node = "controller:регулятор", kind = "controller_halted" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "conflicting_fault"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля. В 300 мс повторный останов не создаёт перехода."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост правое", faults = [{ node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост правое", faults = [{ node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост правое", faults = [{ node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост правое", faults = [{ node = "sensor:тележка/иму/x", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"
+
+[[rows]]
+key = { station = "07/control", mode = "разомкнутый", path = "мост правое", faults = [{ node = "sensor:тележка/иму/z", kind = "sensor_unavailable" }], sample = { kind = "nominal" }, grid = "profile" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "../07-balance-cart/tasks/open.toml"
+reason = "Регулятор остановлен с нуля и не читает вход в 300 мс. Нужна потеря этого входа при работающем регуляторе."
+replacement = "07"

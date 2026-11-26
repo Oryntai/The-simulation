@@ -31,6 +31,18 @@ qemu-system-riscv32 -M esp32c3 -nographic -monitor none -serial stdio -nic none 
 
 Для Blink добавляется `-trace enable=memory_region_ops_write,file=mmio.log`. Канал stdin остаётся открытым и пустым. `-icount shift=3,sleep=off` даёт виртуальную шкалу 8 нс на инструкцию и прыжок к следующему таймеру при простое. Лимиты времени хоста останавливают процесс при ошибке. [Параметры `icount` QEMU](https://www.qemu.org/docs/master/system/invocation.html#hxtool-15).
 
+## Сверка холодной загрузки BoardSim
+
+Для тестов `esp_sdk_boot` соберите `hello_world` во временном каталоге и оставьте объединённый `flash.bin`. В приведённой команде QEMU замените параметры экрана, монитора и UART на `-display none -monitor stdio -serial file:uart.txt -S`. Добавьте `-accel tcg,one-insn-per-tb=on -d in_asm,exec,nochain -D qemu.log -trace 'enable=memory_region_ops_*'`. До `cont` сохраните снимок eFuse командой монитора `pmemsave 0x6000882c 336 "readback.bin"`. QEMU завершится по сбросу из приложения.
+
+Передайте абсолютные пути к входам через `SIM_ESP_BOOT_FLASH` (сырой flash), `SIM_ESP_BOOT_ROM` (полный `esp32c3-rom.bin` rev. 3), `SIM_ESP_BOOT_READBACK`, `SIM_ESP_BOOT_QEMU_UART`, `SIM_ESP_BOOT_QEMU_PC` и `SIM_ESP_BOOT_QEMU_MMIO` (последние две указывают на `qemu.log`). `SIM_ESP_BOOT_PC_APP_MAIN` задаётся шестнадцатеричным адресом символа `app_main` из `riscv32-esp-elf-nm -n build/hello_world.elf`.
+
+```sh
+cargo test --offline -p sim-boards --test esp_sdk_boot -- --ignored --nocapture
+```
+
+Тесты запускают строгую загрузку и загрузку с [профилем QEMU](reference/esp32c3-qemu-reset.toml). Вторая печатает поля, источники, число подстановок и адреса отдельных слов памяти, к которым они потребовались. Нулевой образ SRAM1 и RTC FAST сверялся командами `pmemsave 0x3fc80000 393216 "sram1.bin"` и `pmemsave 0x50000000 8192 "rtcfast.bin"` до первой инструкции гостя. Виртуальный RNG использует FNV-1a исходных байтов flash как зерно. Загрузка с этим профилем относится к цифровой модели.
+
 ## Содержимое и границы трасс
 
 - `hello_world.trace` — 64 строки, 2908 байт. UART0 от холодного старта до `Restarting now.` и выхода QEMU по запросу сброса. Метки SDK для загрузчика, загрузки приложения и вызова `app_main` составили 0, 17 и 28 мс. Единицы меток заданы в `components/log/src/log_timestamp_common.c` и `components/log/src/os/log_timestamp.c`. У строк `printf` приложения собственных меток нет. В отрицательном опыте меняется бит первой сигнатуры раздела из `flasher_args.json`. QEMU сообщает `Failed to verify partition table`, а вызов `app_main` отсутствует.

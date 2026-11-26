@@ -4,18 +4,19 @@ use std::{mem::size_of, ops::Range, sync::Arc};
 
 use crate::{
     BoardFault,
+    esp_reset_profile::EspResetValues,
     memory::{Region, check_data_alignment, read_value},
 };
 
 // TRM v1.4 §3.3.2, табл. 3.3-1 и рисунок 3.2-1.
 // Ёмкости также приведены в даташите v2.5 §4.1.2.1 «Internal Memory».
-const IROM: Range<u32> = 0x4000_0000..0x4006_0000;
+pub(crate) const IROM: Range<u32> = 0x4000_0000..0x4006_0000;
 const ROM1_IBUS: u32 = 0x4004_0000;
-const ROM1_DBUS: Range<u32> = 0x3ff0_0000..0x3ff2_0000;
-const IRAM: Range<u32> = 0x4037_c000..0x403e_0000;
-const SRAM1_IBUS: u32 = 0x4038_0000;
-const SRAM1_DBUS: Range<u32> = 0x3fc8_0000..0x3fce_0000;
-const RTC_FAST: Range<u32> = 0x5000_0000..0x5000_2000;
+pub(crate) const ROM1_DBUS: Range<u32> = 0x3ff0_0000..0x3ff2_0000;
+pub(crate) const IRAM: Range<u32> = 0x4037_c000..0x403e_0000;
+pub(crate) const SRAM1_IBUS: u32 = 0x4038_0000;
+pub(crate) const SRAM1_DBUS: Range<u32> = 0x3fc8_0000..0x3fce_0000;
+pub(crate) const RTC_FAST: Range<u32> = 0x5000_0000..0x5000_2000;
 
 // ESP-IDF components/soc/esp32c3/register/soc/reg_base.h, DR_REG_EFUSE_BASE,
 // и ld/esp32c3.peripherals.ld, символ EFUSE. Окно 0x6000_8800 подтверждает
@@ -34,6 +35,28 @@ const EFUSE_KEY1: u32 = EFUSE.start + 0xbc;
 const EFUSE_CMD: u32 = EFUSE.start + 0x1d4;
 const EFUSE_PGM_CMD: u32 = 1 << 1;
 const WORD: u8 = size_of::<u32>() as u8;
+const SRAM1_COLD_WORD: &str = "SRAM1_COLD_WORD";
+const RTC_FAST_COLD_WORD: &str = "RTC_FAST_COLD_WORD";
+const SRAM1_COLD_FILL: &str = "SRAM1_COLD_FILL";
+const RTC_FAST_COLD_FILL: &str = "RTC_FAST_COLD_FILL";
+
+pub(crate) fn supports_reset_value(addr: u32, field: &str) -> bool {
+    addr.is_multiple_of(u32::from(WORD))
+        && ((field == SRAM1_COLD_WORD && SRAM1_DBUS.contains(&addr))
+            || (field == RTC_FAST_COLD_WORD && RTC_FAST.contains(&addr))
+            || (field == SRAM1_COLD_FILL && addr == SRAM1_DBUS.start)
+            || (field == RTC_FAST_COLD_FILL && addr == RTC_FAST.start))
+}
+
+/// Доступы к упакованным данным через DBUS SRAM1.
+/// TRM §3.3.1–3.3.2 и рег. 1.10. ESP-IDF bootloader_common.c читает
+/// поле min_chip_rev_full структуры esp_image_header_t командой LHU
+/// по нечётному адресу. Путь подтверждён трассой QEMU Espressif.
+pub(crate) fn supports_unaligned_dram(addr: u32, size: u8) -> bool {
+    matches!(size, 2 | WORD)
+        && SRAM1_DBUS.contains(&addr)
+        && SRAM1_DBUS.end - addr >= u32::from(size)
+}
 
 // TRM §3.3.5.1, табл. 3.3-3 и регистр 5.8 GPIO_STRAP_REG.
 const GPIO_STRAP: u32 = 0x6000_4000 + 0x38;
@@ -181,6 +204,17 @@ impl EspMemory {
         size: u8,
         value: Option<u32>,
     ) -> Result<Option<u32>, BoardFault> {
+        self.access_with_profile(pc, addr, size, value, None)
+    }
+
+    pub(crate) fn access_with_profile(
+        &mut self,
+        pc: u32,
+        addr: u32,
+        size: u8,
+        value: Option<u32>,
+        profile: Option<&mut EspResetValues>,
+    ) -> Result<Option<u32>, BoardFault> {
         let write = value.is_some();
         if (IROM.contains(&addr) || IRAM.contains(&addr)) && size != WORD {
             // TRM §3.3.1: обращения к данным через IBUS выполняются словами.
@@ -213,12 +247,59 @@ impl EspMemory {
                 .map(|()| Some(0))
                 .ok_or_else(|| bus_error(pc, addr, true));
         }
-        region
-            .read(mapped, size, !self.legacy_elf)
-            .map(Some)
-            .ok_or_else(|| {
-                BoardFault::Unsupported(format!("содержимое SRAM по адресу {addr:#010x} не задано"))
-            })
+        if let Some(value) = region.read(mapped, size, !self.legacy_elf) {
+            return Ok(Some(value));
+        }
+        let unknown =
+            || BoardFault::Unsupported(format!("содержимое SRAM по адресу {addr:#010x} не задано"));
+        let (bank, fill, word, alias_offset) = if mapped >= SRAM1_IBUS && IRAM.contains(&mapped) {
+            (
+                SRAM1_DBUS.start,
+                SRAM1_COLD_FILL,
+                SRAM1_COLD_WORD,
+                SRAM1_IBUS - SRAM1_DBUS.start,
+            )
+        } else if RTC_FAST.contains(&mapped) {
+            (RTC_FAST.start, RTC_FAST_COLD_FILL, RTC_FAST_COLD_WORD, 0)
+        } else {
+            return Err(unknown());
+        };
+        let Some(profile) = profile else {
+            return Err(unknown());
+        };
+        // Оба алиаса SRAM1 используют адрес слова DBUS. Для SRAM1 и RTC FAST
+        // подстановка касается только ещё не записанных байтов.
+        let mut bytes = [0; WORD as usize];
+        let mut last = None;
+        let mut next = profile.clone();
+        for offset in 0..u32::from(size) {
+            let at = mapped + offset;
+            let byte = if let Some(byte) = region.initialized_byte(at) {
+                byte
+            } else {
+                let address = at - alias_offset;
+                let lane = address % u32::from(WORD);
+                let base = address - lane;
+                let read_address = addr + offset - lane;
+                let word = match last {
+                    Some((previous, word)) if base == previous => word,
+                    _ => {
+                        let data = match next.read_at(base, word, read_address)? {
+                            Some(data) => data,
+                            None => next
+                                .read_at(bank, fill, read_address)?
+                                .ok_or_else(unknown)?,
+                        };
+                        last = Some((base, data));
+                        data
+                    }
+                };
+                word.to_le_bytes()[lane as usize]
+            };
+            bytes[offset as usize] = byte;
+        }
+        *profile = next;
+        Ok(Some(u32::from_le_bytes(bytes)))
     }
 
     fn read_rom(&self, pc: u32, addr: u32, mapped: u32, size: u8) -> Result<u32, BoardFault> {

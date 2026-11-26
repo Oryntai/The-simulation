@@ -1,0 +1,7 @@
+electrical_format = 1
+catalog = "catalog"
+
+[assemblies.block]
+world = "devices/block/world.toml"
+profile = "devices/block/electrical-profile.toml"
+horizon_ns = 6000000 # Исходный горизонт из electrical-check.toml.

@@ -1871,6 +1871,7 @@ impl CompiledSchematic {
         let reference_gap = reference_only && scope == Scope::Assembly;
         let event_required =
             matches!(mode, Mode::OpenWire(_)) || matches!(check, DepthCheck::FuseCoordination(..));
+        let case = plan.cases.get(mode);
         let applicability_gap = if reference_gap {
             Some("данные эталонного стенда требуют подтверждения для физической сборки")
         } else if !mark
@@ -1878,23 +1879,37 @@ impl CompiledSchematic {
             .is_some_and(|source| supports_source(scope, source))
         {
             Some("не подтверждена применимость данных к ветви и режиму")
-        } else if !plan
-            .cases
-            .get(mode)
-            .is_some_and(|case| supports_source(scope, &case.source))
-        {
+        } else if !case.is_some_and(|case| supports_source(scope, &case.source)) {
             Some("нет подтверждённой постановки для указанного режима")
+        } else if window
+            .zip(case.and_then(|case| case.window.as_ref()))
+            .is_some_and(|(window, mode_window)| window.end > mode_window.end)
+        {
+            Some("окно проверки выходит за горизонт указанного режима")
         } else if event_required
             && !mark.event.is_some_and(|event| {
                 supports_source(scope, &event.source)
-                    && (!matches!(check, DepthCheck::FuseCoordination(..))
-                        || (matches!(
-                            event.kind,
-                            DepthEventKind::WireOpened | DepthEventKind::FaultApplied
-                        ) && window.is_some_and(|window| window.start == event.at)))
+                    && match check {
+                        DepthCheck::FuseCoordination(input, _) => {
+                            event.at == input.window.start
+                                && matches!(
+                                    event.kind,
+                                    DepthEventKind::WireOpened | DepthEventKind::FaultApplied
+                                )
+                                && (matches!(mode, Mode::OpenWire(_))
+                                    || [input.fuse, input.wire, input.switch].contains(&&event.branch))
+                        }
+                        _ => true,
+                    }
             })
         {
-            Some("не подтверждена инъекция отказа в требуемую отметку")
+            Some("не подтверждена инъекция отказа на требуемой ветви и отметке")
+        } else if status == Status::Pass
+            && let (DepthCheck::CapacitorStress(input, _), DepthEvidence::CapacitorStress(result)) =
+                (check, &evidence)
+            && self.capacitor_mode_conflicts(plan, &input, result)?
+        {
+            Some("ряд напряжения не согласуется с запасом до предела в указанном режиме")
         } else {
             None
         };
@@ -1924,6 +1939,44 @@ impl CompiledSchematic {
 
     pub fn depth_scope(&self) -> Scope {
         self.schematic.scope
+    }
+
+    fn capacitor_mode_conflicts(
+        &self,
+        plan: &ModePlan,
+        input: &CapacitorStressInput<'_>,
+        result: &CapacitorStressEvidence,
+    ) -> Result<bool, ProcessError> {
+        let Analysis::Analyzed { value: voltage, .. } = &result.voltage_v else {
+            return Ok(false);
+        };
+        let [positive, negative] = input.terminals;
+        let probe = Probe::Voltage(positive.clone(), negative.clone());
+        let mut case = plan.cases[input.mode].clone();
+        case.probes.insert(probe.clone());
+        let mode_plan = ModePlan {
+            source_disconnects: plan.source_disconnects.clone(),
+            cases: BTreeMap::from([(input.mode.clone(), case)]),
+        };
+        let Analysis::Analyzed { value: prepared, .. } = self.prepare_mode(&mode_plan, input.mode)?
+        else {
+            return Ok(false);
+        };
+        let Analysis::Analyzed { value: series, .. } = prepared.solve() else {
+            return Ok(false);
+        };
+        // Сверяем только фактические отсчёты того же режима. Противоречие
+        // с отдельным расчётом блокирует допуск и требует выяснить источник.
+        Ok(series.values.get(&probe).is_some_and(|values| {
+            series.time.iter().zip(values).any(|(&at, &value)| {
+                let observed = match input.voltage_sense {
+                    CapacitorVoltageSense::Forward => value,
+                    CapacitorVoltageSense::Absolute => value.abs(),
+                };
+                (input.window.start..=input.window.end).contains(&at)
+                    && observed >= voltage.limit.min
+            })
+        }))
     }
 
     fn depth_reference_branch(&self, section: &Section) -> Result<bool, ProcessError> {

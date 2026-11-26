@@ -9,9 +9,12 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sim_process::{SourcedRange, schematic::*};
 use sim_runtime::electrical::BoardElectricalProfile;
 use sim_signal::Time;
+use sim_task::verdict::ElectricalEvidence;
 use sim_world::{Provenance, WorldWithSchematics};
 
 use crate::tasks::processes::Inputs;
+
+pub(super) use depth::Ratings as DepthRatings;
 
 // Версия первого дискового формата схемы и каталога, независимая от формата мира.
 const FORMAT: u32 = 1;
@@ -1053,6 +1056,13 @@ impl CatalogInput {
         for path in files
             .into_iter()
             .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+            // Суффикс обозначает отдельную схему каталога с точками потребления.
+            .filter(|path| {
+                !path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with("-power.toml"))
+            })
         {
             let bytes = fs::read(&path).map_err(|e| located(&path, e))?;
             let profile = Self::parse_board_profile(&path, &bytes)?;
@@ -2219,18 +2229,35 @@ impl SchematicInput {
         if self.depth.is_empty() {
             return Ok(BTreeMap::new());
         }
-        self.assess_depth_with(&catalog.depth_ratings()?)
+        self.evaluate_depth(&catalog.depth_ratings()?, |_, mark, check| {
+            self.compiled
+                .assess_depth(&self.modes, mark, check)
+                .map_err(|e| e.to_string())
+        })
     }
 
-    pub(super) fn assess_depth_with(
+    pub(super) fn record_depth(
         &self,
-        ratings: &depth::Ratings,
+        ratings: &DepthRatings,
+        evidence: &mut ElectricalEvidence,
+    ) -> Result<BTreeMap<String, DepthFinding>, String> {
+        self.evaluate_depth(ratings, |id, mark, check| {
+            evidence
+                .record_depth(&self.compiled, &self.modes, id, mark, check)
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    fn evaluate_depth(
+        &self,
+        ratings: &DepthRatings,
+        mut evaluate: impl FnMut(&str, DepthModeMark<'_>, DepthCheck<'_>) -> Result<DepthFinding, String>,
     ) -> Result<BTreeMap<String, DepthFinding>, String> {
         self.depth
             .iter()
             .map(|check| {
                 check
-                    .assess(&self.compiled, &self.modes, ratings)
+                    .assess(&self.compiled, ratings, &mut evaluate)
                     .map(|finding| (check.id.clone(), finding))
                     .map_err(|error| {
                         located(&self.path, format!("depth_checks.{}: {error}", check.id))
@@ -2241,7 +2268,7 @@ impl SchematicInput {
 }
 
 impl CatalogInput {
-    pub(super) fn depth_ratings(&self) -> Result<depth::Ratings, String> {
+    pub(super) fn depth_ratings(&self) -> Result<DepthRatings, String> {
         let mut ratings = BTreeMap::new();
         for (path, bytes) in &self.sources {
             let data: CatalogData = parse(path, bytes)?;
@@ -2458,8 +2485,8 @@ mod depth {
         pub(super) fn assess(
             &self,
             compiled: &CompiledSchematic,
-            plan: &ModePlan,
             ratings: &Ratings,
+            evaluate: impl FnOnce(&str, DepthModeMark<'_>, DepthCheck<'_>) -> Result<DepthFinding, String>,
         ) -> Result<DepthFinding, String> {
             if self.id.trim().is_empty() || self.id.chars().any(char::is_control) {
                 return Err("нужно имя проверки".into());
@@ -2492,11 +2519,7 @@ mod depth {
                 },
                 reference_only: self.reference_only,
             };
-            let assess = |mark, check| {
-                compiled
-                    .assess_depth(plan, mark, check)
-                    .map_err(|e| e.to_string())
-            };
+            let assess = |mark, check| evaluate(&self.id, mark, check);
             match &self.check {
                 KindData::CapacitorStress(data) => {
                     let passport = rating(

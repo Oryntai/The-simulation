@@ -1,0 +1,85 @@
+registry_version = 2
+plan = 0
+simulation = "NotProven"
+readiness = "NeedsWork"
+diagnostics = []
+inapplicable = []
+inapplicable_runs = []
+
+[[findings]]
+key = { class = "overcurrent", object = "блок", level = "simulation" }
+code = "overcurrent"
+group = "Power"
+outcome = "not_analyzed"
+reason = "обязательство открыто"
+measurement_sources = []
+limit_sources = []
+coverage_gaps = []
+missing_data = ["обязательство открыто"]
+verification = "стенд"
+confirmed_hazard = false
+
+[[findings]]
+key = { class = "battery", object = "блок", level = "simulation" }
+code = "battery"
+group = "Battery"
+outcome = "not_analyzed"
+reason = "обязательство открыто"
+measurement_sources = []
+limit_sources = []
+coverage_gaps = []
+missing_data = ["обязательство открыто"]
+verification = "стенд"
+confirmed_hazard = false
+
+[[findings]]
+key = { class = "wire_fault", object = "блок", level = "simulation" }
+code = "wire_fault"
+group = "Wiring"
+outcome = "not_analyzed"
+reason = "обязательство открыто"
+measurement_sources = []
+limit_sources = []
+coverage_gaps = []
+missing_data = ["обязательство открыто"]
+verification = "стенд"
+confirmed_hazard = false
+
+[[findings]]
+key = { class = "switch_underdrive", object = "блок", level = "simulation" }
+code = "switch_underdrive"
+group = "Power"
+outcome = "not_analyzed"
+reason = "обязательство открыто"
+measurement_sources = []
+limit_sources = []
+coverage_gaps = []
+missing_data = ["обязательство открыто"]
+verification = "стенд"
+confirmed_hazard = false
+
+[[findings]]
+key = { class = "fatigue", object = "блок", level = "simulation" }
+code = "fatigue"
+group = "Parts"
+outcome = "not_analyzed"
+reason = "обязательство открыто"
+measurement_sources = []
+limit_sources = []
+coverage_gaps = []
+missing_data = ["обязательство открыто"]
+verification = "стенд"
+confirmed_hazard = false
+
+[[findings]]
+key = { class = "connection_failure", object = "блок", level = "simulation" }
+code = "connection_failure"
+group = "Parts"
+outcome = "not_analyzed"
+reason = "обязательство открыто"
+measurement_sources = []
+limit_sources = []
+coverage_gaps = []
+missing_data = ["обязательство открыто"]
+verification = "стенд"
+confirmed_hazard = false

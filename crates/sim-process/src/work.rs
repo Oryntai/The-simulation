@@ -14,6 +14,7 @@ pub mod ingress;
 pub mod mechanical_limits;
 pub mod mechanics;
 pub mod rotary;
+pub mod solder_window;
 pub mod trace;
 
 pub use cable_flex::{CableFlexEvidence, CableFlexInput, CableFlexRatings, assess_cable_flex};

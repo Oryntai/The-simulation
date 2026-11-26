@@ -5,17 +5,13 @@
 use std::num::NonZeroU64;
 
 use esp_memory::EspMemory;
-use sim_boards::{BoardFault, esp_image, esp_memory};
+use sim_boards::{BoardFault, esp_flash::EspFlash, esp_image, esp_memory};
 
 // Как в Т2.5, стенд проверяет модуль до подключения к шине в Т2.10.
-#[allow(dead_code)]
-#[path = "../src/peripheral/esp_flash.rs"]
-mod esp_flash;
 #[allow(dead_code)]
 #[path = "../src/esp_rom.rs"]
 mod esp_rom;
 
-use esp_flash::EspFlash;
 use esp_rom::calls::{FlashRead, RomCall, RomIo, RomStep, UartTx, UartWait, dispatch};
 
 // Адреса функций из esp_rom/esp32c3/ld/esp32c3.rom*.ld, ESP-IDF v6.1.1.
@@ -509,6 +505,22 @@ fn неизвестный_вход_явно_останавливает_а_printf
             Err(BoardFault::Unsupported(format!(
                 "неизвестный вход ROM ESP32-C3 {address:#010x}"
             )))
+        );
+    }
+}
+
+#[test]
+fn regi2c_все_четыре_точки_входа_исполняются_из_rom() {
+    let mut memory = EspMemory::default();
+    let mut io = Io::default();
+    // ESP-IDF esp_hal_regi2c/esp32c3/rom.regi2c.ld:6–9.
+    for entry in [0x4000_1954, 0x4000_1958, 0x4000_195c, 0x4000_1960] {
+        assert_eq!(
+            call(entry, [0; 3], &mut memory, &mut io),
+            Ok(RomStep::Native {
+                entry,
+                return_pc: RETURN_PC,
+            })
         );
     }
 }

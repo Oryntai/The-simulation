@@ -6,15 +6,22 @@ use std::rc::Rc;
 use sim_boards::{BoardCatalog, BoardSim, pin_spec};
 use sim_control::transport::{ProcessSpec, ProcessTransport, SessionOptions};
 use sim_control::{ControlContract, Controller, InputChannel, InputKind, OutputChannel, RequestId};
+use sim_process::Analysis;
+use sim_process::schematic::mcu_energy::{McuEnergyReport, McuPowerProfile, assess_mcu_energy};
+use sim_process::schematic::sleep_drain::{
+    SleepDrainInput, SleepDrainProfile, SleepDrainRequirement, SleepDrainState,
+};
+use sim_process::schematic::{Mode, Scope, Section};
 use sim_radio::timed::TimedChannel;
 use sim_signal::{ChannelId, Clock, Rng, SignalId, Time, fnv1a};
-use sim_world::Simplification;
+use sim_world::{Provenance, Simplification};
 use std::collections::VecDeque;
 
 use crate::{Runtime, TruthId};
 
 use super::board::{Board, Bus, Route, ScheduledBoardAction, Wire};
 use super::bus::{BusModel, Profile};
+use super::external_board::{self, Boot, Report, UartProbe};
 use super::journal::{ControlPath, FaultMechanism, FaultTarget, RunIdentity, RunOrigin};
 use super::schema::{self, TargetKind};
 use super::{
@@ -73,6 +80,84 @@ impl ControlAssets for FileAssets<'_> {
             .join(name)
             .canonicalize()
             .map_err(|e| format!("программа «{name}»: {e}"))
+    }
+}
+
+impl ControlConfig {
+    /// Отдельная диагностика UART0, вне шкалы времени симуляции. Использует
+    /// те же проверки профиля и образов, что и установщик контура.
+    pub fn probe_external_board(
+        &self,
+        assets: &FileAssets<'_>,
+        name: &str,
+        probe: UartProbe<'_>,
+    ) -> Result<(Report, Simplification), String> {
+        let mut matches = self
+            .get("external_board")
+            .map(schema::external_board)
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|item| item.name == name);
+        let item = matches
+            .next()
+            .ok_or_else(|| format!("нет внешней платы «{name}»"))?;
+        if matches.next().is_some() {
+            return Err(format!("повтор внешней платы «{name}»"));
+        }
+        let profile = load_external(&item, &mut |path| assets.read(path))?;
+        if !profile.ports.iter().any(|port| port == probe.port) {
+            return Err(format!(
+                "порт «{}» отсутствует в профиле платы «{name}»",
+                probe.port
+            ));
+        }
+        let flash = item.image.map(|path| assets.base.join(path));
+        let config = external_board::Config {
+            qemu: assets.base.join(profile.qemu),
+            boot: if profile.flash_boot {
+                Boot::Flash(flash.ok_or("для загрузки QEMU нужен образ flash")?)
+            } else {
+                Boot::UartDownload { flash }
+            },
+            efuse: item.efuse.map(|path| assets.base.join(path)),
+            psram: profile.psram,
+            clock: profile.clock,
+            seed: profile.seed,
+            limits: profile.limits,
+        };
+        let report = external_board::probe_esp32s3(&config, probe)?;
+        let Analysis::NotAnalyzed { reason } = report.repeatability() else {
+            return Err(
+                "адаптер QEMU вернул результат без сверенного восстановления контура".into(),
+            );
+        };
+        Ok((report, open_board_proof(name, &reason)))
+    }
+
+    /// Оценить заряд МК для явно заданного графика на том же интервале,
+    /// который передаётся установщику. Профиль не даёт огибающую тока батареи.
+    pub fn mcu_energy(
+        &self,
+        assets: &impl ControlAssets,
+        name: &str,
+        horizon: Time,
+    ) -> Result<McuEnergyReport, String> {
+        let mut matches = self
+            .get("board")
+            .map(schema::board)
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|item| item.name == name);
+        let item = matches
+            .next()
+            .ok_or_else(|| format!("нет платы «{name}»"))?;
+        if matches.next().is_some() {
+            return Err(format!("повтор платы «{name}»"));
+        }
+        let mut read = |path: &str| assets.read(path);
+        let catalog = load_board_catalog(item.catalog_asset.as_deref(), &mut read)?;
+        let board = catalog.create(&item.catalog).map_err(|e| e.to_string())?;
+        load_mcu_energy(&item, board.board().key(), horizon, &mut read)
     }
 }
 
@@ -213,6 +298,25 @@ fn build(
     let mut boards = Vec::new();
     let mut names = BTreeSet::new();
     let mut limitations = Vec::new();
+    let mut external_boards = BTreeSet::new();
+    for item in config.get("external_board").map(schema::external_board) {
+        let item = item?;
+        if !names.insert(item.name.clone()) {
+            return Err(format!("повтор платы «{}»", item.name));
+        }
+        load_external(&item, &mut read)?;
+        if recording.is_some() {
+            return Err(format!(
+                "внешняя плата «{}» не поддерживает повтор опыта без снимка QEMU",
+                item.name
+            ));
+        }
+        limitations.push(open_board_proof(
+            &item.name,
+            "внешняя плата доступна для диагностики UART0; нет подтверждённого снимка QEMU и привязки UART к виртуальному времени",
+        ));
+        external_boards.insert(item.name);
+    }
     let mut board_specs = config
         .get("board")
         .map(schema::board)
@@ -222,22 +326,44 @@ fn build(
         if !names.insert(item.name.clone()) {
             return Err(format!("повтор платы «{}»", item.name));
         }
-        if board_catalog.is_none() {
-            let text = include_str!("../../../../catalog/boards/catalog.toml");
-            board_catalog = Some(BoardCatalog::parse(text).map_err(|e| e.to_string())?);
-        }
-        let mut board = board_catalog
-            .as_ref()
-            .expect("каталог загружен")
-            .create(&item.catalog)
-            .map_err(|e| e.to_string())?;
+        let local_catalog;
+        let catalog = if let Some(asset) = &item.catalog_asset {
+            local_catalog = load_board_catalog(Some(asset), &mut read)?;
+            &local_catalog
+        } else {
+            if board_catalog.is_none() {
+                board_catalog = Some(load_board_catalog(None, &mut read)?);
+            }
+            board_catalog.as_ref().expect("каталог загружен")
+        };
+        let mut board = catalog.create(&item.catalog).map_err(|e| e.to_string())?;
         let image = read(&item.image)?;
         let program_hash = fnv1a(image.iter().copied());
-        board.load(&image).map_err(|e| e.to_string())?;
-        if let Some(name) = item.config {
+        load_board_image(&item, board.as_mut(), &image, &mut read)?;
+        if let Some(name) = &item.config {
             board
-                .write_config(&read(&name)?)
+                .write_config(&read(name)?)
                 .map_err(|e| e.to_string())?;
+        }
+        if item.power_profile.is_some() {
+            let report = load_mcu_energy(&item, board.board().key(), spec.horizon, &mut read)?;
+            let chip = match report.chip_charge {
+                Analysis::Analyzed { value, scope } => format!(
+                    "{scope}: {} Кл за {} нс; удержан измеренный пик: {}",
+                    value.charge_c,
+                    value.window.end.0,
+                    if value.includes_peak_held {
+                        "да"
+                    } else {
+                        "нет"
+                    },
+                ),
+                Analysis::NotAnalyzed { reason } => reason,
+            };
+            limitations.push(open_board_proof(
+                &item.name,
+                &format!("{chip}. Автономность: {}", report.sleep_drain.reason),
+            ));
         }
         if item.rate.as_hz() > board.capabilities().cpu_hz as f64 {
             return Err(format!("частота обмена выше частоты платы «{}»", item.name));
@@ -284,6 +410,11 @@ fn build(
         });
     }
     let board_id = |boards: &[Board], name: &str| {
+        if external_boards.contains(name) {
+            return Err(format!(
+                "внешняя плата «{name}»: подключение к контуру требует порта с виртуальными метками времени и снимка QEMU"
+            ));
+        }
         boards
             .iter()
             .position(|b| b.name == name)
@@ -1186,6 +1317,175 @@ fn build(
         );
     }
     Ok((engine, processes, limitations))
+}
+
+fn open_board_proof(name: &str, reason: &str) -> Simplification {
+    Simplification {
+        subject: format!("board:{name}"),
+        text: format!("NotAnalyzed: {reason}"),
+        blocks_proof: true,
+    }
+}
+
+fn load_profile<T>(
+    path: &str,
+    read: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
+    parse: impl FnOnce(&str) -> Result<T, String>,
+) -> Result<T, String> {
+    let bytes = read(path)?;
+    utf8(&bytes)
+        .and_then(parse)
+        .map_err(|e| format!("ресурс «{path}»: {e}"))
+}
+
+fn load_board_catalog(
+    path: Option<&str>,
+    read: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
+) -> Result<BoardCatalog, String> {
+    match path {
+        Some(path) => load_profile(path, read, |text| {
+            BoardCatalog::parse(text).map_err(|e| e.to_string())
+        }),
+        None => BoardCatalog::builtin().map_err(|e| e.to_string()),
+    }
+}
+
+fn require_profile_board(name: &str, actual: &str, expected: &str) -> Result<(), String> {
+    if actual != expected {
+        return Err(format!(
+            "плата «{name}»: профиль «{actual}» несовместим с «{expected}»"
+        ));
+    }
+    Ok(())
+}
+
+fn load_board_image(
+    item: &schema::BoardSpec,
+    board: &mut dyn BoardSim,
+    image: &[u8],
+    read: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
+) -> Result<(), String> {
+    let (Some(profile), Some(rom), Some(efuse)) = (&item.flash_profile, &item.rom, &item.efuse)
+    else {
+        return board.load(image).map_err(|e| e.to_string());
+    };
+    let profile = load_profile(profile, read, schema::flash_profile)?;
+    require_profile_board(&item.name, &profile.board, board.board().key())?;
+    let rom = read(rom)?;
+    // ESP-IDF soc/esp32c3/register/soc/efuse_reg.h: чтение от EFUSE_RD_WR_DIS_REG
+    // до EFUSE_RD_SYS_PART2_DATA7_REG включительно. API BoardSim проверяет размер.
+    let bytes = read(efuse)?;
+    let (words, remainder) = bytes.as_chunks::<{ size_of::<u32>() }>();
+    if !remainder.is_empty() {
+        return Err(format!("ресурс «{efuse}»: неполное 32-битное слово eFuse"));
+    }
+    let words = words
+        .iter()
+        .copied()
+        .map(u32::from_le_bytes)
+        .collect::<Vec<_>>();
+    board
+        .load_esp_flash_with_options(
+            image,
+            profile.partition_table_offset,
+            &rom,
+            &words,
+            profile.straps,
+            profile.options,
+        )
+        .map_err(|e| e.to_string())
+}
+
+fn load_mcu_energy(
+    item: &schema::BoardSpec,
+    board: &str,
+    horizon: Time,
+    read: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
+) -> Result<McuEnergyReport, String> {
+    let power = item
+        .power_profile
+        .as_deref()
+        .map(|path| load_profile(path, read, ControlConfig::parse_mcu_power_profile))
+        .transpose()?;
+    if let Some(power) = &power {
+        require_profile_board(&item.name, power.board(), board)?;
+    }
+    let schedule = item
+        .power_schedule
+        .as_deref()
+        .map(|path| load_profile(path, read, schema::power_schedule))
+        .transpose()?;
+    let mut states = Vec::new();
+    if let Some(schedule) = &schedule {
+        let power: &McuPowerProfile = power.as_ref().ok_or("нет профиля точек тока МК")?;
+        for (id, duration) in &schedule.states {
+            if let Analysis::NotAnalyzed { reason } = power.current(id) {
+                return Err(format!("плата «{}»: {reason}", item.name));
+            }
+            states.push(SleepDrainState {
+                id,
+                duration: *duration,
+                controller_a: None,
+                loads: None,
+            });
+        }
+    }
+    let horizon_source = Provenance::Estimate("горизонт расчёта контура".into());
+    // Адрес результата расчёта МК. Электрическая ветвь батареи здесь не установлена.
+    let branch = Section::Element {
+        component: item.name.clone(),
+        element: "mcu".into(),
+    };
+    assess_mcu_energy(
+        power.as_ref(),
+        &SleepDrainInput {
+            scope: Scope::Assembly,
+            mode: &Mode::Normal,
+            branch: &branch,
+            required: Some(SleepDrainRequirement {
+                duration: horizon,
+                source: &horizon_source,
+            }),
+            profile: schedule.as_ref().map(|s| SleepDrainProfile {
+                states: &states,
+                repeat: s.repeat,
+                source: &s.source,
+            }),
+            battery: None,
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn load_external(
+    item: &schema::ExternalBoardSpec,
+    read: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
+) -> Result<schema::ExternalProfile, String> {
+    let profile = load_profile(&item.profile, read, schema::external_profile)?;
+    require_profile_board(&item.name, &profile.board, &item.catalog)?;
+    if profile.flash_boot && item.image.is_none() {
+        return Err(format!(
+            "внешняя плата «{}»: для загрузки QEMU нужен образ flash",
+            item.name
+        ));
+    }
+    // Руководство QEMU Espressif для S3: «Compiling the ESP-IDF program to emulate»
+    // и «Specifying eFuse storage». Эти размеры относятся к образам QEMU.
+    if let Some(path) = &item.image
+        && ![2 << 20, 4 << 20, 8 << 20, 16 << 20].contains(&read(path)?.len())
+    {
+        return Err(format!(
+            "ресурс «{path}»: неподдержанный размер образа flash QEMU"
+        ));
+    }
+    if let Some(path) = &item.efuse
+        && read(path)?.len() != 1 << 10
+    {
+        return Err(format!(
+            "ресурс «{path}»: неподдержанный размер образа eFuse QEMU"
+        ));
+    }
+    Ok(profile)
 }
 
 fn process_args(args: &[String], contract: &ControlContract) -> Result<Vec<OsString>, String> {

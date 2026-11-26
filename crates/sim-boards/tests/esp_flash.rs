@@ -1,13 +1,10 @@
 //! Стенд чтения flash. Сравнение с транзакциями Espressif QEMU и образами SDK.
 
-pub use sim_boards::{BoardFault, esp_image};
-
-// Включение модуля в шину платы относится к Т2.10.
-#[path = "../src/peripheral/esp_flash.rs"]
-mod esp_flash;
-
-use esp_flash::{EspFlash, EspFlashReadback};
-use esp_image::{DEFAULT_PARTITION_TABLE_OFFSET as TABLE, SegmentKind, parse_flash};
+use sim_boards::{
+    BoardFault,
+    esp_flash::{EspFlash, EspFlashReadback},
+    esp_image::{DEFAULT_PARTITION_TABLE_OFFSET as TABLE, SegmentKind, parse_flash},
+};
 
 // TRM §3.3, §14.4; ESP-IDF soc/esp32c3/{include/soc/ext_mem_defs.h,register/soc/reg_base.h}.
 const DROM: u32 = 0x3c00_0000;
@@ -33,6 +30,25 @@ const CS: u32 = SPI1 + 0x34;
 const SPI0_CACHE: u32 = SPI0 + 0x3c;
 const W0: u32 = SPI1 + 0x58;
 const W15: u32 = SPI1 + 0x94;
+
+#[test]
+fn команды_resume_и_wrdi_сохраняют_неподвижный_снимок() {
+    let mut flash = EspFlash::new(&[0x6a; 64], CAPACITY).unwrap();
+    put(&mut flash, W0, 0x1234_5678);
+    // spi_flash_defs.h: CMD_RESUME, CMD_WRDI. USER.USH_COMMAND [31].
+    for opcode in [0x7a, 0x04] {
+        put(&mut flash, USER2, CMD8 | opcode);
+        put(&mut flash, USER, 1 << 31);
+        put(&mut flash, SPI1, USR);
+        assert_eq!(reg(&mut flash, SPI1), Ok(Some(0)));
+        assert_eq!(reg(&mut flash, W0), Ok(Some(0x1234_5678)));
+        put(&mut flash, USER, COMMAND_MISO);
+        assert!(matches!(
+            write(&mut flash, SPI1, USR),
+            Err(BoardFault::Misconfigured(_))
+        ));
+    }
+}
 const CACHE_BUS: u32 = CACHE + 4;
 const SYNC: u32 = CACHE + 0x28;
 const SYNC_ADDR: u32 = CACHE + 0x2c;
@@ -75,6 +91,69 @@ fn enable(flash: &mut EspFlash) {
     put(flash, SPI0_CACHE, 1);
     put(flash, CACHE_BUS, 0);
     put(flash, CACHE, 1);
+}
+
+#[test]
+fn ошибки_доступа_к_кэшу_различают_шины_и_очищаются_по_маске() {
+    // extmem_reg.h: за доступ при отключённой шине отвечают биты IBUS[0]
+    // и DBUS[3], за DBUS-запись — бит 5, ошибка записи MMU — отдельный статус.
+    let mut flash = EspFlash::new(&[0; 64], CAPACITY).unwrap();
+    assert!(matches!(
+        flash.fetch(IROM, 2),
+        Err(BoardFault::BusError { .. })
+    ));
+    assert!(matches!(
+        reg(&mut flash, DROM),
+        Err(BoardFault::BusError { .. })
+    ));
+    assert!(matches!(
+        write(&mut flash, DROM, 1),
+        Err(BoardFault::WriteToReadOnly { .. })
+    ));
+    assert_eq!(reg(&mut flash, CACHE + 0x8c), Ok(Some(0x29)));
+    assert_eq!(reg(&mut flash, CACHE + 0x88), Ok(Some(0)));
+    put(&mut flash, CACHE + 0x88, 0x09);
+    assert_eq!(reg(&mut flash, CACHE + 0x8c), Ok(Some(0x20)));
+    assert!(write(&mut flash, CACHE + 0x88, 0x40).is_err());
+    assert!(write(&mut flash, CACHE + 0x8c, 0).is_err());
+
+    enable(&mut flash);
+    assert!(matches!(
+        reg(&mut flash, DROM),
+        Err(BoardFault::BusError { .. })
+    ));
+    assert_eq!(reg(&mut flash, CACHE + 0x80), Ok(Some(0x20)));
+    put(&mut flash, CACHE + 0x7c, 1);
+    assert_eq!(reg(&mut flash, CACHE + 0x80), Ok(Some(0x20)));
+    put(&mut flash, CACHE + 0x7c, 0x20);
+    assert_eq!(reg(&mut flash, CACHE + 0x80), Ok(Some(0)));
+}
+
+#[test]
+fn spi0_читает_выбор_частоты_и_отклоняет_зарезервированный_источник() {
+    // spi_mem_reg.h: SPI_MEM_SPI01_CLK_SEL в SPIMEM0, сброс=0.
+    let select = SPI0 + 0xe0;
+    let mut flash = EspFlash::new(&[0; 64], CAPACITY).unwrap();
+    assert_eq!(reg(&mut flash, select), Ok(Some(0)));
+    put(&mut flash, select, 2);
+    assert_eq!(reg(&mut flash, select), Ok(Some(2)));
+    assert!(write(&mut flash, select, 3).is_err());
+    assert_eq!(reg(&mut flash, select), Ok(Some(2)));
+    flash.reset();
+    assert_eq!(reg(&mut flash, select), Ok(Some(0)));
+}
+
+#[test]
+fn spi1_настраивает_ожидание_и_отклоняет_активную_приостановку_flash() {
+    // spi_mem_reg.h: FLASH_WAITI_CTRL, FLASH_SUS_CTRL, WIP только в ответе flash.
+    let mut flash = EspFlash::new(&[0; 64], CAPACITY).unwrap();
+    assert_eq!(reg(&mut flash, SPI1 + 0x98), Ok(Some(0x14)));
+    assert_eq!(reg(&mut flash, SPI1 + 0x9c), Ok(Some(0x0800_2000)));
+    put(&mut flash, SPI1 + 0x9c, 0x0a00_2000);
+    for bit in [0, 1, 5] {
+        assert!(write(&mut flash, SPI1 + 0x9c, 1 << bit).is_err());
+        assert_eq!(reg(&mut flash, SPI1 + 0x9c), Ok(Some(0x0a00_2000)));
+    }
 }
 
 #[test]

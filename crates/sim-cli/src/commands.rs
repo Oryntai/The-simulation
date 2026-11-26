@@ -95,3 +95,72 @@ pub(crate) fn read(
     }
     Ok(commands)
 }
+
+/// Вход одного дочернего опыта. Обычный манифест направляет его в тот же
+/// установщик, а родитель держит резерв запуска и читает ответ из файла.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CoverageRow {
+    pub installation: std::path::PathBuf,
+    pub selection: sim_task::campaign::depth_factors::Selection,
+    pub input: String,
+    pub manifest: std::path::PathBuf,
+    pub recording: Option<Recording>,
+}
+
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Recording {
+    Log,
+    View,
+}
+
+pub(crate) fn coverage_binary() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    if exe.file_stem().is_some_and(|name| name == "sim-run") {
+        return Ok(exe);
+    }
+    let sibling = exe.with_file_name(format!("sim-run{}", std::env::consts::EXE_SUFFIX));
+    if !sibling.is_file() {
+        return Err("рядом с клиентом отсутствует исполняемый файл sim-run для покрытия".into());
+    }
+    Ok(sibling)
+}
+
+pub(crate) fn coverage_command(
+    exe: &Path,
+    directory: &Path,
+    prefix: &str,
+    campaign: &Path,
+    row: &CoverageRow,
+) -> Result<std::process::Command, String> {
+    use serde_json::json;
+    use std::{fs, process::Stdio};
+
+    let (assembly, experiment) = prefix.split_once('/').ok_or("неверный адрес опыта")?;
+    let installation = directory.join("installation.toml");
+    let manifest = directory.join("manifest.toml");
+    let content = toml::to_string(&std::collections::BTreeMap::from([("coverage_row", row)]))
+        .map_err(|error| error.to_string())?;
+    let description = toml::to_string(&json!({
+        "version": 1,
+        "assemblies": { (assembly): {
+            "scope": "Один опыт покрытия",
+            "experiments": { (experiment): { "kind": "scenario", "campaign": campaign,
+                "installation": installation } }
+        } }
+    }))
+    .map_err(|error| error.to_string())?;
+    fs::write(&installation, content).map_err(|error| error.to_string())?;
+    fs::write(&manifest, description).map_err(|error| error.to_string())?;
+    let output =
+        File::create_new(directory.join("report.json")).map_err(|error| error.to_string())?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .args(["--campaign"])
+        .arg(manifest)
+        .args(["--json", "--jobs", "1"])
+        .stdin(Stdio::null())
+        .stdout(output);
+    Ok(command)
+}

@@ -5336,6 +5336,7 @@ name = "sim-boards"
 version = "0.1.0"
 dependencies = [
  "sim-mcu",
+ "sim-signal",
  "sim-verify",
 ]
 

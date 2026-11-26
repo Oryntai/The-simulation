@@ -1,0 +1,93 @@
+format = 1 # Формат списка эталонов Т5.3.
+scope = "reference"
+revision = "bench-t5-r1"
+scheme = "scheme.toml"
+component_catalog = "parts.toml"
+solder_catalog = "solder.toml"
+finding = "solder_defect"
+
+# Запас положителен на допустимой стороне. Оба знака рассчитаны до подключения
+# оценщика окна. Формулы и исходные пределы приведены в expected.md.
+[[pairs]]
+id = "cold"
+criterion = "max_time_to_wet_s"
+unsafe = "cold/unsafe.toml"
+fixed = "cold/fixed.toml"
+changed = ["mode.tip_initial_k", "mode.pad_initial_k", "mode.lead_initial_k", "mode.copper_initial_k"]
+margin = { unsafe = -0.098612289, fixed = 0.083709268, unit = "s" }
+
+[[pairs]]
+id = "liquidus"
+criterion = "min_above_liquidus_s"
+unsafe = "liquidus/unsafe.toml"
+fixed = "liquidus/fixed.toml"
+changed = ["mode.duration_s"]
+margin = { unsafe = -0.047442105, fixed = 0.052557895, unit = "s" }
+
+[[pairs]]
+id = "overheat"
+criterion = "max_pad_k"
+unsafe = "overheat/unsafe.toml"
+fixed = "overheat/fixed.toml"
+changed = ["mode.duration_s"]
+margin = { unsafe = -1.076690782, fixed = 0.715070189, unit = "K" }
+
+[[pairs]]
+id = "bridge"
+criterion = "bridge_volume_m3"
+unsafe = "bridge/unsafe.toml"
+fixed = "bridge/fixed.toml"
+changed = ["mode.solder_volume_m3"]
+margin = { unsafe = -2.5e-11, fixed = 2.5e-11, unit = "m3" }
+
+[[pairs]]
+id = "insufficient_volume"
+criterion = "min_volume_m3"
+unsafe = "insufficient_volume/unsafe.toml"
+fixed = "insufficient_volume/fixed.toml"
+changed = ["mode.solder_volume_m3"]
+margin = { unsafe = -2.5e-11, fixed = 2.5e-11, unit = "m3" }
+
+# Правки применяются по одной к копии указанного профиля.
+[[negative]]
+id = "missing_contact"
+profile = "cold/fixed.toml"
+path = "mode.contact"
+remove = true
+expected = "NotAnalyzed"
+
+[[negative]]
+id = "missing_limit_source"
+profile = "liquidus/fixed.toml"
+path = "limits.min_above_liquidus_s.source"
+remove = true
+expected = "NotAnalyzed"
+
+[[negative]]
+id = "missing_dose"
+profile = "bridge/fixed.toml"
+path = "mode.solder_volume_m3"
+remove = true
+expected = "NotAnalyzed"
+
+[[negative]]
+id = "unresolved_envelope"
+profile = "cold/fixed.toml"
+path = "mode.contact.conductance_w_k.min"
+# Нижний край исходной проводимости 0,12 Вт/К уменьшен на 0,01 Вт/К.
+replace_toml = "0.11"
+expected = "NotAnalyzed"
+
+[[negative]]
+id = "nan"
+profile = "cold/fixed.toml"
+path = "mode.pad_initial_k.nominal"
+replace_toml = "nan"
+expected = "Error"
+
+[[negative]]
+id = "infinity"
+profile = "bridge/fixed.toml"
+path = "mode.solder_volume_m3.max"
+replace_toml = "+inf"
+expected = "Error"

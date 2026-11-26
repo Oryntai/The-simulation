@@ -27,9 +27,13 @@ const DRIVER_IRQ: u32 = RX_FULL
 // uart_ll.h: UART_LL_FIFO_DEF_LEN. Входная очередь стенда тоже ограничена одним FIFO.
 const FIFO_LEN: usize = 128;
 // uart_reg.h: поля UART_CONF0.
+// TRM §26.4.2, рег. 26.9: разрешение гейтирования тактов общей FIFO RAM.
+// В кадровой модели бит хранится без моделирования самого гейтирования.
 const MEM_CLK_EN: u32 = 1 << 28;
 const TX_FIFO_RESET: u32 = 1 << 18;
 const RX_FIFO_RESET: u32 = 1 << 17;
+// TRM рег. 26.2, UART_MEM_CONF: принудительное отключение питания RAM.
+const MEM_FORCE_PD: u32 = 1 << 26;
 // uart_reg.h: поля UART_CONF1.
 const RX_TIMEOUT_EN: u32 = 1 << 21;
 const THRESHOLD_MASK: u32 = 0x1ff;
@@ -75,6 +79,15 @@ struct Frame {
     byte: u8,
 }
 
+#[derive(Clone, Copy)]
+struct TxFrame {
+    start: u128,
+    end: u128,
+    phase_end: u128,
+    idle_end: (u128, u128),
+    byte: u8,
+}
+
 /// Кадровая модель одного UART. Временные метки заданы в единицах одного
 /// монотонного времени, одинаковых для MMIO, входа и продвижения.
 #[derive(Clone)]
@@ -93,7 +106,8 @@ pub struct EspUart {
     rx: VecDeque<u8>,
     wire: VecDeque<Frame>,
     rx_deadline: Option<u128>,
-    tx: VecDeque<Frame>,
+    tx: VecDeque<TxFrame>,
+    tx_idle_until: Option<(u128, u128)>,
     done: Vec<(u64, u8)>,
     now: u128,
 }
@@ -133,6 +147,7 @@ impl EspUart {
             wire: VecDeque::new(),
             rx_deadline: None,
             tx: VecDeque::new(),
+            tx_idle_until: None,
             done: Vec::new(),
             now: 0,
         })
@@ -146,8 +161,9 @@ impl EspUart {
         } else {
             (RX_CLK_EN, RX_RESET)
         };
-        if cfg.format & MEM_CLK_EN == 0
-            || cfg.memory & (1 << 26) != 0
+        // ROM rev. 3 передаёт баннер через UART0 при CONF0=0x0400001c.
+        // Отдельный SYSTEM_UART_MEM_CLK_EN проверяется на системной шине.
+        if cfg.memory & MEM_FORCE_PD != 0
             || cfg.clock & (gate | SCLK_EN | reset | CORE_RESET) != gate | SCLK_EN
         {
             return Err(invalid(
@@ -257,8 +273,15 @@ impl EspUart {
         while let Some(frame) = self.tx.pop_front_if(|frame| frame.end <= now) {
             self.done.push((frame.end as u64, frame.byte));
             if self.tx.is_empty() {
+                self.tx_idle_until = Some(frame.idle_end);
                 self.latched |= TX_DONE;
             }
+        }
+        if self
+            .tx_idle_until
+            .is_some_and(|(end, scale)| now * scale >= end)
+        {
+            self.tx_idle_until = None;
         }
         Ok(())
     }
@@ -276,7 +299,15 @@ impl EspUart {
 
     fn tx_fifo_count(&self) -> usize {
         // uart_reg.h: STATUS считает FIFO без регистра сдвига.
-        self.tx.len().saturating_sub(1)
+        self.tx.len() - self.tx_shifting()
+    }
+
+    fn tx_shifting(&self) -> usize {
+        usize::from(self.tx.front().is_some_and(|frame| frame.start <= self.now))
+    }
+
+    fn tx_busy(&self) -> bool {
+        !self.tx.is_empty() || self.tx_idle_until.is_some()
     }
 
     fn raw(&self) -> u32 {
@@ -330,11 +361,11 @@ impl EspUart {
                 0x1c => (self.tx_fifo_count() as u32) << 16 | self.rx.len() as u32, // UART_STATUS: счётчики.
                 0x20 => self.shadow.format,                                         // UART_CONF0
                 0x24 => self.shadow.thresholds,                                     // UART_CONF1
-                0x48 => self.idle,                           // UART_IDLE_CONF
-                0x60 => self.shadow.memory,                  // UART_MEM_CONF
-                0x6c => u32::from(!self.tx.is_empty()) << 4, // UART_FSM_STATUS: форма занятости для uart_ll_is_tx_idle.
-                0x78 => self.shadow.clock,                   // UART_CLK_CONF
-                0x7c => 0x0200_8270,                         // UART_DATE reset.
+                0x48 => self.idle,                      // UART_IDLE_CONF
+                0x60 => self.shadow.memory,             // UART_MEM_CONF
+                0x6c => u32::from(self.tx_busy()) << 4, // UART_FSM_STATUS: форма занятости для uart_ll_is_tx_idle.
+                0x78 => self.shadow.clock,              // UART_CLK_CONF
+                0x7c => 0x0200_8270,                    // UART_DATE reset.
                 0x80 => self.id,
                 _ => return Ok(None),
             }));
@@ -350,7 +381,7 @@ impl EspUart {
             }
         };
         let idle = || {
-            if !self.wire.is_empty() || !self.tx.is_empty() {
+            if !self.wire.is_empty() || self.tx_busy() {
                 Err(unsupported(
                     "UART: смена формата или частоты во время кадра",
                 ))
@@ -365,22 +396,22 @@ impl EspUart {
                     return Err(invalid("UART: переполнение TX FIFO или неверный байт"));
                 }
                 let (half_bit, scale) = self.half_bit(true)?;
-                if self.idle >> 10 != 0 {
-                    return Err(unsupported("UART: ненулевой TX_IDLE_NUM"));
-                }
-                let start = self
-                    .tx
-                    .back()
-                    .map_or(self.now * scale, |frame| frame.phase_end);
+                // TRM рег. 26.16 и ESP-IDF driver/uart.h, uart_set_tx_idle_num:
+                // пауза после опустошения TX FIFO, в битовых интервалах.
+                let start = self.tx.back().map_or_else(
+                    || self.tx_idle_until.map_or(self.now * scale, |(end, _)| end),
+                    |frame| frame.phase_end,
+                );
                 let end = start + self.frame_half_bits()? * half_bit;
-                if end.div_ceil(scale) > u128::from(u64::MAX) {
-                    return Err(invalid("UART: конец кадра вне шкалы времени"));
+                let idle_end = end + 2 * u128::from(self.idle >> 10) * half_bit;
+                if idle_end.div_ceil(scale) > u128::from(u64::MAX) {
+                    return Err(invalid("UART: конец кадра или простоя вне шкалы времени"));
                 }
-                self.tx.push_back(Frame {
+                self.tx.push_back(TxFrame {
                     start: start.div_ceil(scale),
                     end: end.div_ceil(scale),
                     phase_end: end,
-                    timeout: None,
+                    idle_end: (idle_end, scale),
                     byte: value as u8,
                 });
             }
@@ -407,7 +438,7 @@ impl EspUart {
                     self.clear_rx_fifo();
                 }
                 if value & TX_FIFO_RESET != 0 {
-                    self.tx.truncate(1); // UART_TXFIFO_RST очищает очередь FIFO.
+                    self.tx.truncate(self.tx_shifting()); // UART_TXFIFO_RST очищает очередь FIFO.
                 }
                 self.shadow.format = value;
             }
@@ -420,6 +451,9 @@ impl EspUart {
             }
             0x48 => {
                 allowed(0xfffff)?;
+                if (value ^ self.idle) >> 10 != 0 && self.tx_busy() {
+                    return Err(unsupported("UART: изменение TX_IDLE_NUM во время передачи"));
+                }
                 self.idle = value;
             }
             0x60 => {
@@ -445,6 +479,7 @@ impl EspUart {
                 }
                 if value & (TX_RESET | CORE_RESET) != 0 {
                     self.tx.clear();
+                    self.tx_idle_until = None;
                     self.latched &= !TX_DONE;
                 }
                 self.shadow.clock = value;
@@ -466,5 +501,96 @@ impl EspUart {
             self.active = self.shadow;
         }
         Ok(Some(0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn локальное_гейтирование_не_отключает_fifo() {
+        // TRM §6.2, §26.4.1 и §26.4.3.1: источник XTAL 40 МГц,
+        // UART_CLKDIV=347+3/16, первый делитель NUM=0. Кадр 8N1 — 10 бит.
+        let mut uart = EspUart::new(80_000_000, 80_000_000, 40_000_000, None).unwrap();
+        assert_eq!(uart.access(0x20, None, 0).unwrap(), Some(0x1000_001c));
+        uart.access(0x14, Some(0x0030_015b), 0).unwrap();
+        let clock = TX_CLK_EN | RX_CLK_EN | SCLK_EN | (3 << 20); // SCLK_SEL=XTAL.
+        uart.access(0x78, Some(clock), 0).unwrap();
+        uart.access(0x48, Some(0x100), 0).unwrap(); // TX_IDLE_NUM=0, RX_IDLE_THRHD=0x100.
+
+        // ROM rev. 3: CONF0 перед первой записью 0x45 по PC 0x4004c0de.
+        let format = 0x0400_001c;
+        uart.access(0x20, Some(format), 0).unwrap();
+        assert_eq!(uart.access(0x20, None, 0).unwrap(), Some(format));
+        let frame = (10 * 2 * (347u64 * 16 + 3)).div_ceil(16);
+        uart.access(0x00, Some(u32::from(b'E')), 0).unwrap();
+        uart.receive(0, b"R").unwrap();
+        uart.tick(frame - 1).unwrap();
+        assert!(uart.take_tx().is_empty());
+        assert_eq!(uart.access(0x1c, None, frame - 1).unwrap(), Some(0));
+        uart.tick(frame).unwrap();
+        assert_eq!(uart.take_tx(), [(frame, b'E')]);
+        assert_eq!(
+            uart.access(0x00, None, frame).unwrap(),
+            Some(u32::from(b'R'))
+        );
+
+        let memory = uart.access(0x60, None, frame).unwrap().unwrap();
+        uart.access(0x60, Some(memory | MEM_FORCE_PD), frame)
+            .unwrap();
+        assert!(matches!(
+            uart.access(0x00, Some(0x45), frame),
+            Err(BoardFault::Misconfigured(_))
+        ));
+        assert!(matches!(
+            uart.receive(frame, b"R"),
+            Err(BoardFault::Misconfigured(_))
+        ));
+        uart.access(0x60, Some(memory), frame).unwrap();
+        uart.access(0x78, Some(clock & !TX_CLK_EN), frame).unwrap();
+        assert!(matches!(
+            uart.access(0x00, Some(0x45), frame),
+            Err(BoardFault::Misconfigured(_))
+        ));
+        uart.tick(2 * frame).unwrap();
+        assert!(uart.take_tx().is_empty());
+        assert_eq!(uart.access(0x1c, None, 2 * frame).unwrap(), Some(0));
+    }
+
+    #[test]
+    fn простой_tx_начинается_после_опустошения_очереди() {
+        // TRM рег. 26.16: сброс TX_IDLE_NUM=256. Стенд: 8N1 и 1 Мбод
+        // от XTAL 40 МГц с CLKDIV=40 (§26.4.3.1). Шкала на частоте XTAL.
+        let mut uart = EspUart::new(40_000_000, 80_000_000, 40_000_000, None).unwrap();
+        uart.access(0x78, Some(TX_CLK_EN | SCLK_EN | (3 << 20)), 0)
+            .unwrap();
+        let divider = 40;
+        uart.access(0x14, Some(divider as u32), 0).unwrap();
+        let frame = 10 * divider;
+        let gap = 256 * divider;
+        for byte in *b"AB" {
+            uart.access(0x00, Some(u32::from(byte)), 0).unwrap();
+        }
+        uart.tick(2 * frame).unwrap();
+        assert_eq!(uart.take_tx(), [(frame, b'A'), (2 * frame, b'B')]);
+        assert_eq!(uart.access(0x6c, None, 2 * frame).unwrap(), Some(1 << 4));
+
+        let queued_at = 2 * frame + 1;
+        uart.access(0x00, Some(u32::from(b'C')), queued_at).unwrap();
+        assert_eq!(uart.access(0x1c, None, queued_at).unwrap(), Some(1 << 16));
+        assert!(matches!(
+            uart.access(0x48, Some(0), queued_at),
+            Err(BoardFault::Unsupported(_))
+        ));
+        assert_eq!(uart.access(0x1c, None, 2 * frame + gap).unwrap(), Some(0));
+        uart.tick(3 * frame + gap - 1).unwrap();
+        assert!(uart.take_tx().is_empty());
+        uart.tick(3 * frame + gap).unwrap();
+        assert_eq!(uart.take_tx(), [(3 * frame + gap, b'C')]);
+        assert_eq!(
+            uart.access(0x6c, None, 3 * frame + 2 * gap).unwrap(),
+            Some(0)
+        );
     }
 }

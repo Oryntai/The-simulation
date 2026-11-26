@@ -233,6 +233,28 @@ impl std::error::Error for ParseError {}
 /// Разобрать целый UTF-8 файл `.kicad_pcb`. Неизвестная форма, которая может
 /// изменить топологию, и противоречивые ссылки возвращают ошибку с позицией.
 pub fn parse(source: &str) -> Result<KiCadBoard, ParseError> {
+    parse_board(source, false).map(|(board, _)| board)
+}
+
+/// Индексы сегментов и дуг в порядке того же файла. Порядок сохраняет `Layout::from_kicad`.
+/// Метки правил платы могут ссылаться на идентификатор вместо порядкового номера.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrackIds(BTreeMap<String, usize>);
+
+impl TrackIds {
+    pub fn index_of(&self, uuid: &str) -> Option<usize> {
+        self.0.get(&uuid.to_ascii_lowercase()).copied()
+    }
+}
+
+/// Импорт платы и идентификаторов для разметки трасс. Поддерживает `uuid` KiCad 8/9
+/// и прежний `tstamp` из [Tracks](https://dev-docs.kicad.org/en/file-formats/sexpr-pcb/#tracks-section).
+/// Дорожки без идентификатора сохраняются в плате и не включаются в индекс.
+pub fn parse_with_track_ids(source: &str) -> Result<(KiCadBoard, TrackIds), ParseError> {
+    parse_board(source, true)
+}
+
+fn parse_board(source: &str, index_tracks: bool) -> Result<(KiCadBoard, TrackIds), ParseError> {
     let mut reader = Reader { source, offset: 0 };
     let result = (|| {
         let root = reader.node(0)?;
@@ -248,7 +270,12 @@ pub fn parse(source: &str) -> Result<KiCadBoard, ParseError> {
         if tag != "kicad_pcb" {
             return Err(root.error(ErrorKind::Syntax, "ожидалась форма kicad_pcb"));
         }
-        board(&root)
+        let board = board(&root)?;
+        let mut ids = TrackIds(BTreeMap::new());
+        if index_tracks {
+            ids = track_ids(&root)?;
+        }
+        Ok((board, ids))
     })();
     result.map_err(|err| {
         let before = &source[..err.offset];
@@ -259,6 +286,42 @@ pub fn parse(source: &str) -> Result<KiCadBoard, ParseError> {
             message: err.message,
         }
     })
+}
+
+fn track_ids(root: &Node<'_>) -> ResultAt<TrackIds> {
+    let tracks = root.form()?.1.iter().filter_map(|node| match node.form() {
+        Ok(("segment" | "arc", fields)) => Some(fields),
+        _ => None, // Разбор платы уже проверил остальные формы.
+    });
+    let mut ids = BTreeMap::new();
+    for (index, fields) in tracks.enumerate() {
+        let mut id = None;
+        for field in fields {
+            if !matches!(field.form(), Ok(("tstamp" | "uuid", _))) {
+                continue;
+            }
+            if id.is_some() {
+                return Err(field.error(ErrorKind::InvalidReference, "два идентификатора дорожки"));
+            }
+            let value = scalar(field)?;
+            // Форма UUID 8–4–4–4–12 по RFC 9562, §4, без требований к версии UUID.
+            let valid = value.len() == 36
+                && value.bytes().enumerate().all(|(i, byte)| match i {
+                    8 | 13 | 18 | 23 => byte == b'-',
+                    _ => byte.is_ascii_hexdigit(),
+                });
+            if !valid {
+                return Err(field.error(ErrorKind::InvalidReference, "некорректный UUID дорожки"));
+            }
+            id = Some((field, value.to_ascii_lowercase()));
+        }
+        if let Some((field, id)) = id {
+            if ids.insert(id, index).is_some() {
+                return Err(field.error(ErrorKind::InvalidReference, "повтор UUID дорожки"));
+            }
+        }
+    }
+    Ok(TrackIds(ids))
 }
 
 struct Issue {
@@ -1424,6 +1487,16 @@ fn zone(node: &Node<'_>, refs: &References<'_>) -> ResultAt<Zone> {
         "polygon filled_polygon",
     )?;
     numeric_metadata(&fields, "priority min_thickness")?;
+    if let Some(thickness) = fields.get("filled_areas_thickness")
+        && flag(thickness)?
+    {
+        // KiCad сохраняет такую границу по правилам старой заливки с обводкой.
+        // https://dev-docs.kicad.org/en/file-formats/sexpr-intro/#zone
+        return Err(thickness.error(
+            ErrorKind::Unsupported,
+            "устаревшая заливка с обводкой требует пересчёта в KiCad",
+        ));
+    }
     let layer_tokens = match (fields.get("layer"), fields.get("layers")) {
         (Some(layer), None) => layer.args::<1>()?.as_slice(),
         (None, Some(layers)) if !layers.form()?.1.is_empty() => layers.form()?.1,

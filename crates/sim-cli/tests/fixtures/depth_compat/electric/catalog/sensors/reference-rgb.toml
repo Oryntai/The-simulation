@@ -1,0 +1,40 @@
+id = "reference-rgb"
+kind = "color_camera"
+name = "Синтетическая RGB-камера для сверки проекции"
+
+[model]
+# Параметры стенда, не паспорт конкретного изделия. Эффекты отключаются явно.
+rate_hz = { value = 25.0, provenance = "estimate", source = "Период 40 мс оставляет паузу после сбора и доставки кадра" }
+latency_s = { value = 0.008, provenance = "estimate", source = "Задержка стенда 8 мс после экспозиции" }
+width = { value = 96.0, provenance = "estimate", source = "Сетка стенда 96×72, достаточно для субпиксельной сверки центра карточки" }
+height = { value = 72.0, provenance = "estimate", source = "Сетка стенда 96×72" }
+fx = { value = 90.0, provenance = "estimate", source = "Выбранный фокус 90 px, горизонтальный обзор 2 arctan(48/90)" }
+fy = { value = 90.0, provenance = "derived", source = "Квадратный пиксель, fy = fx" }
+cx = { value = 48.0, provenance = "derived", source = "Главная точка в центре ширины 96 px" }
+cy = { value = 36.0, provenance = "derived", source = "Главная точка в центре высоты 72 px" }
+k1 = { value = 0.0, provenance = "estimate", source = "Идеальная оптика стенда без дисторсии" }
+k2 = { value = 0.0, provenance = "estimate", source = "Идеальная оптика стенда без дисторсии" }
+k3 = { value = 0.0, provenance = "estimate", source = "Идеальная оптика стенда без дисторсии" }
+p1 = { value = 0.0, provenance = "estimate", source = "Идеальная оптика стенда без дисторсии" }
+p2 = { value = 0.0, provenance = "estimate", source = "Идеальная оптика стенда без дисторсии" }
+near_m = { value = 0.03, provenance = "estimate", source = "Ближняя граница стенда, мишень на дистанции порядка метра" }
+far_m = { value = 4.0, provenance = "estimate", source = "Дальняя граница стенда за мишенью" }
+exposure_s = { value = 0.016, provenance = "estimate", source = "Экспозиция стенда 16 мс для наблюдаемого смаза" }
+readout_s = { value = 0.0, provenance = "estimate", source = "Общий затвор для сверки всех строк в одни и те же моменты" }
+exposure_samples = { value = 4.0, provenance = "estimate", source = "Четыре середины окон по 4 мс на 16 мс экспозиции" }
+spatial_samples = { value = 4.0, provenance = "estimate", source = "16 равномерных пространственных проб на пиксель" }
+ambient = { value = 1.0, provenance = "estimate", source = "Равномерный цвет без направленного освещения для сверки силуэта" }
+bias = { value = 0.0, provenance = "estimate", source = "Сверка проекции без ошибок цвета" }
+noise_std = { value = 0.0, provenance = "estimate", source = "Сверка проекции без шума" }
+drift_per_s = { value = 0.0, provenance = "estimate", source = "Сверка проекции без дрейфа" }
+drift_rw_std = { value = 0.0, provenance = "estimate", source = "Сверка проекции без случайного блуждания" }
+quantum = { value = 0.0, provenance = "estimate", source = "Без дополнительного квантования поверх кодирования RGB8" }
+saturation = { value = 0.0, provenance = "estimate", source = "Без дополнительного насыщения поверх кодирования RGB8" }
+drop_probability = { value = 0.0, provenance = "estimate", source = "Сверка без потерь доставки" }
+fault = { value = 0.0, provenance = "estimate", source = "Штатная синтетическая съёмка" }
+mount_dx_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление стенда" }
+mount_dy_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление стенда" }
+mount_dz_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление стенда" }
+mount_roll_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление стенда" }
+mount_pitch_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление стенда" }
+mount_yaw_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление стенда" }

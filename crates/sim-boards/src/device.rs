@@ -3,15 +3,17 @@ use std::sync::Arc;
 use crate::esp_clock::QUARTERS_PER_SECOND;
 use crate::ports::{OutputPort, PortSample, PortValue, end_cycle, event_time};
 use crate::{
-    Advance, BoardInput, BoardOutput, Capabilities, GpioMode, InputEvent, InputOutcome,
-    OutputEvent, PwmOutput, ResetCause, capabilities,
+    Advance, BoardInput, BoardOutput, Capabilities, EspSleepStatus, GpioMode, InputEvent,
+    InputOutcome, OutputEvent, PwmOutput, ResetCause, capabilities,
 };
 use crate::{
-    BoardFault, BoardId, arm::Arm, avr::Avr, image, memory::Bus, peripheral::Hardware, riscv::Riscv,
+    BoardFault, BoardId, arm::Arm, avr::Avr, esp_rom, image, memory::Bus, peripheral::Hardware,
+    riscv::Riscv,
 };
+use crate::{EspResetProfile, EspResetValueUse, EspVirtualRngUse, esp_rng::EspVirtualRng};
 
-#[path = "esp_rom.rs"]
-mod esp_rom;
+#[path = "esp_radio.rs"]
+mod esp_radio;
 
 /// Входы модели загрузочной периферии, которые не записаны в образе.
 #[derive(Clone, Copy, Default)]
@@ -19,6 +21,41 @@ pub struct EspBootOptions {
     /// Не задана — обращение к SYSTIMER даёт явный отказ.
     pub systimer_phase: Option<crate::SystimerPhase>,
     pub flash_readback: Option<crate::esp_flash::EspFlashReadback>,
+}
+
+impl EspBootOptions {
+    /// Подключает явно переданные состояния для чтений, которые иначе дают ошибку.
+    pub fn with_reset_profile(self, profile: EspResetProfile) -> EspProfiledBootOptions {
+        EspProfiledBootOptions {
+            options: self,
+            profile: Some(profile),
+            rng_seed: None,
+        }
+    }
+
+    /// Задаёт воспроизводимый источник чтений RNG_DATA_REG, сохраняя строгий сброс.
+    pub fn with_virtual_rng_seed(self, seed: u64) -> EspProfiledBootOptions {
+        EspProfiledBootOptions {
+            options: self,
+            profile: None,
+            rng_seed: Some(seed),
+        }
+    }
+}
+
+/// Расширенные входы raw flash. Прежние литералы EspBootOptions совместимы.
+pub struct EspProfiledBootOptions {
+    options: EspBootOptions,
+    profile: Option<EspResetProfile>,
+    rng_seed: Option<u64>,
+}
+
+impl EspProfiledBootOptions {
+    /// Включает воспроизводимый заменитель аппаратного RNG для запуска модели.
+    pub fn with_virtual_rng_seed(mut self, seed: u64) -> Self {
+        self.rng_seed = Some(seed);
+        self
+    }
 }
 
 /// Позиция в потоке шагов CPU после загрузки raw flash.
@@ -66,6 +103,29 @@ pub trait BoardSim: Send {
         straps: [bool; 3],
         options: EspBootOptions,
     ) -> Result<(), BoardFault> {
+        self.load_esp_flash_with_profile(
+            flash,
+            partition_table_offset,
+            rom,
+            efuse_readback,
+            straps,
+            EspProfiledBootOptions {
+                options,
+                profile: None,
+                rng_seed: None,
+            },
+        )
+    }
+    /// Загружает raw flash с явно выбранным профилем неизвестных состояний сброса.
+    fn load_esp_flash_with_profile(
+        &mut self,
+        flash: &[u8],
+        partition_table_offset: u32,
+        rom: &[u8],
+        efuse_readback: &[u32],
+        straps: [bool; 3],
+        options: EspProfiledBootOptions,
+    ) -> Result<(), BoardFault> {
         let _ = (
             flash,
             partition_table_offset,
@@ -80,6 +140,19 @@ pub trait BoardSim: Send {
     }
     /// Диагностика raw flash. После ошибки указывает шаг, на котором возник отказ.
     fn esp_boot_position(&self) -> Option<EspBootPosition> {
+        None
+    }
+    /// Все обращения к профилю с момента установки текущего образа.
+    /// Доступно и после ошибки. Эти данные описывают допущения модели.
+    fn esp_reset_value_uses(&self) -> &[EspResetValueUse] {
+        &[]
+    }
+    fn esp_virtual_rng_use(&self) -> Option<EspVirtualRngUse> {
+        None
+    }
+    /// Состояние RTC для ESP32-C3 с raw flash. У прочих профилей и при снятом
+    /// питании состояние отсутствует.
+    fn esp_sleep_status(&self) -> Option<EspSleepStatus> {
         None
     }
     fn reset(&mut self);
@@ -106,7 +179,10 @@ pub trait BoardSim: Send {
     }
     fn watchdog_resets(&self) -> u32;
     fn write_config(&mut self, bytes: &[u8]) -> Result<(), BoardFault>;
-    /// Продвигает не более заданного числа тактов. Может остановиться на запросе шины.
+    /// Продвигает не более заданного числа тактов. Может остановиться на
+    /// запросе шины или пакетного адаптера.
+    /// В Light-sleep и Deep-sleep ESP32-C3 счётчик времени платы использует
+    /// последний период CPU. Исполнение ядра при этом приостановлено.
     fn run_cycles(&mut self, cycles: u64) -> Result<Advance, BoardFault>;
     /// Время границы уже исполненного такта в четвертях наносекунды.
     /// None означает постоянную частоту из capabilities().
@@ -115,7 +191,7 @@ pub trait BoardSim: Send {
         Ok(None)
     }
     /// Исполняет целые такты, помещающиеся до абсолютной отметки платы,
-    /// с пересчётом после смены частоты. Может остановиться на запросе шины.
+    /// с пересчётом после смены частоты. Остановка совпадает с run_cycles.
     /// None означает постоянную частоту из capabilities().
     fn run_until_quarter_ns(&mut self, deadline: u128) -> Result<Option<Advance>, BoardFault> {
         let _ = deadline;
@@ -124,6 +200,12 @@ pub trait BoardSim: Send {
     fn apply(&mut self, event: InputEvent) -> Result<InputOutcome, BoardFault>;
     fn pwm(&self, port: u32) -> Option<PwmOutput>;
     fn take_events(&mut self) -> Vec<OutputEvent>;
+    /// Гостевой пакетный адаптер открыл вход. У прежних профилей состояние
+    /// аппаратного MAC через этот метод не определяется.
+    fn esp_radio_listening(&self, port: u32) -> bool {
+        let _ = port;
+        false
+    }
     fn sample(&self, port: OutputPort) -> PortSample {
         let value = match port {
             OutputPort::Gpio(pin) => self.pin_output(pin).map(PortValue::Logic),
@@ -163,6 +245,8 @@ pub fn new_board(id: BoardId) -> Box<dyn BoardSim> {
         next_bus_id: 0,
         events: Vec::new(),
         clock_timeline: None,
+        reset_value_history: Vec::new(),
+        rng_history: None,
     })
 }
 
@@ -208,6 +292,8 @@ struct EspFirmware {
     flash: crate::esp_flash::EspFlash,
     systimer_phase: Option<crate::SystimerPhase>,
     wdt_delay_sel: u8,
+    reset_profile: Option<EspResetProfile>,
+    rng_seed: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -281,6 +367,7 @@ struct Machine {
     rom_boot: Option<RomBoot>,
     remaining: u64,
     fractional: f64,
+    radio: esp_radio::Driver,
 }
 
 impl Machine {
@@ -289,6 +376,7 @@ impl Machine {
         watchdog: bool,
         chip_reset_pins: Option<&[Option<bool>]>,
     ) -> Result<(), BoardFault> {
+        self.radio.reset(self.bus.hw.cycles);
         self.bus.hw.restart(watchdog);
         if self.bus.id == BoardId::Rp2040 {
             self.bus.hw.vector_base = self.entry;
@@ -318,7 +406,72 @@ impl Machine {
                 self.bus.hw.enter_esp_flash_boot()?;
             }
         }
-        self.cpu.step(&mut self.bus)
+        match self.cpu.step(&mut self.bus) {
+            Err(BoardFault::UnknownInstruction { pc, raw, .. })
+                if raw == crate::EspRadioAbi::INSTRUCTION
+                    && self.rom_boot.as_ref().is_none_or(|boot| !boot.in_rom) =>
+            {
+                let Cpu::Riscv(cpu) = &mut self.cpu else {
+                    unreachable!("код custom-0 относится к RISC-V");
+                };
+                let next = pc
+                    .checked_add(crate::EspRadioAbi::CALL_BYTES)
+                    .ok_or_else(|| {
+                        BoardFault::Execution("PC вызова пакетного адаптера вне диапазона".into())
+                    })?;
+                self.radio.call(&mut self.bus, pc)?;
+                cpu.pc = next;
+                // Та же оценка, что у Riscv::step: один такт на инструкцию,
+                // без утверждения о времени исполнения SDK на кремнии.
+                Ok(1)
+            }
+            result => result,
+        }
+    }
+
+    fn restart_after_sleep(&mut self, retain_fast: bool) -> Result<(), BoardFault> {
+        let boot = self
+            .rom_boot
+            .as_mut()
+            .expect("Deep-sleep доступен с raw flash");
+        let old = self.bus.esp_memory.as_mut().expect("установлена память C3");
+        // TRM §§5.4, 6.1 и рег. 5.8. Deep-sleep сбрасывает цифровой домен, но не
+        // перечитывает внешние strap. Содержимое цифровой SRAM теряется.
+        let straps = old.read(self.entry, 0x6000_4038, size_of::<u32>() as u8)?;
+        let pins = std::array::from_fn::<_, 22, _>(|pin| match pin {
+            2 => Some(straps & 1 != 0),
+            8 => Some(straps & (1 << 2) != 0),
+            9 => Some(straps & (1 << 3) != 0),
+            _ => None,
+        });
+        let mut memory = boot.image.cold_memory(&pins);
+        if retain_fast {
+            crate::peripheral::esp_sleep::retain_rtc_fast(old, &mut memory)?;
+        }
+        self.bus.hw.finish_deep_wake();
+        self.radio.reset(self.bus.hw.cycles);
+        self.bus.esp_memory = Some(memory);
+        boot.in_rom = true;
+        boot.step = 0;
+        boot.fault_pc = None;
+        self.cpu = Cpu::boot(&mut self.bus, self.entry)?;
+        Ok(())
+    }
+
+    fn restart_if_requested(&mut self) -> Result<(), BoardFault> {
+        if self.bus.hw.reset_requested {
+            let watchdog = self.bus.hw.watchdog_reset();
+            self.restart(watchdog, None)?;
+            if !watchdog {
+                let hw = &mut self.bus.hw;
+                hw.reset_events.push(OutputEvent {
+                    cycle: hw.cycles,
+                    output: BoardOutput::Reset(ResetCause::Software),
+                });
+            }
+            self.remaining = 0;
+        }
+        Ok(())
     }
 
     fn run(
@@ -329,18 +482,17 @@ impl Machine {
         deadline: Option<u128>,
     ) -> Result<(), BoardFault> {
         let mut todo = cycles;
-        while todo != 0 && !self.bus.hw.has_bus_request() {
+        while todo != 0 && !self.has_request() {
             let rates = self
                 .bus
                 .hw
                 .esp_boot
                 .as_ref()
                 .map(|boot| boot.system.clocks());
+            let period = rates.map_or_else(fixed_esp_period, |clock| clock.cpu_cycle_quarters());
             let mut available = todo;
             if let Some(timeline) = timeline.as_deref_mut() {
                 let cycle = self.bus.hw.cycles;
-                let period =
-                    rates.map_or_else(fixed_esp_period, |clock| clock.cpu_cycle_quarters());
                 if let Some(deadline) = deadline {
                     available = available.min(cycles_before(deadline, timeline.at(cycle), period));
                     if available == 0 {
@@ -348,6 +500,17 @@ impl Machine {
                     }
                 }
                 timeline.set_period(cycle, period);
+            }
+            if self.remaining == 0 && self.bus.hw.sleeping_mode().is_some() {
+                // В спящем режиме такты интерфейса продолжают шкалу хоста
+                // с последним периодом CPU. Инструкции и цифровые таймеры стоят.
+                let (spend, deep_wake) = self.bus.hw.advance_sleep(available, period)?;
+                todo -= spend;
+                if let Some(retain_fast) = deep_wake {
+                    self.restart_after_sleep(retain_fast)?;
+                }
+                self.restart_if_requested()?;
+                continue;
             }
             let spend;
             if !executing {
@@ -360,17 +523,28 @@ impl Machine {
                 self.remaining -= spend;
             }
             if let Some(rates) = rates {
-                self.bus.hw.advance_esp_boot(spend, rates, !executing)?;
+                let system = &self.bus.hw.esp_boot.as_ref().unwrap().system;
+                let stalled = !executing
+                    || matches!(&self.cpu, Cpu::Riscv(cpu) if cpu.clock_stalled(system.wait_gate_cycles()));
+                self.bus.hw.advance_esp_boot(spend, rates, stalled)?;
             }
             self.bus.hw.tick(spend);
+            if self.remaining == 0 {
+                self.bus.hw.sleep_commit_entry();
+            }
             todo -= spend;
             if executing {
                 if self.remaining == 0
                     && let (Some(boot), Cpu::Riscv(cpu), Some(memory)) =
-                        (&mut self.rom_boot, &self.cpu, &mut self.bus.esp_memory)
+                        (&mut self.rom_boot, &mut self.cpu, &mut self.bus.esp_memory)
                 {
-                    boot.image
-                        .check_transfer(&mut boot.in_rom, cpu.pc, memory)?;
+                    if boot.in_rom {
+                        boot.image
+                            .check_transfer(&mut boot.in_rom, cpu.pc, memory)?;
+                        if !boot.in_rom {
+                            cpu.finish_rom_handoff();
+                        }
+                    }
                     boot.step += 1;
                     boot.fault_pc = None;
                 }
@@ -378,20 +552,19 @@ impl Machine {
             if let Some(fault) = self.bus.hw.bus_fault() {
                 return Err(fault.clone());
             }
-            if self.bus.hw.reset_requested {
-                let watchdog = self.bus.hw.watchdog_reset();
-                self.restart(watchdog, None)?;
-                if !watchdog {
-                    let hw = &mut self.bus.hw;
-                    hw.reset_events.push(OutputEvent {
-                        cycle: hw.cycles,
-                        output: BoardOutput::Reset(ResetCause::Software),
-                    });
-                }
-                self.remaining = 0;
-            }
+            self.restart_if_requested()?;
         }
         Ok(())
+    }
+
+    fn has_request(&self) -> bool {
+        self.bus.hw.has_bus_request() || self.radio.request
+    }
+
+    fn take_requests(&mut self, events: &mut Vec<OutputEvent>) {
+        events.extend(self.bus.hw.take_bus_requests());
+        self.radio.request = false;
+        events.append(&mut self.radio.events);
     }
 }
 
@@ -412,6 +585,8 @@ struct Device {
     next_bus_id: u64,
     events: Vec<OutputEvent>,
     clock_timeline: Option<ClockTimeline>,
+    reset_value_history: Vec<EspResetValueUse>,
+    rng_history: Option<EspVirtualRng>,
 }
 
 impl Device {
@@ -424,6 +599,8 @@ impl Device {
 
     fn disconnect(&mut self) {
         if let Some(mut machine) = self.machine.take() {
+            machine.radio.reset(self.cycle);
+            machine.take_requests(&mut self.events);
             let hw = &mut machine.bus.hw;
             hw.cancel_bus();
             self.events.extend(hw.take_uart_events());
@@ -431,6 +608,10 @@ impl Device {
             self.events.extend(hw.take_bus_completed());
             self.events.extend(hw.take_reset_events());
             self.next_bus_id = hw.next_bus_id(None);
+            if let Some(boot) = hw.esp_boot.as_mut() {
+                self.reset_value_history = boot.reset_values.take_usage();
+                self.rng_history = boot.virtual_rng.take();
+            }
         }
     }
 
@@ -455,6 +636,8 @@ impl Device {
     ) -> Result<(), BoardFault> {
         // Не оставляем прежнюю прошивку доступной для запуска после неудачной записи.
         self.disconnect();
+        self.reset_value_history.clear();
+        self.rng_history = None;
         self.image = None;
         self.reset_cause = None;
         if !self.powered {
@@ -469,35 +652,34 @@ impl Device {
     fn start(&mut self, firmware: &Firmware) -> Result<(), BoardFault> {
         self.reset_cause = None;
         let loaded: Result<Machine, BoardFault> = (|| {
-            let (image, rom_boot) = match firmware {
-                Firmware::Legacy(data) => (self.parse_legacy(data)?, None),
-                Firmware::EspFlash(boot) => (
-                    image::Image {
-                        entry: None,
-                        segments: Vec::new(),
-                    },
-                    Some(RomBoot {
-                        image: Arc::clone(&boot.image),
+            let (mut bus, entry, rom_boot) = match firmware {
+                Firmware::Legacy(data) => {
+                    let image = self.parse_legacy(data)?;
+                    let mut bus = Bus::new(self.id, &image)?;
+                    let entry = Self::legacy_entry(&mut bus, &image)?;
+                    (bus, entry, None)
+                }
+                Firmware::EspFlash(firmware) => {
+                    let mut bus = Bus::new_esp_flash(firmware.image.cold_memory(&self.digital));
+                    bus.hw.install_esp_boot(
+                        firmware.flash.clone(),
+                        firmware.systimer_phase,
+                        firmware.wdt_delay_sel,
+                        firmware.reset_profile.clone(),
+                    )?;
+                    bus.hw.esp_boot.as_mut().unwrap().virtual_rng =
+                        firmware.rng_seed.map(EspVirtualRng::new);
+                    let boot = RomBoot {
+                        image: Arc::clone(&firmware.image),
                         in_rom: true,
                         step: 0,
                         fault_pc: None,
-                    }),
-                ),
+                    };
+                    (bus, esp_rom::RESET_VECTOR, Some(boot))
+                }
             };
-            let mut bus = Bus::new(self.id, &image)?;
             bus.hw.cycles = self.cycle;
             bus.hw.next_bus_id(Some(self.next_bus_id));
-            let entry = if let Firmware::EspFlash(firmware) = firmware {
-                bus.esp_memory = Some(firmware.image.cold_memory(&self.digital));
-                bus.hw.install_esp_boot(
-                    firmware.flash.clone(),
-                    firmware.systimer_phase,
-                    firmware.wdt_delay_sel,
-                )?;
-                esp_rom::RESET_VECTOR
-            } else {
-                Self::legacy_entry(&mut bus, &image)?
-            };
             let cpu = Cpu::boot(&mut bus, entry)?;
             for (pin, value) in self.digital.iter().enumerate() {
                 if let Some(high) = value {
@@ -516,12 +698,20 @@ impl Device {
                 rom_boot,
                 remaining: 0,
                 fractional: 0.0,
+                radio: esp_radio::Driver::default(),
             })
         })();
         match loaded {
-            Ok(machine) => {
+            Ok(mut machine) => {
                 if machine.rom_boot.is_some() {
                     self.clock_timeline.get_or_insert_with(ClockTimeline::new);
+                    if let Some(boot) = machine.bus.hw.esp_boot.as_mut() {
+                        boot.reset_values
+                            .restore_usage(std::mem::take(&mut self.reset_value_history));
+                        if self.rng_history.is_some() {
+                            boot.virtual_rng = self.rng_history.take();
+                        }
+                    }
                 }
                 self.machine = Some(machine);
                 self.reset_cause = Some(ResetCause::PowerOn);
@@ -624,7 +814,7 @@ impl Device {
         }
         Ok(Advance {
             cycle: self.cycle,
-            bus_request_pending: hw.has_bus_request(),
+            bus_request_pending: machine.has_request(),
         })
     }
 }
@@ -652,14 +842,14 @@ impl BoardSim for Device {
         self.replace_firmware(|| Ok(Firmware::Legacy(data.into())))
     }
 
-    fn load_esp_flash_with_options(
+    fn load_esp_flash_with_profile(
         &mut self,
         flash: &[u8],
         partition_table_offset: u32,
         rom: &[u8],
         efuse_readback: &[u32],
         straps: [bool; 3],
-        options: EspBootOptions,
+        options: EspProfiledBootOptions,
     ) -> Result<(), BoardFault> {
         if self.id != BoardId::Esp32C3 {
             return Err(BoardFault::Unsupported(
@@ -676,7 +866,7 @@ impl BoardSim for Device {
             )?;
             let parsed = crate::esp_image::parse_flash(flash, partition_table_offset)?;
             let mut flash = crate::esp_flash::EspFlash::from_image(&parsed)?;
-            if let Some(readback) = options.flash_readback {
+            if let Some(readback) = options.options.flash_readback {
                 flash.set_readback(readback)?;
             }
             // ESP-IDF soc/esp32c3/register/soc/efuse_reg.h:
@@ -686,8 +876,10 @@ impl BoardSim for Device {
             Ok(Firmware::EspFlash(Box::new(EspFirmware {
                 image: Arc::new(image),
                 flash,
-                systimer_phase: options.systimer_phase,
+                systimer_phase: options.options.systimer_phase,
                 wdt_delay_sel: ((word >> 16) & 0b11) as u8,
+                reset_profile: options.profile,
+                rng_seed: options.rng_seed,
             })))
         })
     }
@@ -702,6 +894,31 @@ impl BoardSim for Device {
             }),
             _ => None,
         }
+    }
+
+    fn esp_reset_value_uses(&self) -> &[EspResetValueUse] {
+        self.machine
+            .as_ref()
+            .and_then(|machine| machine.bus.hw.esp_boot.as_ref())
+            .map_or(self.reset_value_history.as_slice(), |boot| {
+                boot.reset_values.usage()
+            })
+    }
+
+    fn esp_virtual_rng_use(&self) -> Option<EspVirtualRngUse> {
+        self.machine
+            .as_ref()
+            .and_then(|machine| machine.bus.hw.esp_boot.as_ref())
+            .and_then(|boot| boot.virtual_rng.as_ref())
+            .or(self.rng_history.as_ref())
+            .map(EspVirtualRng::usage)
+    }
+
+    fn esp_sleep_status(&self) -> Option<EspSleepStatus> {
+        if !self.powered || self.fault.is_some() {
+            return None;
+        }
+        self.machine.as_ref()?.bus.hw.esp_sleep_status()
     }
 
     fn reset(&mut self) {
@@ -745,8 +962,10 @@ impl BoardSim for Device {
                     .run_until_quarter_ns(deadline)?
                     .is_some_and(|p| p.bus_request_pending)
                 {
-                    let hw = &mut self.machine.as_mut().expect("плата запущена").bus.hw;
-                    self.events.extend(hw.take_bus_requests());
+                    self.machine
+                        .as_mut()
+                        .expect("плата запущена")
+                        .take_requests(&mut self.events);
                 }
                 let now = self.clock_timeline.as_ref().unwrap().at(self.cycle);
                 self.machine.as_mut().unwrap().fractional =
@@ -774,7 +993,7 @@ impl BoardSim for Device {
             let mut state = self.run_cycles(ticks as u64)?;
             while state.bus_request_pending {
                 if let Some(machine) = &mut self.machine {
-                    self.events.extend(machine.bus.hw.take_bus_requests());
+                    machine.take_requests(&mut self.events);
                 }
                 state = self.run_cycles(target - self.cycle)?;
             }
@@ -975,7 +1194,31 @@ impl BoardSim for Device {
                     return Err(fault.clone());
                 }
                 let machine = self.machine.as_mut().ok_or(BoardFault::NoImage)?;
-                return machine.bus.hw.apply_port(input);
+                return match input {
+                    BoardInput::Radio { port, packet } if self.id == BoardId::Esp32C3 => {
+                        if machine.bus.hw.sleeping_mode().is_some() {
+                            Ok(InputOutcome::PacketDropped)
+                        } else {
+                            machine.radio.receive(port, packet)
+                        }
+                    }
+                    BoardInput::RadioReplyId { port, id } if self.id == BoardId::Esp32C3 => {
+                        machine.radio.reply_id(port, id)
+                    }
+                    BoardInput::RadioResult {
+                        port,
+                        sent_cycle,
+                        status,
+                    } if self.id == BoardId::Esp32C3 => {
+                        let status = if machine.bus.hw.sleeping_mode().is_some() {
+                            crate::RadioStatus::NotAnalyzed("получение подтверждения во время сна")
+                        } else {
+                            status
+                        };
+                        machine.radio.result(self.cycle, port, sent_cycle, status)
+                    }
+                    input => machine.bus.hw.apply_port(input),
+                };
             }
         }
         Ok(InputOutcome::Applied)
@@ -990,13 +1233,22 @@ impl BoardSim for Device {
 
     fn take_events(&mut self) -> Vec<OutputEvent> {
         if let Some(machine) = &mut self.machine {
+            machine.take_requests(&mut self.events);
             let hw = &mut machine.bus.hw;
             self.events.extend(hw.take_uart_events());
-            self.events.extend(hw.take_bus_requests());
             self.events.extend(hw.take_bus_completed());
             self.events.extend(hw.take_reset_events());
         }
         self.events.sort_by_key(|event| event.cycle);
         std::mem::take(&mut self.events)
+    }
+
+    fn esp_radio_listening(&self, port: u32) -> bool {
+        self.powered
+            && self.executing
+            && self.fault.is_none()
+            && self.machine.as_ref().is_some_and(|machine| {
+                machine.bus.hw.sleeping_mode().is_none() && machine.radio.listening(port)
+            })
     }
 }

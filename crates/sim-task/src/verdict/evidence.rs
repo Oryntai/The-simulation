@@ -1,6 +1,7 @@
 //! Живые наблюдения и адаптеры предметных оценщиков.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroU32;
 
 use sim_mujoco::{JointInfo, JointKind};
 use sim_process::{
@@ -8,8 +9,13 @@ use sim_process::{
     schematic::{
         CompiledSchematic, DepthCheck, DepthEvidence, DepthFinding, DepthModeMark, ElectricalClass,
         ModePlan, Probe, Scope, Status as ElectricalStatus,
-        capacitor_stress::CapacitorVoltageSense, switch_thermal::SwitchSoaTime,
+        capacitor_stress::CapacitorVoltageSense,
+        emi_reset::{EmiEvidence, EmiInput, EmiOutcome, EmiPacketProbe, assess_emi_reset, prepare_emi_reset},
+        sim_circuit::pcb::{clearance, layout::Layout, ratings, return_path},
+        solder_joint::{SolderControlSeries, SolderJointProfile, SolderJointReport},
+        switch_thermal::SwitchSoaTime,
     },
+    work::solder_window::SolderWindowStatus,
 };
 use sim_runtime::{Evaluator, Log, LogEnd, LogEntry, LogKind, Runtime, Status, Truth, TruthId, TruthOut};
 use sim_signal::{Command, Rng, SignalSpec, Time};
@@ -196,6 +202,7 @@ pub struct ElectricalEvidence {
     live: Option<Fingerprint>,
     assessment: sim_process::schematic::ElectricalAssessment,
     findings: Vec<Finding>,
+    solder_joints: BTreeMap<String, SolderJointReport>,
 }
 
 impl ElectricalEvidence {
@@ -205,6 +212,26 @@ impl ElectricalEvidence {
         compiled: &sim_process::schematic::CompiledSchematic,
         plan: &sim_process::schematic::ModePlan,
         build: Fingerprint,
+    ) -> Result<Self, Error> {
+        Self::evaluate_with_solder(instance, schematic_bytes, compiled, plan, build, &BTreeMap::new())
+    }
+
+    /// Считает окно каждого паяного стыка и переносит применимые замеры серии.
+    /// Профиль, серия и число интервалов сетки адресуются ID стыка схемы.
+    pub fn evaluate_with_solder(
+        instance: &str,
+        schematic_bytes: &[u8],
+        compiled: &CompiledSchematic,
+        plan: &ModePlan,
+        build: Fingerprint,
+        solder: &BTreeMap<
+            String,
+            (
+                Option<SolderJointProfile>,
+                Option<SolderControlSeries>,
+                NonZeroU32,
+            ),
+        >,
     ) -> Result<Self, Error> {
         use sim_process::schematic::{ElectricalClass, Scope, Status as ElectricalStatus};
 
@@ -332,7 +359,109 @@ impl ElectricalEvidence {
             sim_process::schematic::BindingTarget::BoardPower { board, .. } => Some(board.clone()),
             _ => None,
         }).collect();
-        Ok(Self { instance: instance.into(), file, build, inputs, boards, live: None, assessment, findings })
+        let mut result = Self {
+            instance: instance.into(),
+            file,
+            build,
+            inputs,
+            boards,
+            live: None,
+            assessment,
+            findings,
+            solder_joints: BTreeMap::new(),
+        };
+        result.assess_solder(compiled, solder)?;
+        Ok(result)
+    }
+
+    fn assess_solder(
+        &mut self,
+        compiled: &CompiledSchematic,
+        supplied: &BTreeMap<
+            String,
+            (
+                Option<SolderJointProfile>,
+                Option<SolderControlSeries>,
+                NonZeroU32,
+            ),
+        >,
+    ) -> Result<(), Error> {
+        let joints: BTreeSet<_> = compiled.solder_joint_ids().collect();
+        if let Some(id) = supplied.keys().find(|id| !joints.contains(id.as_str())) {
+            return Err(invalid(format!("«{id}»: нет паяного стыка в схеме")));
+        }
+        for id in joints {
+            // Без профиля оценщик возвращает причину до построения сетки.
+            let (profile, series, steps) = supplied
+                .get(id)
+                .map_or((None, None, NonZeroU32::MIN), |(profile, series, steps)| {
+                    (profile.as_ref(), series.as_ref(), *steps)
+                });
+            let report = compiled
+                .assess_solder_joint(id, profile, series, steps)
+                .map_err(|err| invalid(format!("стык «{id}»: {err}")))?;
+            let key = RequirementKey {
+                class: HazardClass::SolderDefect,
+                object: format!("{}/{id}", self.instance),
+                extension: Some(format!("solder_defect/{id}")),
+                run: None,
+                window_ns: None,
+                level: super::Level::Simulation,
+            };
+            let (outcome, reason) = match report.window_status() {
+                SolderWindowStatus::Fail => {
+                    (Outcome::Fail, "параметры пайки вне окна процесса".into())
+                }
+                SolderWindowStatus::Pass if report.address.scope == Scope::Reference => {
+                    (Outcome::Pass, "окно процесса выполнено".into())
+                }
+                SolderWindowStatus::Pass => {
+                    let reason = [&report.resistance_ohm, &report.strength_n]
+                        .into_iter()
+                        .find_map(|measurement| match measurement {
+                            Analysis::NotAnalyzed { reason } => Some(reason.as_str()),
+                            Analysis::Analyzed { .. } => None,
+                        })
+                        .unwrap_or("нужны приёмочные пределы сопротивления и прочности для сборки");
+                    (
+                        Outcome::NotAnalyzed,
+                        format!("окно процесса выполнено. {reason}"),
+                    )
+                }
+                SolderWindowStatus::NotAnalyzed { reason } => (Outcome::NotAnalyzed, reason),
+            };
+            let mut finding = Finding::open(&key, reason);
+            finding.outcome = outcome;
+            finding.confirmed_hazard = outcome == Outcome::Fail;
+            if outcome != Outcome::NotAnalyzed {
+                finding.missing_data.clear();
+            }
+            finding.model_scope = Some(
+                match report.address.scope {
+                    Scope::Reference => "окно процесса адресованного стыка эталонного стенда",
+                    Scope::Assembly => "окно процесса адресованного стыка сборки",
+                }
+                .into(),
+            );
+            let inputs = Fingerprint::of(
+                format!("{:?}{id:?}{profile:?}{series:?}{steps}", self.inputs).as_bytes(),
+            );
+            finding.electrical = Some(super::ElectricalFindingIdentity {
+                schematic: self.file,
+                inputs,
+                build: self.build,
+                mode: None,
+                probe: Some(id.into()),
+                witness: None,
+            });
+            self.findings.push(finding);
+            self.solder_joints.insert(id.into(), report);
+        }
+        Ok(())
+    }
+
+    pub fn solder_joints(&self) -> &BTreeMap<String, SolderJointReport> {
+        &self.solder_joints
     }
 
     /// Исполняет профильную проверку и добавляет её обязательство к этой установке.
@@ -693,6 +822,406 @@ impl ElectricalEvidence {
 
     pub fn findings(&self) -> &[Finding] {
         &self.findings
+    }
+
+    /// Публикует незакрытое обязательство заявленной платы.
+    pub fn record_pcb_open(
+        &mut self,
+        class: HazardClass,
+        id: &str,
+        pcb: Fingerprint,
+        reason: &str,
+    ) -> Result<(), Error> {
+        let finding = self.pcb_finding(class, id, pcb, reason)?;
+        self.findings.push(finding);
+        Ok(())
+    }
+
+    /// Считает и публикует воздушный зазор и путь утечки указанной пары.
+    /// Возвращает расчёт сравнителя. Уровень доказательства хранится в `findings()`.
+    pub fn record_pcb_clearance(
+        &mut self,
+        id: &str,
+        pcb: Fingerprint,
+        layout: &Layout,
+        face: clearance::Face,
+        nets: [u32; 2],
+        conditions: Option<&clearance::Conditions<'_>>,
+        limits: Option<&clearance::Limits<'_>>,
+        topology_gap: Option<&str>,
+    ) -> Result<clearance::ClearanceReport, Error> {
+        let scope = match self.assessment.scope {
+            Scope::Assembly => clearance::Scope::Sourced,
+            Scope::Reference => clearance::Scope::Reference,
+        };
+        if conditions.is_some_and(|c| c.scope != scope) || limits.is_some_and(|l| l.envelope.scope != scope) {
+            return Err(invalid("область условий изоляции расходится со схемой"));
+        }
+        let report = clearance::evaluate(layout, face, nets, conditions, limits)
+            .map_err(|e| invalid(e.to_string()))?;
+        let (criterion, check) = if report.clearance.status == clearance::Status::Fail
+            || report.creepage.status == clearance::Status::Pass
+        {
+            ("воздушный зазор", &report.clearance)
+        } else {
+            ("путь утечки", &report.creepage)
+        };
+        let class = HazardClass::CreepageClearance;
+        let reason = match report.status() {
+            clearance::Status::Fail => format!("{criterion} меньше предела"),
+            clearance::Status::Pass => "оба расстояния в пределах расчётного опыта".into(),
+            clearance::Status::NotAnalyzed => report.clearance.open.iter().chain(&report.creepage.open)
+                .map(ToString::to_string).collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>().join(", "),
+        };
+        let mut finding = self.pcb_finding(class, id, pcb, &reason)?;
+        finding.measurement = check.distance.and_then(|d| Some([d.lower_m, d.upper_m?]));
+        finding.limit = check.minimum_m.map(|minimum| LimitValue {
+            lower: Some([minimum; 2]),
+            upper: None,
+        });
+        finding.unit = Some("m".into());
+        finding.measurement_sources.extend(conditions.map(|c| c.source.into()));
+        finding.limit_sources.extend(limits.map(|l| l.envelope.source.into()));
+        let outcome = match report.status() {
+            clearance::Status::Pass => Outcome::Pass,
+            clearance::Status::Fail => Outcome::Fail,
+            clearance::Status::NotAnalyzed => Outcome::NotAnalyzed,
+        };
+        self.finish_pcb_finding(finding, outcome, topology_gap);
+        Ok(report)
+    }
+
+    /// Считает и публикует смещение опоры по связанным маршрутам возврата.
+    /// Возвращает расчёт сравнителя. Уровень доказательства хранится в `findings()`.
+    pub fn record_pcb_ground_bounce(
+        &mut self,
+        id: &str,
+        pcb: Fingerprint,
+        layout: &Layout,
+        input: &return_path::GroundBounceInput<'_>,
+        topology_gap: Option<&str>,
+    ) -> Result<return_path::GroundBounceReport, Error> {
+        let scope = match self.assessment.scope {
+            Scope::Assembly => ratings::Scope::Assembly,
+            Scope::Reference => ratings::Scope::Reference,
+        };
+        if input.scope != scope {
+            return Err(invalid("область расчёта возврата расходится со схемой"));
+        }
+        let report = return_path::check_ground_bounce(layout, input)
+            .map_err(|e| invalid(e.to_string()))?;
+        let (outcome, reason) = match &report.status {
+            return_path::Status::Pass => (Outcome::Pass, "смещение опоры в пределах расчётного опыта".into()),
+            return_path::Status::Fail => (Outcome::Fail, "смещение опоры выше предела приёмника".into()),
+            return_path::Status::NotAnalyzed(reason) => (Outcome::NotAnalyzed, reason.to_string()),
+        };
+        let mut finding = self.pcb_finding(HazardClass::GroundBounce, id, pcb, &reason)?;
+        finding.measurement = report.bounds_v;
+        if let Some(limit) = input.max_bounce_v {
+            let (ratings::Source::Reference(source) | ratings::Source::Verified(source)
+                | ratings::Source::Estimate(source)) = limit.source;
+            finding.limit = Some(LimitValue::upper([limit.value; 2]));
+            finding.limit_sources.push(source.into());
+        }
+        finding.unit = Some("V".into());
+        self.finish_pcb_finding(finding, outcome, topology_gap);
+        Ok(report)
+    }
+
+    fn pcb_finding(
+        &self, class: HazardClass, id: &str, pcb: Fingerprint, reason: &str,
+    ) -> Result<Finding, Error> {
+        if class.pcb_measurement().is_none() {
+            return Err(invalid("неизвестный код проверки платы"));
+        }
+        crate::task::check_name(id)?;
+        let extension = format!("pcb/{}/{id}", class.spec().id);
+        if id.contains('/') || id.chars().any(char::is_control) || reason.trim().is_empty()
+            || self.findings.iter().any(|finding| finding.key.extension.as_deref() == Some(&extension))
+        {
+            return Err(invalid("пустая причина или некорректное либо повторное имя проверки платы"));
+        }
+        let key = RequirementKey {
+            class,
+            object: self.instance.clone(),
+            extension: Some(extension),
+            run: None,
+            window_ns: None,
+            level: super::Level::Simulation,
+        };
+        let mut finding = Finding::open(&key, reason);
+        finding.model_scope = Some(match self.assessment.scope {
+            Scope::Reference => "расчётный эталон платы",
+            Scope::Assembly => "инженерная оценка платы для указанной ревизии и установки",
+        }.into());
+        finding.measurement_sources.push(format!("профиль платы {:016x}", pcb.as_u64()));
+        finding.electrical = Some(super::ElectricalFindingIdentity {
+            schematic: self.file,
+            inputs: Fingerprint::of(format!("{:?}{pcb:?}", self.inputs).as_bytes()),
+            build: self.build,
+            mode: Some("плата".into()),
+            probe: Some(id.into()),
+            witness: None,
+        });
+        Ok(finding)
+    }
+
+    fn finish_pcb_finding(&mut self, mut finding: Finding, outcome: Outcome, topology_gap: Option<&str>) {
+        let gap = topology_gap.or_else(|| {
+            (self.assessment.scope == Scope::Assembly).then(|| {
+                finding.key.class.pcb_measurement().expect("код проверки платы")
+            })
+        });
+        finding.coverage_gaps.extend(topology_gap.map(str::to_owned));
+        if let Some(reason) = gap.filter(|_| outcome == Outcome::Pass) {
+            finding.reason = reason.into();
+            finding.missing_data = vec![reason.into()];
+        } else {
+            finding.outcome = outcome;
+            finding.confirmed_hazard = outcome == Outcome::Fail;
+            if outcome != Outcome::NotAnalyzed {
+                finding.missing_data.clear();
+            }
+        }
+        self.findings.push(finding);
+    }
+
+    /// Открытое обязательство для явно заявленной проверки ЭМС.
+    pub fn record_emc_open(
+        &mut self,
+        class: HazardClass,
+        id: &str,
+        profile: Fingerprint,
+        reason: &str,
+    ) -> Result<(), Error> {
+        let finding = self.emc_finding(class, id, profile, class.spec().id, reason)?;
+        self.findings.push(finding);
+        Ok(())
+    }
+
+    /// Публикует результат схемного оценщика контактного разряда.
+    /// Численное подтверждение запаса оставляет обязательство измерения на стенде.
+    pub fn record_esd_event<E>(
+        &mut self,
+        compiled: &CompiledSchematic,
+        plan: &ModePlan,
+        id: &str,
+        profile: Fingerprint,
+        assess: impl FnOnce(
+            &CompiledSchematic,
+        )
+            -> Result<sim_process::schematic::Finding<E>, sim_process::ProcessError>,
+    ) -> Result<sim_process::schematic::Finding<E>, Error> {
+        self.check_emc_inputs(compiled, plan)?;
+        let mut result = assess(compiled).map_err(|err| invalid(err.to_string()))?;
+        if !compiled.pins().any(|end| end.to_string() == result.subject) {
+            return Err(invalid("свидетельство ESD не адресует вывод схемы"));
+        }
+        if result.status == ElectricalStatus::Pass {
+            result.status = ElectricalStatus::NotAnalyzed;
+            result.reason =
+                "нужен стендовый замер остаточных напряжения и тока на защищаемом выводе".into();
+        }
+        let mut finding = self.emc_finding(
+            HazardClass::EsdEvent,
+            id,
+            profile,
+            &result.subject,
+            &result.reason,
+        )?;
+        finding.model_scope = Some(
+            "одиночный контактный разряд на адресованных клеммах испытательной установки".into(),
+        );
+        if result.status == ElectricalStatus::Fail {
+            finding.outcome = Outcome::Fail;
+            finding.confirmed_hazard = true;
+            finding.missing_data.clear();
+        } else {
+            finding
+                .missing_data
+                .extend(HazardClass::EsdEvent.emc_measurement().map(str::to_owned));
+        }
+        self.findings.push(finding);
+        Ok(result)
+    }
+
+    /// Рассчитывает запас входа и проверяет наблюдение по паре живых запусков.
+    /// Отсутствие пары оставляет обязательство открытым даже при численном запасе.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_emi_reset(
+        &mut self,
+        compiled: &CompiledSchematic,
+        plan: &ModePlan,
+        id: &str,
+        profile: Fingerprint,
+        input: EmiInput,
+        pair: Option<(&Runtime, &Runtime)>,
+        packet: Option<&EmiPacketProbe>,
+    ) -> Result<Analysis<EmiEvidence>, Error> {
+        self.check_emc_inputs(compiled, plan)?;
+        if input.scope != compiled.depth_scope()
+            || !self.boards.contains(&input.board)
+            || !compiled.pins().any(|end| end.component == input.source)
+            || ![&input.input, &input.reference]
+                .into_iter()
+                .all(|target| compiled.pins().any(|end| end == target))
+        {
+            return Err(invalid(
+                "источник, плата или клеммы EMI не соответствуют схеме",
+            ));
+        }
+        if let Some(packet) = packet {
+            packet
+                .validate(input.scope)
+                .map_err(|err| invalid(err.to_string()))?;
+        }
+        let object = format!("{} относительно {}", input.input, input.reference);
+        let window = [input.start.0, input.end.0];
+        let mut finding = self.emc_finding(
+            HazardClass::EmiReset,
+            id,
+            profile,
+            &object,
+            "нужен синхронный стендовый замер дифференциального напряжения, сброса и доставки",
+        )?;
+        finding.key.window_ns = Some(window);
+        let trial = match prepare_emi_reset(input).map_err(|err| invalid(err.to_string()))? {
+            Analysis::NotAnalyzed { reason } => {
+                finding.reason.clone_from(&reason);
+                finding.missing_data.push(reason.clone());
+                self.findings.push(finding);
+                return Ok(Analysis::NotAnalyzed { reason });
+            }
+            Analysis::Analyzed { value, .. } => value,
+        };
+        let evidence = if let Some((active, baseline)) = pair {
+            let active_run = sim_runtime::control::run(active)
+                .ok_or_else(|| invalid("нет журнала воздействия"))?;
+            let quiet_run = sim_runtime::control::run(baseline)
+                .ok_or_else(|| invalid("нет контрольного журнала"))?;
+            let evidence = active
+                .compare_emi_reset(baseline, packet)
+                .map_err(invalid)?;
+            let expected = assess_emi_reset(&trial, evidence.observation);
+            if evidence.source != expected.source
+                || evidence.source_kind != expected.source_kind
+                || evidence.board != expected.board
+                || evidence.input != expected.input
+                || evidence.reference != expected.reference
+                || evidence.scope != expected.scope
+                || evidence.margins != expected.margins
+                || evidence.criterion != expected.criterion
+                || evidence.outcome != expected.outcome
+            {
+                return Err(invalid("живая пара EMI относится к другой постановке"));
+            }
+            let active_journal = active_run.log().fingerprint();
+            let quiet_journal = quiet_run.log().fingerprint();
+            finding.journal = Some(Fingerprint::from_fnv1a(active_journal));
+            finding
+                .measurement_sources
+                .push(format!("контрольный журнал {quiet_journal:016x}"));
+            evidence
+        } else {
+            let mut evidence = assess_emi_reset(&trial, None);
+            evidence.outcome = EmiOutcome::NotAnalyzed {
+                reason: "нужны связанный опыт и контроль с той же установкой и синхронный стендовый замер входа и сброса".into(),
+            };
+            evidence
+        };
+        let bounds = [
+            evidence.margins.voltage_v.lower,
+            evidence.margins.voltage_v.upper,
+        ];
+        checked_pair(bounds)?;
+        finding.measurement = Some(bounds);
+        finding.limit = Some(LimitValue {
+            lower: Some([0.0; 2]),
+            upper: None,
+        }); // Граница знакового запаса.
+        finding.unit = Some("V".into());
+        let scope = "дифференциальный вход сброса в указанных монтаже, полосе и окне";
+        finding.model_scope = Some(scope.into());
+        if let Some(identity) = &mut finding.electrical {
+            identity.witness = evidence.criterion.map(|criterion| format!("{criterion:?}"));
+        }
+        match &evidence.outcome {
+            EmiOutcome::Fail { at } => {
+                finding.outcome = Outcome::Fail;
+                finding.confirmed_hazard = true;
+                finding.event_ns = Some(at.0);
+                finding.reason =
+                    "возмущение вызвало подтверждённый сброс адресованной платы".into();
+                finding.missing_data.clear();
+            }
+            EmiOutcome::NotAnalyzed { reason } => {
+                finding.reason.clone_from(reason);
+                finding.missing_data.push(reason.clone());
+            }
+        }
+        finding
+            .coverage_gaps
+            .extend(evidence.packet_open.iter().cloned());
+        self.findings.push(finding);
+        Ok(Analysis::Analyzed {
+            value: evidence,
+            scope: scope.into(),
+        })
+    }
+
+    fn check_emc_inputs(&self, compiled: &CompiledSchematic, plan: &ModePlan) -> Result<(), Error> {
+        if self.inputs != electrical_inputs(self.file, compiled, plan) {
+            return Err(invalid(
+                "свидетельство ЭМС относится к другой схеме, каталогу или режимам",
+            ));
+        }
+        Ok(())
+    }
+
+    fn emc_finding(
+        &self,
+        class: HazardClass,
+        id: &str,
+        profile: Fingerprint,
+        object: &str,
+        reason: &str,
+    ) -> Result<Finding, Error> {
+        if class.emc_measurement().is_none() {
+            return Err(invalid("неизвестный код ЭМС"));
+        }
+        crate::task::check_name(id)?;
+        if id.contains('/') || id.chars().any(char::is_control) {
+            return Err(invalid("некорректное имя проверки ЭМС"));
+        }
+        let extension = format!("emc/{}/{id}", class.spec().id);
+        if self
+            .findings
+            .iter()
+            .any(|item| item.key.extension.as_deref() == Some(&extension))
+        {
+            return Err(invalid("повтор имени проверки ЭМС"));
+        }
+        let key = RequirementKey {
+            class,
+            object: format!("{}/{object}", self.instance),
+            extension: Some(extension),
+            run: None,
+            window_ns: None,
+            level: super::Level::Simulation,
+        };
+        let mut finding = Finding::open(&key, reason);
+        finding
+            .measurement_sources
+            .push(format!("профиль ЭМС {:016x}", profile.as_u64()));
+        finding.electrical = Some(super::ElectricalFindingIdentity {
+            schematic: self.file,
+            inputs: self.inputs,
+            build: self.build,
+            mode: Some("ЭМС".into()),
+            probe: Some(object.into()),
+            witness: None,
+        });
+        Ok(finding)
     }
 
     pub(super) fn inapplicable(&self) -> impl Iterator<Item = super::NotApplicable> + '_ {
@@ -2008,6 +2537,12 @@ impl Run {
         let mut sources = check.inputs.clone();
         sources.extend_from_slice(&requirement.declared);
         sources.push(check.applicability.clone());
+        if let Some(reason) = key.class.emc_measurement().or_else(|| key.class.pcb_measurement()) {
+            // Универсальный ряд не связывает измерение с адресованной постановкой.
+            finding.reason = reason.into();
+            finding.missing_data = vec![reason.into()];
+            return Ok(self.checked_findings(set, check, key, &sources, vec![finding]));
+        }
         let details = match &check.verification {
             Verification::Section {
                 geometry: declared_geometry,

@@ -1,0 +1,42 @@
+# Останов платы после живого управления вместо отключения от начала расчёта.
+# Режим, стимулы, окна и стендовые пределы взяты из acceptance.toml.
+# Только перечисленные инъекции. Штатный опыт этого режима служит контролем.
+# 145 мс = 725 периодов по 200 мкс. Останов должен быть применён на этой отметке.
+version = 1
+control = "../control.toml"
+profile = "profile.toml"
+
+[[modes]]
+id = "нажатие"
+horizon_ns = 220000000
+before_ns = 50000000
+after_ns = 55000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "0.12 с/60° из этапа 2 и 55 мс после инъекции. Физика 1 МГц. Здесь проверяется отдельный отказ на живом пути. Исходная строка: devices/stage6/depth-open.toml." }
+excitation = "нагрузка"
+stimuli = [{ id = "нагрузка", signal = { name = "выключатель/нагрузка", unit = "N*m" }, at_ns = 70000000, value = -0.002, comparison_value = 0.0, source = { kind = "derived", reference = "Известная сила 0.25 Н на плече 8 мм из switch.toml." } }]
+
+[[modes.faults]]
+fault = { node = "board:плата", kind = "controller_halted" }
+at_ns = 145000000
+source = { kind = "derived", reference = "145 мс из fault_sweep в acceptance.toml. Плата работает на 5 кГц по control.toml до инъекции." }
+
+[[criteria]]
+case = { path = "мост", mode = "нажатие" }
+limits = [
+  { kind = "range", signal = { name = "реакция пары", unit = "N" }, min = 0, source = { kind = "derived", reference = "Контакт односторонний, нормальная реакция неотрицательна." } },
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = -0.1, max = 1.1, source = { kind = "derived", reference = "Границы -5°…60° и запас до 1.10 рад на податливость стенда." } },
+  { kind = "range", signal = { name = "qpos[1]", unit = "rad" }, min = -0.02, max = 0.24, source = { kind = "derived", reference = "12° из switch.toml и допуск мягкого контакта модели." } },
+  { kind = "range", signal = { name = "нажиматель/мотор/current_a", unit = "A" }, min = -0.7, max = 0.7, source = { kind = "derived", reference = "Стоповый ток модели MG90S при 4.8 В." } },
+]
+response = { signal = { name = "qpos[1]", unit = "rad" }, min_change = 0.002, within_ns = 55000000, source = { kind = "derived", reference = "Порог 0.002 рад различает ход клавиши и прогиб ограничения." } }
+
+[[criteria]]
+case = { path = "мост", mode = "нажатие", fault = { node = "board:плата", kind = "controller_halted" } }
+limits = [
+  { kind = "range", signal = { name = "реакция пары", unit = "N" }, min = 0, source = { kind = "derived", reference = "Контакт односторонний, нормальная реакция неотрицательна." } },
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = -0.1, max = 1.1, source = { kind = "derived", reference = "Границы -5°…60° и запас до 1.10 рад на податливость стенда." } },
+  { kind = "range", signal = { name = "qpos[1]", unit = "rad" }, min = -0.02, max = 0.24, source = { kind = "derived", reference = "12° из switch.toml и допуск мягкого контакта модели." } },
+  { kind = "range", signal = { name = "нажиматель/мотор/current_a", unit = "A" }, min = -0.7, max = 0.7, source = { kind = "derived", reference = "Стоповый ток модели MG90S при 4.8 В." } },
+]
+response = { signal = { name = "qpos[1]", unit = "rad" }, min_change = 0.002, within_ns = 55000000, source = { kind = "derived", reference = "Порог 0.002 рад различает ход клавиши и прогиб ограничения." } }

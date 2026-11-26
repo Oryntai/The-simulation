@@ -19,6 +19,10 @@ use crate::{
     },
 };
 
+pub mod depth_factors;
+
+use depth_factors::{DepthFactors, DepthPlan};
+
 /// Файлы старых форматов разрешает их владелец. Вся цепочка фиксируется до планирования.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -366,6 +370,7 @@ struct Document {
     world: Option<PathBuf>,
     catalog: Option<PathBuf>,
     sampling: Option<Sampling>,
+    depth_factors: Option<DepthFactors>,
     #[serde(default)]
     include: Vec<PathBuf>,
     #[serde(default)]
@@ -396,6 +401,7 @@ pub struct Campaign {
     stations: BTreeMap<String, Station>,
     sampling: Sampling,
     sampling_declared: bool,
+    depth_factors: Option<DepthFactors>,
     references: BTreeMap<PathBuf, Reference>,
     fingerprint: Fingerprint,
 }
@@ -578,9 +584,10 @@ impl Documents {
                 || included.world.is_some()
                 || included.catalog.is_some()
                 || included.sampling.is_some()
+                || included.depth_factors.is_some()
             {
                 return Err(invalid(format!(
-                    "{}: seed, world, catalog и sampling задаются в корне кампании",
+                    "{}: seed, world, catalog, sampling и depth_factors задаются в корне кампании",
                     path.display()
                 )));
             }
@@ -677,6 +684,13 @@ impl Campaign {
         )?;
         let seed = doc.seed.ok_or_else(|| missing("seed"))?;
         let sampling_declared = doc.sampling.is_some();
+        let depth_factors = doc.depth_factors.take();
+        if depth_factors.is_some() && sampling_declared {
+            return Err(invalid(format!(
+                "{}: уровни depth_factors и прежний sampling задают разные планы разброса",
+                file.display()
+            )));
+        }
         let mut sampling = doc.sampling.take().unwrap_or_default();
         field(&file.display().to_string(), sampling.validate())?;
         let mut docs = Documents::default();
@@ -698,6 +712,7 @@ impl Campaign {
             stations: docs.stations,
             sampling,
             sampling_declared,
+            depth_factors,
             references: docs.references,
             fingerprint,
         })
@@ -713,8 +728,11 @@ impl Campaign {
         self.references.values()
     }
 
+    /// Оси активного плана для разрешения параметров в установщике.
     pub fn sampling_axes(&self) -> &[Axis] {
-        &self.sampling.axes
+        self.depth_factors
+            .as_ref()
+            .map_or(&self.sampling.axes, DepthFactors::axes)
     }
 
     pub fn sampling(&self) -> &Sampling {
@@ -725,12 +743,43 @@ impl Campaign {
         self.stations.values().any(|station| station.experiment.kind.is_none())
     }
 
+    pub fn depth_factors(&self) -> Option<&DepthFactors> {
+        self.depth_factors.as_ref()
+    }
+
+    /// Разрешает входы покрытия без построения полной матрицы.
+    pub fn prepare_depth(&self, inventory: &ResolvedInputs) -> Result<DepthPlan<'_>, Error> {
+        let factors = self.depth_factors.as_ref().ok_or_else(|| {
+            invalid(format!(
+                "{}: отсутствует раздел depth_factors",
+                self.file.display()
+            ))
+        })?;
+        let nominal = self
+            .validate_plan_inputs(inventory, factors.axes())
+            .map_err(|e| invalid(format!("{}: {e}", self.file.display())))?;
+        let (inputs, base) = self.plan_identity(inventory, &nominal);
+        let fingerprint =
+            Fingerprint::of(format!("campaign/depth/v1|{base:?}|{factors:?}").as_bytes());
+        Ok(DepthPlan::new(self, factors, inputs, nominal, fingerprint))
+    }
+
     pub fn plan(&self, inventory: &ResolvedInputs) -> Result<CampaignPlan, Error> {
+        if self.depth_factors.is_some() {
+            return Err(invalid(format!(
+                "{}: для depth_factors требуется план покрытия",
+                self.file.display()
+            )));
+        }
         self.build_plan(inventory)
             .map_err(|e| invalid(format!("{}: {e}", self.file.display())))
     }
 
-    fn build_plan(&self, inventory: &ResolvedInputs) -> Result<CampaignPlan, Error> {
+    fn validate_plan_inputs(
+        &self,
+        inventory: &ResolvedInputs,
+        axes: &[Axis],
+    ) -> Result<CompiledWorld, Error> {
         if inventory.world.path != self.world_path || inventory.world.world != self.world {
             return Err(invalid("world: разрешитель передал другой начальный мир"));
         }
@@ -768,7 +817,7 @@ impl Campaign {
         inventory.validate()?;
         let nominal = inventory.world.compile()?;
         inventory.validate_efforts(&nominal)?;
-        for axis in &self.sampling.axes {
+        for axis in axes {
             for value in [axis.min, axis.nominal, axis.max] {
                 let context = format!("sampling.axes.{}", axis.id);
                 field(
@@ -795,11 +844,16 @@ impl Campaign {
                     .collect();
                 field(
                     &context,
-                    self.validate_mode(description, &paths, inventory, &nominal),
+                    Self::validate_mode(description, &paths, inventory, &nominal, axes),
                 )?;
             }
         }
 
+        Ok(nominal)
+    }
+
+    fn build_plan(&self, inventory: &ResolvedInputs) -> Result<CampaignPlan, Error> {
+        let nominal = self.validate_plan_inputs(inventory, &self.sampling.axes)?;
         let samples = self.sampling.keys()?;
         let mut velocity = BTreeSet::new();
         if !inventory.initial_velocity
@@ -885,6 +939,24 @@ impl Campaign {
             }
         }
         rows.sort_by(|a, b| a.key.cmp(&b.key));
+        let (inputs, fingerprint) = self.plan_identity(inventory, &nominal);
+        let mut plan = CampaignPlan {
+            rows,
+            campaign: self.clone(),
+            inputs,
+            nominal,
+            fingerprint,
+            participant_candidates: BTreeSet::new(),
+        };
+        plan.validate_materialized_worlds()?;
+        Ok(plan)
+    }
+
+    fn plan_identity(
+        &self,
+        inventory: &ResolvedInputs,
+        nominal: &CompiledWorld,
+    ) -> (ResolvedInputs, Fingerprint) {
         // Отпечаток предназначен для идентификации входов в пределах одной версии формата и кода.
         // Порядок разрешённых путей и сеток не влияет на ключи или отпечаток.
         let mut inputs = inventory.clone();
@@ -902,16 +974,7 @@ impl Campaign {
             )
             .as_bytes(),
         );
-        let mut plan = CampaignPlan {
-            rows,
-            campaign: self.clone(),
-            inputs,
-            nominal,
-            fingerprint,
-            participant_candidates: BTreeSet::new(),
-        };
-        plan.validate_materialized_worlds()?;
-        Ok(plan)
+        (inputs, fingerprint)
     }
 }
 
@@ -1306,23 +1369,18 @@ fn apply_initial(
 
 impl Campaign {
     fn validate_mode(
-        &self,
         mode: &OperatingMode,
         paths: &[&RequiredPath],
         inputs: &ResolvedInputs,
         nominal: &CompiledWorld,
+        axes: &[Axis],
     ) -> Result<(), Error> {
         if paths.is_empty() {
             return Err(invalid(
                 "profile.paths: режим отсутствует в разрешённом профиле",
             ));
         }
-        let mut occupied: BTreeSet<_> = self
-            .sampling
-            .axes
-            .iter()
-            .map(|a| a.parameter.clone())
-            .collect();
+        let mut occupied: BTreeSet<_> = axes.iter().map(|a| a.parameter.clone()).collect();
         for (i, value) in mode.initial.iter().enumerate() {
             let context = format!("initial[{i}]");
             field(&context, value.source.validate())?;
@@ -1458,9 +1516,7 @@ impl Campaign {
                 )));
             }
         }
-        let max_setting_delay = self
-            .sampling
-            .axes
+        let max_setting_delay = axes
             .iter()
             .filter(|a| {
                 matches!(
@@ -1623,6 +1679,60 @@ impl Campaign {
     }
 }
 
+impl Campaign {
+    fn materialize_row(
+        &self,
+        row: &PlanRow,
+        sample: Sample,
+        axes: &[Axis],
+        inputs: &ResolvedInputs,
+        nominal: &CompiledWorld,
+        fingerprint: Fingerprint,
+    ) -> Result<SampledInputs, Error> {
+        let key = &row.key;
+        let mut world = inputs.world.clone();
+        world.world.seed = sample.seeds.run;
+        world.world.physics_hz = row.grid.hz;
+        world.contact.physics = Some(Rate::hz(row.grid.hz).expect("сетка проверена"));
+        let mut settings = ModelSettings::default();
+        let station = self.stations.get(&key.station);
+        let mode = station.and_then(|station| station.modes.get(&key.mode));
+        if let Some(mode) = mode {
+            apply_initial(mode, inputs, nominal, &mut world, &mut settings)?;
+        }
+        for (axis, value) in axes.iter().zip(&sample.values) {
+            field(
+                &format!(
+                    "{}: sampling.axes.{}",
+                    self.file.display(),
+                    axis.id
+                ),
+                apply_axis(
+                    axis,
+                    value.value,
+                    &value.source,
+                    inputs,
+                    nominal,
+                    &mut world,
+                    &mut settings,
+                ),
+            )?;
+        }
+        let fingerprint = Fingerprint::of(
+            format!("{:?}|{key:?}|{sample:?}|{settings:?}", fingerprint).as_bytes(),
+        );
+        Ok(SampledInputs {
+            key: key.clone(),
+            sample,
+            world,
+            settings,
+            mode: mode.cloned(),
+            experiment: station.map(|s| s.experiment.clone()),
+            fingerprint,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CampaignPlan {
     rows: Vec<PlanRow>,
@@ -1736,46 +1846,14 @@ impl CampaignPlan {
             .row(key)
             .ok_or_else(|| invalid(format!("matrix: неизвестный ключ {key:?}")))?;
         let sample = self.sample(row)?;
-        let mut world = self.inputs.world.clone();
-        world.world.seed = sample.seeds.run;
-        world.world.physics_hz = row.grid.hz;
-        world.contact.physics = Some(Rate::hz(row.grid.hz).expect("сетка проверена"));
-        let mut settings = ModelSettings::default();
-        let station = self.campaign.stations.get(&key.station);
-        let mode = station.and_then(|station| station.modes.get(&key.mode));
-        if let Some(mode) = mode {
-            apply_initial(mode, &self.inputs, &self.nominal, &mut world, &mut settings)?;
-        }
-        for (axis, value) in self.campaign.sampling.axes.iter().zip(&sample.values) {
-            field(
-                &format!(
-                    "{}: sampling.axes.{}",
-                    self.campaign.file.display(),
-                    axis.id
-                ),
-                apply_axis(
-                    axis,
-                    value.value,
-                    &value.source,
-                    &self.inputs,
-                    &self.nominal,
-                    &mut world,
-                    &mut settings,
-                ),
-            )?;
-        }
-        let fingerprint = Fingerprint::of(
-            format!("{:?}|{key:?}|{sample:?}|{settings:?}", self.fingerprint).as_bytes(),
-        );
-        Ok(SampledInputs {
-            key: key.clone(),
+        self.campaign.materialize_row(
+            row,
             sample,
-            world,
-            settings,
-            mode: mode.cloned(),
-            experiment: station.map(|s| s.experiment.clone()),
-            fingerprint,
-        })
+            &self.campaign.sampling.axes,
+            &self.inputs,
+            &self.nominal,
+            self.fingerprint,
+        )
     }
 
     pub(crate) fn task_fingerprint(&self, key: &RunKey) -> Option<Fingerprint> {

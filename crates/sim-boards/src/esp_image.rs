@@ -684,7 +684,24 @@ fn digest_blocks(bytes: &[u8], bit_len: [u8; 8]) -> impl Iterator<Item = [u8; 64
 
 // FIPS 180-4 §4.1.2, §4.2.2, §5.3.3, §6.2; ESP-IDF, mbedtls/mbedtls/
 // tf-psa-crypto/drivers/builtin/src/sha256.c. Используется для целостности, без аутентификации.
+pub(crate) const SHA256_INITIAL: [u32; 8] = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+];
+
 fn sha256(bytes: &[u8]) -> [u8; SHA256_LEN] {
+    let mut state = SHA256_INITIAL;
+    for block in digest_blocks(bytes, (bytes.len() as u64 * 8).to_be_bytes()) {
+        sha256_compress(&mut state, &block);
+    }
+    let mut result = [0; SHA256_LEN];
+    for (chunk, word) in result.chunks_exact_mut(4).zip(state) {
+        chunk.copy_from_slice(&word.to_be_bytes());
+    }
+    result
+}
+
+// FIPS 180-4 §6.2.2: сжатие одного блока без добавления паддинга.
+pub(crate) fn sha256_compress(state: &mut [u32; 8], block: &[u8; 64]) {
     const ROUND: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
         0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
@@ -697,49 +714,38 @@ fn sha256(bytes: &[u8]) -> [u8; SHA256_LEN] {
         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
         0xc67178f2,
     ];
-    let mut state: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-    for block in digest_blocks(bytes, (bytes.len() as u64 * 8).to_be_bytes()) {
-        let mut words = [0u32; 64];
-        for (word, chunk) in words.iter_mut().zip(block.chunks_exact(4)) {
-            *word = u32::from_be_bytes(chunk.try_into().expect("слово SHA-256"));
-        }
-        for i in 16..words.len() {
-            let x = words[i - 15];
-            let y = words[i - 2];
-            let sigma0 = x.rotate_right(7) ^ x.rotate_right(18) ^ (x >> 3);
-            let sigma1 = y.rotate_right(17) ^ y.rotate_right(19) ^ (y >> 10);
-            words[i] = words[i - 16]
-                .wrapping_add(sigma0)
-                .wrapping_add(words[i - 7])
-                .wrapping_add(sigma1);
-        }
+    let mut words = [0u32; 64];
+    for (word, chunk) in words.iter_mut().zip(block.chunks_exact(4)) {
+        *word = u32::from_be_bytes(chunk.try_into().expect("слово SHA-256"));
+    }
+    for i in 16..words.len() {
+        let x = words[i - 15];
+        let y = words[i - 2];
+        let sigma0 = x.rotate_right(7) ^ x.rotate_right(18) ^ (x >> 3);
+        let sigma1 = y.rotate_right(17) ^ y.rotate_right(19) ^ (y >> 10);
+        words[i] = words[i - 16]
+            .wrapping_add(sigma0)
+            .wrapping_add(words[i - 7])
+            .wrapping_add(sigma1);
+    }
 
-        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = state;
-        for (key, word) in ROUND.into_iter().zip(words) {
-            let sigma1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let choose = (e & f) ^ (!e & g);
-            let t1 = h
-                .wrapping_add(sigma1)
-                .wrapping_add(choose)
-                .wrapping_add(key)
-                .wrapping_add(word);
-            let sigma0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let majority = (a & b) ^ (a & c) ^ (b & c);
-            let t2 = sigma0.wrapping_add(majority);
-            [a, b, c, d, e, f, g, h] = [t1.wrapping_add(t2), a, b, c, d.wrapping_add(t1), e, f, g];
-        }
-        for (word, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
-            *word = word.wrapping_add(value);
-        }
+    let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = *state;
+    for (key, word) in ROUND.into_iter().zip(words) {
+        let sigma1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+        let choose = (e & f) ^ (!e & g);
+        let t1 = h
+            .wrapping_add(sigma1)
+            .wrapping_add(choose)
+            .wrapping_add(key)
+            .wrapping_add(word);
+        let sigma0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+        let majority = (a & b) ^ (a & c) ^ (b & c);
+        let t2 = sigma0.wrapping_add(majority);
+        [a, b, c, d, e, f, g, h] = [t1.wrapping_add(t2), a, b, c, d.wrapping_add(t1), e, f, g];
     }
-    let mut result = [0; SHA256_LEN];
-    for (chunk, word) in result.chunks_exact_mut(4).zip(state) {
-        chunk.copy_from_slice(&word.to_be_bytes());
+    for (word, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+        *word = word.wrapping_add(value);
     }
-    result
 }
 
 // RFC 1321 §3.3–3.5; ESP-IDF, mbedtls/mbedtls/tf-psa-crypto/drivers/builtin/src/md5.c.

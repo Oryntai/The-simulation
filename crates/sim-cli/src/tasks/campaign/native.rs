@@ -27,7 +27,10 @@ use sim_world::{CompiledWorld, SectionAxis};
 use super::{
     Checkpoint, Child, LinkedSample, RowReport, RunStatus, encode, linked, selected, value,
 };
-use crate::{Options, tasks::processes};
+use crate::{Options, commands::CoverageRow, tasks::processes};
+
+#[path = "depth_install.rs"]
+mod depth_install;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -36,6 +39,7 @@ struct Spec {
     paths: Vec<PathSpec>,
     snapshot_ns: Option<u64>,
     electrical: Option<ElectricalExperiment>,
+    coverage: Option<depth_install::Limits>,
     measurement_build: Option<sim_reality::BuildId>,
     #[serde(default)]
     checks: Vec<CheckSpec>,
@@ -127,6 +131,7 @@ struct PathSpec {
     path: String,
     source: Source,
     grids: Vec<Grid>,
+    electrical_profile: Option<std::path::PathBuf>,
     #[serde(default)]
     faults: Vec<Fault>,
 }
@@ -265,6 +270,22 @@ pub(super) fn run(
 ) -> Result<ResultRows, String> {
     let mut files = processes::Inputs::default();
     files.capture(path)?;
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ChildInstallation {
+        coverage_row: CoverageRow,
+    }
+
+    let document: toml::Table = processes::Inputs::default().toml(installation)?;
+    let child = if document.contains_key("coverage_row") {
+        let child: ChildInstallation = toml::Value::Table(document)
+            .try_into().map_err(|error: toml::de::Error| error.to_string())?;
+        Some(child.coverage_row)
+    } else {
+        None
+    };
+    let transport = processes::dir(installation);
+    let installation = child.as_ref().map_or(installation, |child| child.installation.as_path());
     let spec: Spec = files.toml(installation)?;
     if spec.version != 1 {
         return Err("неизвестная версия схемы установки".into());
@@ -311,12 +332,13 @@ pub(super) fn run(
             unit: spec.unit.clone(),
         })
         .collect();
+    let electrical_profiles = depth_install::profiles(installation, &spec)?;
     let paths = spec
         .paths
-        .into_iter()
+        .iter()
         .map(|p| {
             let mut faults = BTreeMap::new();
-            for fault in p.faults {
+            for fault in p.faults.iter().cloned() {
                 let node = fault.node.clone();
                 if faults
                     .insert(
@@ -332,11 +354,11 @@ pub(super) fn run(
                 }
             }
             Ok(RequiredPath {
-                station: p.station,
-                mode: p.mode,
-                path: p.path,
-                source: p.source,
-                grids: p.grids,
+                station: p.station.clone(),
+                mode: p.mode.clone(),
+                path: p.path.clone(),
+                source: p.source.clone(),
+                grids: p.grids.clone(),
                 faults,
                 combinations: Vec::new(),
                 unavailable: None,
@@ -370,22 +392,29 @@ pub(super) fn run(
             },
         );
     }
-    let plan = campaign
-        .plan(&ResolvedInputs {
-            world,
-            references,
-            paths,
-            targets,
-            signals,
-            model_parameters: super::installation::model_parameters(
-                campaign.sampling_axes(),
-                &nominal,
-                models.as_ref(),
-                &BTreeMap::new(),
-            )?,
-            initial_velocity: true,
-        })
-        .map_err(|e| e.to_string())?;
+    let inputs = ResolvedInputs {
+        world,
+        references,
+        paths,
+        targets,
+        signals,
+        model_parameters: super::installation::model_parameters(
+            campaign.sampling_axes(),
+            &nominal,
+            models.as_ref(),
+            &BTreeMap::new(),
+        )?,
+        initial_velocity: true,
+    };
+    if spec.coverage.is_some() || campaign.depth_factors().is_some() || child.is_some() {
+        drop(probe);
+        return depth_install::run(depth_install::Installation {
+            prefix, path, installation, transport: child.as_ref().map(|_| transport),
+            options, bench, spec: &spec, files,
+            campaign: &campaign, inputs: &inputs, models: models.as_ref(), electrical_profiles,
+        }, child.as_ref());
+    }
+    let plan = campaign.plan(&inputs).map_err(|e| e.to_string())?;
     let electrical_spec = spec.electrical.as_ref().map(|spec| {
         let base = installation.parent().unwrap_or_else(|| Path::new("."));
         (base.join(&spec.profile), Time(spec.horizon_ns))
@@ -538,6 +567,7 @@ pub(super) fn run(
                 &campaign,
                 &sampled,
                 row,
+                campaign.sampling(),
                 input,
                 &run_key,
                 spec.snapshot_ns,
@@ -879,6 +909,7 @@ fn linked_row(
     campaign: &Campaign,
     sampled: &SampledInputs,
     row: &PlanRow,
+    sampling: &sim_task::sampling::Sampling,
     input: Fingerprint,
     run_key: &str,
     snapshot_ns: Option<u64>,
@@ -958,7 +989,7 @@ fn linked_row(
         true,
         options,
         Some(LinkedSample {
-            sampling: campaign.sampling(),
+            sampling,
             sample: &sampled.sample,
         }),
         Some("ссылочный профиль подтверждает результат своего испытания"),

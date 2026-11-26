@@ -8,7 +8,9 @@ mod compile;
 pub mod deep_discharge;
 pub mod fuse_coordination;
 mod graph;
+pub mod mcu_energy;
 mod modes;
+pub mod pcb_map;
 mod pins;
 mod reference;
 pub mod sleep_drain;
@@ -33,3 +35,7 @@ fn invalid(message: impl Into<String>) -> ProcessError {
 fn identifier(value: &str) -> bool {
     !value.trim().is_empty() && value.trim() == value && !value.chars().any(char::is_control)
 }
+
+pub mod emi_reset;
+
+pub mod solder_joint;

@@ -23,8 +23,8 @@ const CPU_PER_RESET: u32 = PLL_480 | WAIT_FORCE_ON;
 
 // TRM §6.2.3 и таблицы 6.2-2/6.2-4. Полоса PLL, а не предел частоты CPU.
 pub(crate) const XTAL_HZ: u32 = 40_000_000;
-const PLL_320_HZ: u32 = 320_000_000;
-const PLL_480_HZ: u32 = 480_000_000;
+pub(crate) const PLL_320_HZ: u32 = 320_000_000;
+pub(crate) const PLL_480_HZ: u32 = 480_000_000;
 const APB_PLL_HZ: u32 = 80_000_000;
 // Выбранная шкала точно представляет периоды 40/80/160 МГц и целые наносекунды.
 pub(crate) const QUARTERS_PER_NS: u32 = 4;

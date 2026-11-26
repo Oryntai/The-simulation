@@ -1,0 +1,75 @@
+# Раздельные опыты на живых направлениях запроса и ответа.
+# Режим, стимулы, окна и стендовые пределы взяты из stage6.toml.
+# Только перечисленные инъекции. Штатный опыт этого режима служит контролем.
+# По profile.toml штатные границы задержки с квантованием приёмника составляют
+# 3–6 мс для запроса и 2–14 мс для ответа. Добавка 80 мс даёт окна 83–86 и 82–94 мс.
+version = 1
+control = "../stage6-control.toml"
+profile = "profile.toml"
+
+[[modes]]
+id = "слежение"
+horizon_ns = 420000000
+before_ns = 60000000
+after_ns = 200000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "420 мс для десяти кадров по 40 мс и окна после задержки 80 мс. Здесь проверяется отдельный отказ на живом пути. Исходная строка: devices/stage6/depth-open.toml." }
+excitation = "движение"
+stimuli = [{ id = "движение", signal = { name = "каретка/сила", unit = "N" }, at_ns = 80000000, value = 0.02, comparison_value = 0.0, source = { kind = "derived", reference = "Масса 20 г из target.toml, ускорение 1 м/с², начальная скорость ноль." } }]
+
+[[modes.faults]]
+fault = { node = "transport:зрение/request", kind = "packet_loss" }
+at_ns = 150000000
+source = { kind = "derived", reference = "150 мс из fault_sweep в stage6.toml. Запросы и ответы разрешены в режиме слежение." }
+
+[[modes.faults]]
+fault = { node = "transport:зрение/request", kind = "packet_delay" }
+at_ns = 150000000
+extra_delay_ns = 80000000
+source = { kind = "derived", reference = "150 мс из fault_sweep в stage6.toml. Запросы и ответы разрешены в режиме слежение. Добавка задержки из fault_sweep исходной задачи." }
+
+[[modes.faults]]
+fault = { node = "transport:зрение/response", kind = "packet_loss" }
+at_ns = 150000000
+source = { kind = "derived", reference = "150 мс из fault_sweep в stage6.toml. Запросы и ответы разрешены в режиме слежение." }
+
+[[modes.faults]]
+fault = { node = "transport:зрение/response", kind = "packet_delay" }
+at_ns = 150000000
+extra_delay_ns = 80000000
+source = { kind = "derived", reference = "150 мс из fault_sweep в stage6.toml. Запросы и ответы разрешены в режиме слежение. Добавка задержки из fault_sweep исходной задачи." }
+
+[[criteria]]
+case = { path = "привод", mode = "слежение" }
+limits = [
+  { kind = "range", signal = { name = "ошибка линии визирования", unit = "rad" }, min = -0.48, max = 0.48, source = { kind = "derived", reference = "Допуск стенда в поле центральной проекции arctan(48/90) ≈ 0.49 рад." } },
+]
+response = { signal = { name = "ошибка линии визирования", unit = "rad" }, min_change = 0.004, within_ns = 200000000, source = { kind = "derived", reference = "0.004 рад ниже шага одного пикселя 1/90; реакция наблюдается в течение заданного окна." } }
+
+[[criteria]]
+case = { path = "привод", mode = "слежение", fault = { node = "transport:зрение/request", kind = "packet_loss" } }
+limits = [
+  { kind = "range", signal = { name = "ошибка линии визирования", unit = "rad" }, min = -0.48, max = 0.48, source = { kind = "derived", reference = "Допуск стенда в поле центральной проекции arctan(48/90) ≈ 0.49 рад." } },
+]
+response = { signal = { name = "ошибка линии визирования", unit = "rad" }, min_change = 0.004, within_ns = 200000000, source = { kind = "derived", reference = "0.004 рад ниже шага одного пикселя 1/90; реакция наблюдается в течение заданного окна." } }
+
+[[criteria]]
+case = { path = "привод", mode = "слежение", fault = { node = "transport:зрение/request", kind = "packet_delay" } }
+limits = [
+  { kind = "range", signal = { name = "ошибка линии визирования", unit = "rad" }, min = -0.48, max = 0.48, source = { kind = "derived", reference = "Допуск стенда в поле центральной проекции arctan(48/90) ≈ 0.49 рад." } },
+]
+response = { signal = { name = "ошибка линии визирования", unit = "rad" }, min_change = 0.004, within_ns = 200000000, source = { kind = "derived", reference = "0.004 рад ниже шага одного пикселя 1/90; реакция наблюдается в течение заданного окна." } }
+
+[[criteria]]
+case = { path = "привод", mode = "слежение", fault = { node = "transport:зрение/response", kind = "packet_loss" } }
+limits = [
+  { kind = "range", signal = { name = "ошибка линии визирования", unit = "rad" }, min = -0.48, max = 0.48, source = { kind = "derived", reference = "Допуск стенда в поле центральной проекции arctan(48/90) ≈ 0.49 рад." } },
+]
+response = { signal = { name = "ошибка линии визирования", unit = "rad" }, min_change = 0.004, within_ns = 200000000, source = { kind = "derived", reference = "0.004 рад ниже шага одного пикселя 1/90; реакция наблюдается в течение заданного окна." } }
+
+[[criteria]]
+case = { path = "привод", mode = "слежение", fault = { node = "transport:зрение/response", kind = "packet_delay" } }
+limits = [
+  { kind = "range", signal = { name = "ошибка линии визирования", unit = "rad" }, min = -0.48, max = 0.48, source = { kind = "derived", reference = "Допуск стенда в поле центральной проекции arctan(48/90) ≈ 0.49 рад." } },
+]
+response = { signal = { name = "ошибка линии визирования", unit = "rad" }, min_change = 0.004, within_ns = 200000000, source = { kind = "derived", reference = "0.004 рад ниже шага одного пикселя 1/90; реакция наблюдается в течение заданного окна." } }

@@ -1,6 +1,6 @@
 use sim_process::{
     SourcedRange,
-    schematic::{Parameter, ResetProfile, Scope, ns_bound},
+    schematic::{Parameter, ResetProfile, Scope, emi_reset::EmiDetector, ns_bound},
 };
 use sim_signal::Time;
 use sim_world::Provenance;
@@ -52,30 +52,45 @@ pub(super) struct Rail {
     release_ns: u64,
     pending: Option<Time>,
     reset: bool,
-    boot: Time,
 }
 
 impl Rail {
     pub fn new(profile: &ResetProfile, reset: bool, scope: Scope) -> Result<Self, String> {
         profile.validate().map_err(|e| e.to_string())?;
-        Ok(Self {
-            falling: parameter(&profile.falling_v, scope)?,
-            rising: parameter(&profile.rising_v, scope)?,
-            assert_ns: duration(&profile.assert_delay_s, scope)?,
-            release_ns: duration(&profile.release_delay_s, scope)?,
-            pending: None,
+        Ok(Self::from_detector(
+            EmiDetector {
+                falling_v: parameter(&profile.falling_v, scope)?,
+                rising_v: parameter(&profile.rising_v, scope)?,
+                assert_ns: duration(&profile.assert_delay_s, scope)?,
+                release_ns: duration(&profile.release_delay_s, scope)?,
+            },
             reset,
-            boot: Time::ZERO,
-        })
+        ))
     }
 
-    pub fn observe(&mut self, at: Time, voltage: f64) -> Result<Option<bool>, String> {
+    pub fn from_detector(detector: EmiDetector, reset: bool) -> Self {
+        Self {
+            falling: detector.falling_v,
+            rising: detector.rising_v,
+            assert_ns: detector.assert_ns,
+            release_ns: detector.release_ns,
+            pending: None,
+            reset,
+        }
+    }
+
+    pub fn observe(
+        &mut self,
+        at: Time,
+        voltage: f64,
+        supply: bool,
+    ) -> Result<Option<bool>, String> {
         if !voltage.is_finite() {
             return Err("неконечное напряжение питания платы".into());
         }
         let (qualifies, delay) = if self.reset {
             (voltage > self.rising, self.release_ns)
-        } else if voltage <= 0.0 {
+        } else if supply && voltage <= 0.0 {
             // При нулевом или обратном питании цифровые буферы не работают.
             // Выдержка детектора относится к питаемой плате.
             self.pending = None;
@@ -97,9 +112,6 @@ impl Rail {
         }
         self.pending = None;
         self.reset = !self.reset;
-        if !self.reset {
-            self.boot = at;
-        }
         Ok(Some(self.reset))
     }
 
@@ -108,14 +120,5 @@ impl Rail {
     }
     pub fn reset(&self) -> bool {
         self.reset
-    }
-    pub fn boot(&self) -> Time {
-        self.boot
-    }
-
-    pub fn restart(&mut self, at: Time) {
-        if !self.reset {
-            self.boot = self.boot.max(at);
-        }
     }
 }

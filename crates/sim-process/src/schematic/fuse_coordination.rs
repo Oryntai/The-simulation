@@ -490,12 +490,12 @@ fn clearing(input: &FuseCoordinationInput<'_>, curve: Option<FuseTcc<'_>>) -> Op
     let mut bands: Vec<_> = curve
         .bands
         .iter()
-        .filter_map(|band| {
+        .filter(|band| {
             let domain = band.prospective_current_a;
-            let time = proven(input.scope, band.time_s)?;
-            (domain.max >= current.min && domain.min <= current.max).then_some((domain, time))
+            domain.max >= current.min && domain.min <= current.max
         })
-        .collect();
+        .map(|band| Some((band.prospective_current_a, proven(input.scope, band.time_s)?)))
+        .collect::<Option<_>>()?;
     bands.sort_unstable_by(|(a, _), (b, _)| a.min.total_cmp(&b.min));
 
     // Объединяем весь покрытый диапазон. Промежуток между точками таблицы

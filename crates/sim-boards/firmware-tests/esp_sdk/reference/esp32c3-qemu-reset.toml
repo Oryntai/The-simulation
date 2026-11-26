@@ -1,0 +1,159 @@
+# RTC I²C в QEMU 9.2.2 возвращает константу для всего окна, запись пуста.
+[[reset]]
+address = 0x6000e044
+field = "ANA_CONFIG_REG"
+value = 0x00ffffff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L136-L139"
+kind = "qemu"
+
+# Из слова QEMU взяты только биты [3:2] по ESP-IDF regi2c_defs.h:13–14.
+[[reset]]
+address = 0x6000e040
+field = "BBPLL_STOP_FORCE_HIGH/LOW"
+value = 0x0000000c
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L136-L139"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e048
+field = "ANA_CONFIG2_REG"
+value = 0x00ffffff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L136-L139"
+kind = "qemu"
+
+# ROM rev. 3, rom_chip_i2c_writeReg: первое чтение MASTER0 проверяет BUSY.
+[[reset]]
+address = 0x6000e000
+field = "I2C_MST0_COMMAND"
+value = 0x00ffffff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L136-L139"
+kind = "qemu"
+
+# DATA[23:16] возвращаемого слова MASTER0. QEMU не исполняет команду ведомого.
+[[reset]]
+address = 0x6000e000
+field = "BBPLL.5"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "BBPLL.9"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "SARADC.7"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "DIG_REG.13"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "DIG_REG.4"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "DIG_REG.6"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "ULP_BOD.0"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+# QEMU подтверждает только видимые гостю флаги, физическая калибровка открыта.
+[[reset]]
+address = 0x6000e000
+field = "ULP_BOD.3"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+# SPI1 W0 в трассе QEMU: после RDSFDP по адресу 0x10 младший байт 0.
+[[reset]]
+address = 0x60002058
+field = "SFDP.0x10"
+value = 0x00
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/block/m25p80.c#L1463-L1479"
+kind = "qemu"
+
+# SPI1 W0 в трассе QEMU: после 0x35 младший байт 0 (бит QE сброшен).
+[[reset]]
+address = 0x60002058
+field = "RDSR2"
+value = 0x00
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/block/m25p80.c#L1427-L1436"
+kind = "qemu"
+
+# Слова при первом чтении в rtc_sleep_pu. QEMU относит их к esp32c3.iomem.
+[[reset]]
+address = 0x6001d054
+field = "BBPD_CTRL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L152-L158"
+kind = "qemu"
+
+[[reset]]
+address = 0x6001ccd4
+field = "NRXPD_CTRL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L152-L158"
+kind = "qemu"
+
+[[reset]]
+address = 0x60006090
+field = "FE_GEN_CTRL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L152-L158"
+kind = "qemu"
+
+[[reset]]
+address = 0x600050f0
+field = "FE2_TX_INTERP_CTRL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L152-L158"
+kind = "qemu"
+
+# regi2c_brownout.h: порог BOD обновляется через RMW. Сброс байта не указан.
+[[reset]]
+address = 0x6000e000
+field = "ULP_BOD.5"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+# QEMU выделяет RAM анонимным mmap. Оба диапазона проверены через pmemsave
+# до первой инструкции. 393216 байт SRAM1, 8192 байта RTC FAST, все нули.
+# hw/riscv/esp32c3.c:334–347, system/physmem.c:1719–1722.
+# Значение подставляется только для ещё не записанных байтов при чтении данных.
+[[reset]]
+address = 0x3fc80000
+field = "SRAM1_COLD_FILL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/util/mmap-alloc.c#L171-L193"
+kind = "qemu"
+
+[[reset]]
+address = 0x50000000
+field = "RTC_FAST_COLD_FILL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/util/mmap-alloc.c#L171-L193"
+kind = "qemu"

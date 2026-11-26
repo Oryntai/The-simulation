@@ -18,7 +18,12 @@ fn point(x: f64) -> Option<SourcedRange> {
 }
 
 fn nodes<T>([tip, pad, lead, copper]: [T; 4]) -> SolderNodes<T> {
-    SolderNodes { tip, pad, lead, copper }
+    SolderNodes {
+        tip,
+        pad,
+        lead,
+        copper,
+    }
 }
 
 fn interval(start: f64, end: f64) -> Interval {
@@ -34,7 +39,11 @@ fn run(
     end: f64,
     input: &SolderNetworkInput,
 ) -> Result<Analysis<SolderNetworkStep>, ProcessError> {
-    network.advance(interval(start, end), input, &mut Rng::stream(0, "тепловая сеть"))
+    network.advance(
+        interval(start, end),
+        input,
+        &mut Rng::stream(0, "тепловая сеть"),
+    )
 }
 
 fn analyzed(result: Result<Analysis<SolderNetworkStep>, ProcessError>) -> SolderNetworkStep {
@@ -91,7 +100,10 @@ fn power_limit_changes_the_side_of_the_reference_threshold() {
         let step = analyzed(run(&mut network, 0.0, 0.5, &input));
         let margin = step.end_k.pad - threshold_k;
         close(margin, expected_margin);
-        assert_eq!(margin.is_sign_positive(), expected_margin.is_sign_positive());
+        assert_eq!(
+            margin.is_sign_positive(),
+            expected_margin.is_sign_positive()
+        );
         let difference = limit / 2.0 + (4.0 - limit / 2.0) * (-1.0_f64).exp();
         close(step.end_k.tip - step.end_k.pad, difference);
         close(step.applied_power_w, limit);
@@ -106,19 +118,21 @@ fn power_limit_changes_the_side_of_the_reference_threshold() {
 
 #[test]
 fn four_active_nodes_and_polygon_match_an_eigenmode_and_first_law() {
-    // Стенд: C = 1 Дж/К у всех узлов, G = 4 / 4 / 5,5 / 12 Вт/К
+    // Стенд: C = 1 / 2 / 3 / 4 Дж/К, G = 4 / 12 / 11 / 26 Вт/К
     // по ветвям жало–площадка, площадка–вывод, площадка–медь, медь–полигон.
-    // При 12 Вт стационарные превышения над 300 К идут от стока через P/G.
+    // При 26 Вт стационарные превышения над 300 К идут от стока через P/G.
     // Для v = [4, 3, 4, 1] К подстановка в четыре баланса даёт dv/dt = −v.
-    let steady = [68.0 / 11.0, 35.0 / 11.0, 35.0 / 11.0, 1.0];
+    let capacity_j_k = [1.0, 2.0, 3.0, 4.0];
+    let steady = [217.0 / 22.0, 37.0 / 11.0, 37.0 / 11.0, 1.0];
     let mode = [4.0, 3.0, 4.0, 1.0];
     let initial: [f64; 4] = std::array::from_fn(|i| 300.0 + steady[i] + mode[i]);
-    let mut spec = two_nodes(12.0);
+    let mut spec = two_nodes(26.0);
+    spec.capacity_j_k = nodes(capacity_j_k.map(point));
     spec.initial_k = nodes(initial.map(point));
-    spec.pad_lead_w_k = point(4.0);
-    spec.pad_copper_w_k = point(5.5);
-    spec.copper_polygon_w_k = point(12.0);
-    let input = touching(4.0, 24.0);
+    spec.pad_lead_w_k = point(12.0);
+    spec.pad_copper_w_k = point(11.0);
+    spec.copper_polygon_w_k = point(26.0);
+    let input = touching(4.0, 52.0);
     let model = SolderNetwork::new(spec).unwrap();
     let mut partitioned = model.clone();
     let mut previous = 0.0;
@@ -130,7 +144,12 @@ fn four_active_nodes_and_polygon_match_an_eigenmode_and_first_law() {
         let whole = analyzed(run(&mut model.clone(), 0.0, t, &input));
         let split = analyzed(run(&mut partitioned, previous, t, &input));
         assert_eq!(whole, analyzed(run(&mut model.clone(), 0.0, t, &input)));
-        let [tip, pad, lead, copper] = [whole.end_k.tip, whole.end_k.pad, whole.end_k.lead, whole.end_k.copper];
+        let [tip, pad, lead, copper] = [
+            whole.end_k.tip,
+            whole.end_k.pad,
+            whole.end_k.lead,
+            whole.end_k.copper,
+        ];
         let actual = [tip, pad, lead, copper];
         for i in 0..4 {
             let expected_rise_k = steady[i] + mode[i] * (-t).exp();
@@ -144,11 +163,13 @@ fn four_active_nodes_and_polygon_match_an_eigenmode_and_first_law() {
         close(split.end_k.pad, pad);
         close(split.end_k.lead, lead);
         close(split.end_k.copper, copper);
-        close(whole.supplied_j, 12.0 * t);
-        close(whole.applied_power_w, 12.0);
-        // q = 12(1 + e^−t) Вт по температуре меди. Отдельная сверка по изменению ΣC·T.
-        close(whole.to_polygon_j, 12.0 * (t - (-t).exp_m1()));
-        let stored_j = (0..4).map(|i| actual[i] - initial[i]).sum::<f64>();
+        close(whole.supplied_j, 26.0 * t);
+        close(whole.applied_power_w, 26.0);
+        // q = 26(1 + e^−t) Вт по температуре меди. Отдельная сверка по изменению ΣC·T.
+        close(whole.to_polygon_j, 26.0 * (t - (-t).exp_m1()));
+        let stored_j = (0..4)
+            .map(|i| capacity_j_k[i] * (actual[i] - initial[i]))
+            .sum::<f64>();
         let balance_j = whole.supplied_j - whole.to_polygon_j - stored_j;
         max_balance_j = max_balance_j.max(balance_j.abs());
         close(whole.to_polygon_j + stored_j, whole.supplied_j);
@@ -156,7 +177,9 @@ fn four_active_nodes_and_polygon_match_an_eigenmode_and_first_law() {
         close(removed_j, whole.to_polygon_j);
         previous = t;
     }
-    println!("Сверка четырёх узлов: относительная ошибка {max_relative_error:.3e}, невязка {max_balance_j:.3e} Дж");
+    println!(
+        "Сверка четырёх узлов: относительная ошибка {max_relative_error:.3e}, невязка {max_balance_j:.3e} Дж"
+    );
 }
 
 #[test]
@@ -180,6 +203,17 @@ fn separation_opens_the_contact_and_polygon_can_supply_heat() {
     close(step.supplied_j, 1.0);
     close(step.end_k.pad, 300.0);
     close(step.end_k.lead, 300.0);
+    // При повторном касании двух единичных ёмкостей их среднее равно 302,5 К,
+    // разность после следующих 0,5 с без нагрева равна 5e^(−1) К.
+    let rejoined = analyzed(run(&mut network, 0.5, 1.0, &touching(1.0, 0.0)));
+    assert_eq!(rejoined.start_k, step.end_k);
+    close(rejoined.end_k.tip, 302.5 + 2.5 * (-1.0_f64).exp());
+    close(rejoined.end_k.pad, 302.5 - 2.5 * (-1.0_f64).exp());
+    close(rejoined.end_k.copper, 302.0 - 2.0 * (-2.0_f64).exp());
+    close(
+        rejoined.to_polygon_j,
+        step.end_k.copper - rejoined.end_k.copper,
+    );
 }
 
 #[test]
@@ -187,12 +221,20 @@ fn missing_contact_power_source_or_envelope_leaves_analysis_open() {
     let spec = two_nodes(4.0);
     let good = touching(1.0, 8.0);
     for bad in [
-        SolderNetworkInput { contact: None, ..good.clone() },
         SolderNetworkInput {
-            contact: Some(SolderContact::Touching { conductance_w_k: None }),
+            contact: None,
             ..good.clone()
         },
-        SolderNetworkInput { requested_power_w: None, ..good.clone() },
+        SolderNetworkInput {
+            contact: Some(SolderContact::Touching {
+                conductance_w_k: None,
+            }),
+            ..good.clone()
+        },
+        SolderNetworkInput {
+            requested_power_w: None,
+            ..good.clone()
+        },
     ] {
         let mut network = SolderNetwork::new(spec.clone()).unwrap();
         unknown(run(&mut network, 0.0, 0.5, &bad));
@@ -220,18 +262,48 @@ fn invalid_inputs_are_rejected_even_with_missing_data_and_errors_are_atomic() {
         let mut broken = spec.clone();
         broken.polygon_k = None;
         broken.capacity_j_k.tip = point(invalid);
-        assert!(matches!(SolderNetwork::new(broken), Err(ProcessError::InvalidInput(_))));
+        assert!(matches!(
+            SolderNetwork::new(broken),
+            Err(ProcessError::InvalidInput(_))
+        ));
         let mut network = SolderNetwork::new(spec.clone()).unwrap();
-        let bad = SolderNetworkInput { contact: None, requested_power_w: point(invalid) };
-        assert!(matches!(run(&mut network, 0.0, 0.5, &bad), Err(ProcessError::InvalidInput(_))));
-        let bad = SolderNetworkInput { requested_power_w: None, ..touching(invalid, 8.0) };
-        assert!(matches!(run(&mut network, 0.0, 0.5, &bad), Err(ProcessError::InvalidInput(_))));
+        let bad = SolderNetworkInput {
+            contact: None,
+            requested_power_w: point(invalid),
+        };
+        assert!(matches!(
+            run(&mut network, 0.0, 0.5, &bad),
+            Err(ProcessError::InvalidInput(_))
+        ));
+        let bad = SolderNetworkInput {
+            requested_power_w: None,
+            ..touching(invalid, 8.0)
+        };
+        assert!(matches!(
+            run(&mut network, 0.0, 0.5, &bad),
+            Err(ProcessError::InvalidInput(_))
+        ));
         let first = analyzed(run(&mut network, 0.0, 0.5, &good));
-        assert!(matches!(run(&mut network, 0.75, 1.0, &good), Err(ProcessError::InvalidInput(_))));
-        assert!(matches!(run(&mut network, 0.5, 0.5, &good), Err(ProcessError::InvalidInput(_))));
-        assert_eq!(analyzed(run(&mut network, 0.5, 1.0, &good)).start_k, first.end_k);
+        assert!(matches!(
+            run(&mut network, 0.75, 1.0, &good),
+            Err(ProcessError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            run(&mut network, 0.5, 0.5, &good),
+            Err(ProcessError::InvalidInput(_))
+        ));
+        assert_eq!(
+            analyzed(run(&mut network, 0.5, 1.0, &good)).start_k,
+            first.end_k
+        );
     }
     let mut network = SolderNetwork::new(two_nodes(f64::MAX)).unwrap();
-    assert!(matches!(run(&mut network, 0.0, 2.0, &touching(1.0, f64::MAX)), Err(ProcessError::Execution(_))));
-    close(analyzed(run(&mut network, 0.0, 0.5, &good)).applied_power_w, 8.0);
+    assert!(matches!(
+        run(&mut network, 0.0, 2.0, &touching(1.0, f64::MAX)),
+        Err(ProcessError::Execution(_))
+    ));
+    close(
+        analyzed(run(&mut network, 0.0, 0.5, &good)).applied_power_w,
+        8.0,
+    );
 }

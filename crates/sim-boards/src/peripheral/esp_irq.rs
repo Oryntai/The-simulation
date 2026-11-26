@@ -22,20 +22,27 @@ const SYSTIMER_FIRST: u32 = 37;
 const SYSTIMER_MASK: u64 = 0b111 << SYSTIMER_FIRST;
 const SOFTWARE_FIRST: u32 = 50;
 const SOFTWARE_MASK: u64 = 0b1111 << SOFTWARE_FIRST;
+const RTC_CORE: u32 = 27;
+const RTC_CORE_MASK: u64 = 1 << RTC_CORE;
+const ASSIST_DEBUG_MASK: u64 = 1 << 54; // ETS_ASSIST_DEBUG_INTR_SOURCE.
+const CACHE_ILLEGAL_MASK: u64 = 1 << 36; // ETS_CACHE_IA_INTR_SOURCE.
+const CACHE_ACCESS_MASK: u64 = 1 << 61; // ETS_CACHE_CORE0_ACS_INTR_SOURCE.
+const PMS_MASK: u64 = 0b111 << 56; // ETS_CORE0_{IRAM0,DRAM0,PIF}_PMS_INTR_SOURCE.
 
 // ESP-IDF soc/esp32c3/register/soc/{reg_base,uart_reg,spi_reg,i2c_reg,timer_group_reg}.h.
-// Адреса INT_ST, маска отдельного источника TIMG_T0_INT_ST.
-// Текущий TIMG моделирует сброс от WDT, но не его выход IRQ.
-const PERIPHERALS: [(u32, u32, u32); 6] = [
+// Адреса INT_ST и маски отдельных источников TIMG.
+const PERIPHERALS: [(u32, u32, u32); 8] = [
     (19, 0x6002_4040, u32::MAX), // SPI2 DMA_INT_ST.
     (21, 0x6000_0008, u32::MAX), // UART0 INT_ST.
     (22, 0x6001_0008, u32::MAX), // UART1 INT_ST.
     (29, 0x6001_302c, u32::MAX), // I2C_EXT0 INT_STATUS.
     (32, 0x6001_f078, 1 << 0),   // TIMG0 T0.
+    (33, 0x6001_f078, 1 << 1),   // TIMG0 WDT.
     (34, 0x6002_0078, 1 << 0),   // TIMG1 T0.
+    (35, 0x6002_0078, 1 << 1),   // TIMG1 WDT.
 ];
 // ESP-IDF soc/esp32c3/register/soc/systimer_reg.h, TARGET[0–2]_INT_ST.
-const SYSTIMER_STATUS: u32 = 0x6002_3070;
+pub(super) const SYSTIMER_STATUS: u32 = 0x6002_3070;
 
 #[derive(Clone)]
 pub(crate) struct EspIrq {
@@ -81,12 +88,25 @@ impl EspIrq {
             || (FROM_CPU..FROM_CPU + 4 * u32::from(WORD)).contains(&addr)
     }
 
-    /// Выборка линий от уже подключённых блоков на границе инструкций.
-    /// Чтения INT_ST побочных эффектов не имеют. Ошибку шины передаём вызывающему.
+    #[cfg(test)]
     pub(crate) fn sample(
         &mut self,
         pc: u32,
         status_addr: Option<u32>,
+        read: impl FnMut(u32) -> Result<u32, BoardFault>,
+    ) -> Result<(), BoardFault> {
+        self.sample_with_boot_sources(pc, status_addr, None, None, None, read)
+    }
+
+    /// Выборка линий от уже подключённых блоков на границе инструкций.
+    /// Чтения INT_ST побочных эффектов не имеют. Ошибку шины передаём вызывающему.
+    pub(crate) fn sample_with_boot_sources(
+        &mut self,
+        pc: u32,
+        status_addr: Option<u32>,
+        rtc_core: Option<bool>,
+        assist: Option<bool>,
+        memory: Option<((bool, bool), u64)>,
         mut read: impl FnMut(u32) -> Result<u32, BoardFault>,
     ) -> Result<(), BoardFault> {
         let observed = match status_addr {
@@ -101,6 +121,28 @@ impl EspIrq {
             return Ok(());
         }
         let mut known = SOFTWARE_MASK | SYSTIMER_MASK;
+        if let Some(rtc_core) = rtc_core {
+            known |= RTC_CORE_MASK;
+            if rtc_core {
+                active |= RTC_CORE_MASK;
+            }
+        }
+        if let Some(level) = assist {
+            known |= ASSIST_DEBUG_MASK;
+            if level {
+                active |= ASSIST_DEBUG_MASK;
+            }
+        }
+        if let Some(((illegal, access), pms)) = memory {
+            known |= CACHE_ILLEGAL_MASK | CACHE_ACCESS_MASK | PMS_MASK;
+            active |= pms;
+            if illegal {
+                active |= CACHE_ILLEGAL_MASK;
+            }
+            if access {
+                active |= CACHE_ACCESS_MASK;
+            }
+        }
         for (source, register, mask) in PERIPHERALS {
             let bit = 1 << source;
             known |= bit;
@@ -119,7 +161,7 @@ impl EspIrq {
                 block: "линия источника матрицы IRQ не подключена",
             });
         }
-        if self.mapped_sources & SYSTIMER_MASK != 0 {
+        if needed & SYSTIMER_MASK != 0 {
             match read(SYSTIMER_STATUS) {
                 Ok(value) => active |= u64::from(value & 0b111) << SYSTIMER_FIRST,
                 // Отключённый маршрут можно настроить до подключения блока.

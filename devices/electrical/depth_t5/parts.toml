@@ -1,0 +1,15 @@
+format = 1
+
+[parts.t5-pad]
+kind = "other"
+source = "Расчётный стенд bench-t5-r1, expected.md"
+reference_only = true
+model_gap = "Электрическая модель площадки вне теплового опыта"
+pins = { p = { contact = "pad", role = "passive" } }
+
+[parts.t5-lead]
+kind = "other"
+source = "Расчётный стенд bench-t5-r1, expected.md"
+reference_only = true
+model_gap = "Электрическая модель вывода вне теплового опыта"
+pins = { p = { contact = "bare", role = "passive" } }

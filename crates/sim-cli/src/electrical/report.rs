@@ -3,16 +3,25 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
+    num::NonZeroU32,
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sim_process::{
-    Analysis, Interval,
+    Analysis, Interval, SourcedRange,
     schematic::{
         AssemblySheet, DepthEvidence, DepthFinding, Endpoint, Expected, Parameter, ResetProfile,
-        Section, Stage, Status,
+        Scope, Section, Stage, Status,
+        solder_joint::{
+            SolderControlSeries, SolderJointAddress, SolderJointProfile, SolderJointReport,
+            SolderSeriesApplicability, SolderSeriesMeasurement,
+        },
+    },
+    work::solder_window::{
+        SolderBounds, SolderBridgeLimit, SolderCriterion, SolderWettingTime, SolderWindowInput,
+        SolderWindowLimits, SolderWindowStatus,
     },
 };
 use sim_runtime::{Runtime, control};
@@ -24,21 +33,36 @@ use sim_task::{
 
 use super::{
     LiveExperiment, LivePath, LiveSummary,
-    input::{CatalogInput, ProfileInput, SchematicInput, parse},
+    emc::{self, EmcProfile},
+    input::{CatalogInput, ConfirmedSource, DepthRatings, ProfileInput, SchematicInput, parse},
     install::{BoundLoad, Wiring, bound_loads, validate_owners},
+    pcb::{self, BoardInput},
+    solder_input::{ResolvedSolderProfile, SolderCatalog, SolderProfile, SolderValue},
 };
 use crate::tasks::processes::{Inputs, capture_world};
 
 pub(crate) struct Installation {
     files: Inputs,
     schemes: BTreeMap<String, SchematicInput>,
-    depth: BTreeMap<String, BTreeMap<String, DepthFinding>>,
+    depth_ratings: DepthRatings,
     missing: BTreeSet<String>,
     profile: Option<Fingerprint>,
     installed: Option<control::RunIdentity>,
     resets: BTreeMap<String, ResetProfile>,
     loads: BTreeMap<String, BTreeMap<String, BoundLoad>>,
+    emc: Option<(Fingerprint, EmcProfile)>,
+    solder: BTreeMap<String, SolderJointInputs>,
+    pcbs: BTreeMap<String, BoardInput>,
 }
+
+type SolderJointInputs = BTreeMap<
+    String,
+    (
+        Option<SolderJointProfile>,
+        Option<SolderControlSeries>,
+        NonZeroU32,
+    ),
+>;
 
 #[derive(Serialize)]
 pub(crate) struct ElectricalReport {
@@ -91,6 +115,12 @@ struct AssemblyReport {
     inapplicable: BTreeMap<&'static str, String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     depth_checks: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    emc_checks: BTreeMap<&'static str, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    solder_checks: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcb: Option<Value>,
 }
 
 pub(crate) struct Evaluated {
@@ -173,18 +203,14 @@ impl Installation {
         }
         let mut schemes = BTreeMap::new();
         let mut loads = BTreeMap::new();
-        let mut depth = BTreeMap::new();
+        let mut depth_ratings = BTreeMap::new();
         if !paths.is_empty() {
             let catalog = CatalogInput::for_profile(catalog, inputs.as_ref(), &mut files)?;
             let parts = &catalog.catalog;
-            let ratings = catalog.depth_ratings()?;
+            depth_ratings = catalog.depth_ratings()?;
             for (instance, path) in paths {
                 let bytes = files.capture(&path)?.to_vec();
                 let scheme = SchematicInput::parse(&path, bytes, parts)?;
-                let evaluated = scheme.assess_depth_with(&ratings)?;
-                if !evaluated.is_empty() {
-                    depth.insert(instance.clone(), evaluated);
-                }
                 if let Some(profile) = &inputs {
                     let cfg = &profile.data.circuits[&instance];
                     if !cfg.loads.is_empty() {
@@ -206,13 +232,86 @@ impl Installation {
         Ok(Self {
             files,
             schemes,
-            depth,
+            depth_ratings,
             missing,
             profile: stamp,
             installed: None,
             resets,
             loads,
+            emc: None,
+            solder: BTreeMap::new(),
+            pcbs: BTreeMap::new(),
         })
+    }
+
+    fn load_emc(&mut self, path: &Path) -> Result<(), String> {
+        let bytes = self.files.capture(path)?;
+        let profile = EmcProfile::parse(path, bytes)?;
+        if let Some(name) = profile.instances.keys().find(|name| !self.schemes.contains_key(*name)) {
+            return Err(format!("{}: нет схемы экземпляра «{name}»", path.display()));
+        }
+        self.emc = Some((Fingerprint::of(bytes), profile));
+        Ok(())
+    }
+
+    fn load_solder(&mut self, path: &Path) -> Result<(), String> {
+        let setup: SolderSetup = self.files.toml(path)?;
+        if setup.format != 1 || setup.instances.is_empty() {
+            return Err(format!(
+                "{}: нужен непустой профиль пайки формата 1",
+                path.display()
+            ));
+        }
+        let catalog_path = dir(path).join(setup.catalog);
+        let catalog = SolderCatalog::parse(&catalog_path, self.files.capture(&catalog_path)?)?;
+        for (instance, joints) in setup.instances {
+            let scheme = self
+                .schemes
+                .get(&instance)
+                .ok_or_else(|| format!("{}: нет схемы экземпляра «{instance}»", path.display()))?;
+            let definition = scheme.definition()?;
+            let mut resolved = BTreeMap::new();
+            for (id, sources) in joints {
+                if !scheme.compiled.solder_joint_ids().any(|joint| joint == id) {
+                    return Err(format!(
+                        "{}: нет паяного стыка «{instance}/{id}»",
+                        path.display()
+                    ));
+                }
+                let profile = sources
+                    .profile
+                    .map(|p| {
+                        load_solder_profile(
+                            &mut self.files,
+                            &dir(path).join(p),
+                            &definition,
+                            &catalog,
+                            &id,
+                        )
+                    })
+                    .transpose()?;
+                let series = if let Some(series_path) = sources.series {
+                    let series_path = dir(path).join(series_path);
+                    let doc: SolderSeriesFile = self.files.toml(&series_path)?;
+                    let series = doc.resolve(&series_path, |calibration| {
+                        let calibration = dir(&series_path).join(calibration);
+                        load_solder_profile(
+                            &mut self.files,
+                            &calibration,
+                            &definition,
+                            &catalog,
+                            &id,
+                        )
+                    })?;
+                    Some(series)
+                } else {
+                    None
+                };
+                resolved.insert(id, (profile, series, setup.steps));
+            }
+            self.solder.insert(instance, resolved);
+        }
+        Ok(())
     }
 
     pub(crate) fn bind_live(&mut self, runtime: &Runtime, horizon: Time) -> Result<(), String> {
@@ -301,13 +400,18 @@ impl Installation {
         let mut evidence = BTreeMap::new();
         let mut assemblies = BTreeMap::new();
         let mut findings = Vec::new();
+        let mut depth_outcomes = Vec::new();
+        let mut pcb_outcomes = Vec::new();
+        let no_solder_inputs = BTreeMap::new();
         for (instance, input) in &self.schemes {
-            let mut result = ElectricalEvidence::evaluate(
+            let solder = self.solder.get(instance).unwrap_or(&no_solder_inputs);
+            let mut result = ElectricalEvidence::evaluate_with_solder(
                 instance,
                 &input.bytes,
                 &input.compiled,
                 &input.modes,
                 build,
+                solder,
             )
             .map_err(|e| e.to_string())?;
             if let (Some(runtime), Some(live), Some(horizon)) = (runtime, &live, horizon) {
@@ -315,8 +419,29 @@ impl Installation {
                     .observe_runtime(runtime, live.profile, horizon, &self.resets)
                     .map_err(|err| err.to_string())?;
             }
-            let assessment = result.assessment();
+            let emc_checks = if let Some((profile, cases)) = &self.emc
+                && let Some(cases) = cases.instances.get(instance)
+            {
+                emc::evaluate(cases, *profile, input, &mut result, None)?
+            } else {
+                BTreeMap::new()
+            };
+            let pcb = self
+                .pcbs
+                .get(instance)
+                .map(|board| {
+                    let (outcome, report) = board.evaluate(&mut result)?;
+                    pcb_outcomes.push(outcome);
+                    Ok::<_, String>(report)
+                })
+                .transpose()?;
+            // Отдельный электрический отчёт публикует Т3 в depth_checks.
+            // Общая кампания читает обязательства из ElectricalEvidence.
+            let first_depth = result.findings().len();
             findings.extend_from_slice(result.findings());
+            let depth = input.record_depth(&self.depth_ratings, &mut result)?;
+            depth_outcomes.extend(result.findings()[first_depth..].iter().map(|f| f.outcome));
+            let assessment = result.assessment();
             assemblies.insert(
                 instance.clone(),
                 AssemblyReport {
@@ -349,11 +474,8 @@ impl Installation {
                         .iter()
                         .map(|(class, reason)| (class.code(), reason.clone()))
                         .collect(),
-                    depth_checks: self
-                        .depth
-                        .get(instance)
-                        .into_iter()
-                        .flatten()
+                    depth_checks: depth
+                        .iter()
                         .map(|(id, finding)| {
                             (
                                 id.clone(),
@@ -361,6 +483,20 @@ impl Installation {
                             )
                         })
                         .collect(),
+                    emc_checks,
+                    solder_checks: result
+                        .solder_joints()
+                        .iter()
+                        .map(|(id, joint)| {
+                            let (profile, series) = solder
+                                .get(id)
+                                .map_or((None, None), |(profile, series, _)| {
+                                    (profile.as_ref(), series.as_ref())
+                                });
+                            (id.clone(), solder_report(joint, profile, series))
+                        })
+                        .collect(),
+                    pcb,
                 },
             );
             evidence.insert(instance.clone(), result);
@@ -371,20 +507,12 @@ impl Installation {
                 "нет схемы экземпляра",
             ));
         }
-        let depth_outcomes =
-            self.depth
-                .values()
-                .flat_map(|checks| checks.values())
-                .map(|finding| match finding.status {
-                    Status::Pass => Outcome::Pass,
-                    Status::Fail => Outcome::Fail,
-                    Status::NotAnalyzed => Outcome::NotAnalyzed,
-                });
         let simulation = match Outcome::aggregate(
             findings
                 .iter()
                 .map(|finding| finding.outcome)
-                .chain(depth_outcomes),
+                .chain(depth_outcomes)
+                .chain(pcb_outcomes),
         ) {
             Outcome::Fail => SimulationVerdict::Rejected,
             Outcome::NotAnalyzed => SimulationVerdict::NotProven,
@@ -406,8 +534,226 @@ impl Installation {
     }
 }
 
-fn dir(path: &Path) -> &Path {
+pub(super) fn dir(path: &Path) -> &Path {
     path.parent().unwrap_or_else(|| Path::new("."))
+}
+
+/// Дополнение `assemblies.<опыт>.solder` электрического манифеста формата 1.
+/// Пути к каталогу, профилям стыков и сериям заданы относительно этого файла.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SolderSetup {
+    format: u32,
+    catalog: PathBuf,
+    steps: NonZeroU32,
+    instances: BTreeMap<String, BTreeMap<String, SolderJointFiles>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SolderJointFiles {
+    profile: Option<PathBuf>,
+    series: Option<PathBuf>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SolderSeriesFile {
+    format: u32,
+    id: String,
+    revision: String,
+    schematic: String,
+    #[serde(with = "SolderScope")]
+    scope: Scope,
+    connection: String,
+    ends: [String; 2],
+    applicability: Option<SolderSeriesArea>,
+    four_wire_resistance_ohm: Option<SolderMeasurementData>,
+    destructive_strength_n: Option<SolderMeasurementData>,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "Scope", rename_all = "snake_case")]
+enum SolderScope {
+    Assembly,
+    Reference,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SolderSeriesArea {
+    /// Профиль, фиксирующий тепловые условия серии. Путь относительно серии.
+    calibration_profile: Option<PathBuf>,
+    force_n: Option<[f64; 2]>,
+    duration_s: Option<[f64; 2]>,
+    pitch_m: Option<[f64; 2]>,
+    dose_m3: Option<[f64; 2]>,
+    source: Option<ConfirmedSource>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SolderMeasurementData {
+    range: Option<SolderValue>,
+    conditions: Option<String>,
+}
+
+impl SolderMeasurementData {
+    fn resolve(self) -> Option<SolderSeriesMeasurement> {
+        Some(SolderSeriesMeasurement {
+            range: self.range?.sourced()?,
+            conditions: self.conditions,
+        })
+    }
+}
+
+impl SolderSeriesFile {
+    fn resolve(
+        self,
+        path: &Path,
+        load_calibration: impl FnOnce(&Path) -> Result<SolderJointProfile, String>,
+    ) -> Result<SolderControlSeries, String> {
+        if self.format != 1 {
+            return Err(format!(
+                "{}: нужна контрольная серия формата 1",
+                path.display()
+            ));
+        }
+        let endpoint = |value: &str| {
+            let (component, pin) = value
+                .split_once('/')
+                .filter(|(component, pin)| {
+                    !component.trim().is_empty() && !pin.trim().is_empty() && !pin.contains('/')
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "{}: ожидается адрес компонент/вывод, получено «{value}»",
+                        path.display()
+                    )
+                })?;
+            Ok::<_, String>(Endpoint {
+                component: component.into(),
+                pin: pin.into(),
+            })
+        };
+        let [a, b] = self.ends;
+        let address = SolderJointAddress {
+            schematic: self.schematic,
+            scope: self.scope,
+            connection: self.connection,
+            ends: [endpoint(&a)?, endpoint(&b)?],
+        };
+        let applicability = if let Some(area) = self.applicability
+            && let Some(calibration) = area.calibration_profile.as_deref()
+        {
+            let calibration = load_calibration(calibration)?;
+            let bounds = |[lower, upper]: [f64; 2]| SolderBounds { lower, upper };
+            match (
+                calibration.revision.as_deref(),
+                calibration.alloy,
+                calibration.tool,
+            ) {
+                (Some(revision), Some(alloy), Some(tool)) if revision == self.revision => {
+                    Some(SolderSeriesApplicability {
+                        alloy,
+                        tool,
+                        network: calibration.input.network,
+                        thermal: calibration.input.thermal,
+                        force_n: area.force_n.map(bounds),
+                        duration_s: area.duration_s.map(bounds),
+                        pitch_m: area.pitch_m.map(bounds),
+                        dose_m3: area.dose_m3.map(bounds),
+                        source: area.source.map(Into::into),
+                    })
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        Ok(SolderControlSeries {
+            id: self.id,
+            address,
+            revision: self.revision,
+            applicability,
+            four_wire_resistance_ohm: self
+                .four_wire_resistance_ohm
+                .and_then(SolderMeasurementData::resolve),
+            destructive_strength_n: self
+                .destructive_strength_n
+                .and_then(SolderMeasurementData::resolve),
+        })
+    }
+}
+
+fn load_solder_profile(
+    files: &mut Inputs,
+    path: &Path,
+    definition: &sim_process::schematic::Schematic,
+    catalog: &SolderCatalog,
+    id: &str,
+) -> Result<SolderJointProfile, String> {
+    let profile = SolderProfile::parse(path, files.capture(path)?)?;
+    if profile.connection != id {
+        return Err(format!(
+            "{}: профиль адресован другому стыку",
+            path.display()
+        ));
+    }
+    profile
+        .resolve(definition, catalog)
+        .map(solder_profile)
+        .map_err(|err| format!("{}: {err}", path.display()))
+}
+
+fn solder_profile(resolved: ResolvedSolderProfile<'_>) -> SolderJointProfile {
+    let (network, thermal) = resolved.thermal_inputs();
+    let SolderProfile {
+        connection,
+        revision,
+        alloy,
+        tool,
+        geometry,
+        mode,
+        limits,
+        ..
+    } = resolved.profile;
+    let sourced = |value: &Option<SolderValue>| value.as_ref().and_then(SolderValue::sourced);
+    let pitch_m = sourced(&geometry.pitch_m);
+    // Формат 1 задаёт верхнюю дозу для одного калиброванного шага площадок.
+    let bridge = pitch_m
+        .as_ref()
+        .filter(|pitch| pitch.min == pitch.max)
+        .zip(sourced(&limits.bridge_volume_m3))
+        .map(|(pitch, dose)| SolderBridgeLimit {
+            pitch_m: pitch.clone(),
+            max_volume_m3: dose,
+        });
+    SolderJointProfile {
+        connection: connection.clone(),
+        revision: revision.clone(),
+        alloy: alloy.clone(),
+        tool: tool.clone(),
+        input: SolderWindowInput {
+            network,
+            thermal,
+            pitch_m,
+            force_n: sourced(&mode.force_n),
+            duration_s: sourced(&mode.duration_s),
+            dose_m3: sourced(&mode.solder_volume_m3),
+            limits: SolderWindowLimits {
+                wetting_k: sourced(&limits.wetting_k),
+                max_time_to_wet_s: sourced(&limits.max_time_to_wet_s),
+                liquidus_k: resolved.alloy.and_then(|alloy| sourced(&alloy.liquidus_k)),
+                min_above_liquidus_s: sourced(&limits.min_above_liquidus_s),
+                max_above_liquidus_s: sourced(&limits.max_above_liquidus_s),
+                max_pad_k: sourced(&limits.max_pad_k),
+                max_component_k: sourced(&limits.max_component_k),
+                min_volume_m3: sourced(&limits.min_volume_m3),
+                bridge,
+            },
+        },
+    }
 }
 
 fn endpoint(end: &Endpoint) -> Value {
@@ -504,6 +850,9 @@ struct Experiment {
     world: PathBuf,
     profile: Option<PathBuf>,
     horizon_ns: Option<u64>,
+    emc: Option<PathBuf>,
+    solder: Option<PathBuf>,
+    pcb: Option<PathBuf>,
 }
 
 impl Campaign {
@@ -535,6 +884,19 @@ impl Campaign {
             let profile = experiment.profile.as_ref().map(|p| root.join(p));
             let horizon = experiment.horizon_ns.map(Time);
             let mut installation = Installation::load(&world, &catalog, profile.as_deref())?;
+            if let Some(emc) = experiment.emc {
+                installation.load_emc(&root.join(emc))?;
+            }
+            if let Some(solder) = experiment.solder {
+                installation.load_solder(&root.join(solder))?;
+            }
+            if let Some(pcb) = experiment.pcb {
+                installation.pcbs = pcb::load(
+                    &root.join(pcb),
+                    &mut installation.files,
+                    &installation.schemes,
+                )?;
+            }
             if installation.is_empty() {
                 installation.missing.insert(id.clone());
             }
@@ -635,6 +997,103 @@ fn provenance(source: &sim_world::Provenance) -> Value {
         Estimate(value) => ("estimate", value),
     };
     json!({ "kind": kind, "reference": reference })
+}
+
+fn solder_bounds(bounds: SolderBounds) -> [f64; 2] {
+    [bounds.lower, bounds.upper]
+}
+
+fn solder_range(range: &SourcedRange) -> Value {
+    json!({
+        "min": range.min, "nominal": range.nominal, "max": range.max,
+        "source": provenance(&range.provenance),
+    })
+}
+
+fn solder_status(status: &SolderWindowStatus) -> (&'static str, &str) {
+    match status {
+        SolderWindowStatus::Pass => ("pass", "окно процесса выполнено"),
+        SolderWindowStatus::Fail => ("fail", "параметры пайки вне окна процесса"),
+        SolderWindowStatus::NotAnalyzed { reason } => ("not_analyzed", reason),
+    }
+}
+
+fn solder_report(
+    joint: &SolderJointReport,
+    profile: Option<&SolderJointProfile>,
+    series: Option<&SolderControlSeries>,
+) -> Value {
+    use SolderCriterion::*;
+
+    let status = joint.window_status();
+    let (status, reason) = solder_status(&status);
+    let measurement = |measured: &Analysis<SolderSeriesMeasurement>, unit| {
+        depth_analysis(measured, |value| {
+            json!({
+                "unit": unit, "range": solder_range(&value.range), "conditions": value.conditions,
+            })
+        })
+    };
+    json!({
+        "code": "solder_defect",
+        "address": {
+            "schematic": joint.address.schematic,
+            "scope": match joint.address.scope { Scope::Assembly => "assembly", Scope::Reference => "reference" },
+            "connection": joint.address.connection,
+            "ends": joint.address.ends.each_ref().map(endpoint),
+        },
+        "revision": joint.revision,
+        "window_status": status,
+        "window_reason": reason,
+        "process": profile.map(|profile| json!({
+            "alloy": profile.alloy, "tool": profile.tool,
+            "force_n": profile.input.force_n.as_ref().map(solder_range),
+            "duration_s": profile.input.duration_s.as_ref().map(solder_range),
+            "pitch_m": profile.input.pitch_m.as_ref().map(solder_range),
+            "dose_m3": profile.input.dose_m3.as_ref().map(solder_range),
+        })),
+        "window": depth_analysis(&joint.window, |window| json!({
+            "thermal": depth_analysis(&window.thermal, |value| json!({
+                "time_to_wet_s": depth_analysis(&value.time_to_wet_s, |time| match time {
+                    SolderWettingTime::Reached(bounds) => json!({ "state": "reached", "bounds": solder_bounds(*bounds) }),
+                    SolderWettingTime::NotReached => json!({ "state": "not_reached" }),
+                    SolderWettingTime::Unresolved { earliest_s } => json!({ "state": "unresolved", "earliest_s": earliest_s }),
+                }),
+                "above_liquidus_s": depth_analysis(&value.above_liquidus_s, |bounds| json!(solder_bounds(*bounds))),
+                "peak_pad_k": solder_bounds(value.peak_pad_k),
+                "peak_component_k": solder_bounds(value.peak_component_k),
+            })),
+            "checks": window.checks().iter().map(|check| {
+                let limits = profile.map(|profile| &profile.input.limits);
+                let (code, unit, limit) = match check.criterion {
+                    MaxTimeToWet => ("max_time_to_wet_s", "s", limits.and_then(|l| l.max_time_to_wet_s.as_ref())),
+                    MinAboveLiquidus => ("min_above_liquidus_s", "s", limits.and_then(|l| l.min_above_liquidus_s.as_ref())),
+                    MaxAboveLiquidus => ("max_above_liquidus_s", "s", limits.and_then(|l| l.max_above_liquidus_s.as_ref())),
+                    MaxPadTemperature => ("max_pad_k", "K", limits.and_then(|l| l.max_pad_k.as_ref())),
+                    MaxComponentTemperature => ("max_component_k", "K", limits.and_then(|l| l.max_component_k.as_ref())),
+                    Bridge => ("bridge_volume_m3", "m3", limits.and_then(|l| l.bridge.as_ref().map(|b| &b.max_volume_m3))),
+                    MinVolume => ("min_volume_m3", "m3", limits.and_then(|l| l.min_volume_m3.as_ref())),
+                };
+                let (status, reason) = solder_status(&check.status);
+                (code, json!({
+                    "status": status, "reason": reason, "unit": unit,
+                    "margin": check.margin.map(solder_bounds), "limit": limit.map(solder_range),
+                }))
+            }).collect::<BTreeMap<_, _>>(),
+        })),
+        "series": {
+            "id": joint.series_id,
+            "revision": series.map(|series| &series.revision),
+            "applicability": depth_analysis(&joint.applicability, |area| json!({
+                "alloy": area.alloy, "tool": area.tool,
+                "source": area.source.as_ref().map(provenance),
+                "force_n": area.force_n.map(solder_bounds), "duration_s": area.duration_s.map(solder_bounds),
+                "pitch_m": area.pitch_m.map(solder_bounds), "dose_m3": area.dose_m3.map(solder_bounds),
+            })),
+            "resistance_ohm": measurement(&joint.resistance_ohm, "Ω"),
+            "strength_n": measurement(&joint.strength_n, "N"),
+        },
+    })
 }
 
 fn depth_analysis<T>(analysis: &Analysis<T>, value: impl FnOnce(&T) -> Value) -> Value {
@@ -877,21 +1336,32 @@ check = { kind = "cable_flex" }
     }
 
     fn evaluate(source: &str, catalog: &CatalogInput) -> Result<Value, String> {
+        evaluate_with_emc(source, catalog, None)
+    }
+
+    fn evaluate_with_emc(
+        source: &str, catalog: &CatalogInput, emc: Option<&[u8]>,
+    ) -> Result<Value, String> {
         let input = SchematicInput::parse(
             Path::new("блок.toml"),
             source.as_bytes().to_vec(),
             &catalog.catalog,
         )?;
-        let depth = BTreeMap::from([("блок".into(), input.assess_depth(catalog)?)]);
         let installation = Installation {
             files: Inputs::default(),
             schemes: BTreeMap::from([("блок".into(), input)]),
-            depth,
+            depth_ratings: catalog.depth_ratings()?,
             missing: BTreeSet::new(),
             profile: None,
             installed: None,
             resets: BTreeMap::new(),
             loads: BTreeMap::new(),
+            emc: emc.map(|bytes| {
+                EmcProfile::parse(Path::new("блок-эмс.toml"), bytes)
+                    .map(|profile| (Fingerprint::of(bytes), profile))
+            }).transpose()?,
+            solder: BTreeMap::new(),
+            pcbs: BTreeMap::new(),
         };
         let evaluated = installation.evaluate(build(&installation)?, None, None)?;
         serde_json::to_value(evaluated.report).map_err(|err| err.to_string())
@@ -913,11 +1383,28 @@ check = { kind = "cable_flex" }
     }
 
     #[test]
+    fn отчет_эмс_охватывает_оба_заявленных_обязательства() {
+        let catalog = catalog();
+        let emc = "format = 1\n[instances.\"блок\"]\n";
+        let report = evaluate_with_emc(SCHEME, &catalog, Some(emc.as_bytes())).unwrap();
+        let emc_checks = &report["assemblies"]["блок"]["emc_checks"];
+        for code in ["esd_event", "emi_reset"] {
+            assert_eq!(emc_checks[code]["status"], "not_analyzed");
+            let finding = report["findings"].as_array().unwrap().iter()
+                .find(|finding| finding["code"] == code).unwrap();
+            assert_eq!(finding["outcome"], "not_analyzed");
+            assert!(!finding["missing_data"].as_array().unwrap().is_empty());
+        }
+        assert_eq!(report["simulation"], "NotProven");
+    }
+
+    #[test]
     fn t37_отчёт_различает_шесть_причин_и_сохраняет_старый_формат() {
         let catalog = catalog();
         let legacy = evaluate(SCHEME, &catalog).unwrap();
         assert_eq!(legacy["version"], 1);
         assert!(legacy["assemblies"]["блок"].get("depth_checks").is_none());
+        assert!(legacy["assemblies"]["блок"].get("emc_checks").is_none());
 
         let source = format!("{SCHEME}{CAPACITOR}{OPEN_CHECKS}");
         let report = evaluate(&source, &catalog).unwrap();
