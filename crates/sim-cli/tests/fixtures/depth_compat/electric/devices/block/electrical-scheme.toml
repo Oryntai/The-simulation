@@ -1,0 +1,357 @@
+format = 1
+scope = "assembly"
+name = "Монтажная схема датчиков, раздельные выводы VDD и VDDIO"
+nets = ["g", "protected", "raw", "scl", "sda", "vdd", "video"]
+
+[components.pack]
+part = "cell_pack_unspecified"
+nets = { p = "raw", g = "g" }
+
+[components.fuse]
+part = "fuse_series"
+nets = { input = "raw", output = "protected" }
+
+[components.ldo]
+part = "wearable_ldo_33"
+nets = { input = "protected", output = "vdd", g = "g" }
+
+[components.cap]
+part = "imu_decoupling"
+nets = { plus = "vdd", minus = "g" }
+
+[components.imu]
+part = "bmi270_i2c"
+nets = { vdd = "vdd", vddio = "vdd", g = "g", gndio = "g", sda = "sda", scl = "scl", csb = "vdd", sdo = "g" }
+
+[components.host]
+part = "ble_host_unspecified"
+nets = { p = "vdd", g = "g", sda = "sda", scl = "scl", camera_bus = "video" }
+
+[components.camera]
+part = "rgb_module_unspecified"
+nets = { p = "vdd", g = "g", bus = "video" }
+
+[components.pull_sda]
+part = "i2c_pullup"
+nets = { a = "vdd", b = "sda" }
+
+[components.pull_scl]
+part = "i2c_pullup"
+nets = { a = "vdd", b = "scl" }
+
+[components.ground]
+part = "harness_copper"
+nets = { a = "g", b = "g" }
+
+[components.feed_raw]
+part = "harness_copper"
+nets = { a = "raw", b = "raw" }
+
+[components.feed_protected]
+part = "harness_copper"
+nets = { a = "protected", b = "protected" }
+
+[components.host_ground]
+part = "harness_copper"
+nets = { a = "g", b = "g" }
+
+[components.host_power]
+part = "harness_copper"
+nets = { a = "vdd", b = "vdd" }
+
+[components.camera_ground]
+part = "harness_copper"
+nets = { a = "g", b = "g" }
+
+[components.camera_power]
+part = "harness_copper"
+nets = { a = "vdd", b = "vdd" }
+
+[components.camera_link]
+part = "harness_copper"
+nets = { a = "video", b = "video" }
+
+[components.sda]
+part = "harness_copper"
+nets = { a = "sda", b = "sda" }
+
+[components.scl]
+part = "harness_copper"
+nets = { a = "scl", b = "scl" }
+
+[components.bypass_vdd]
+part = "bmi270_bypass"
+nets = { a = "vdd", b = "g" }
+
+[components.bypass_vddio]
+part = "bmi270_bypass"
+nets = { a = "vdd", b = "g" }
+
+[connections.ground_start]
+kind = "splice"
+ends = ["pack/g", "ground/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = []
+
+[connections.ground_finish]
+kind = "splice"
+ends = ["ground/b", "ldo/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["ground_start"]
+
+[connections.feed_raw_start]
+kind = "splice"
+crimp = true
+ends = ["pack/p", "feed_raw/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["ground_finish"]
+
+[connections.feed_raw_finish]
+kind = "solder"
+ends = ["feed_raw/b", "fuse/input"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feed_raw_start"]
+
+[connections.feed_protected_start]
+kind = "solder"
+ends = ["fuse/output", "feed_protected/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feed_raw_finish"]
+
+[connections.feed_protected_finish]
+kind = "splice"
+ends = ["feed_protected/b", "ldo/input"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["feed_protected_start"]
+
+[connections.cap_ground]
+kind = "splice"
+ends = ["ldo/g", "cap/minus"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["ground_finish"]
+
+[connections.cap_feed]
+kind = "splice"
+ends = ["ldo/output", "cap/plus"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_ground"]
+
+[connections.imu_ground]
+kind = "solder"
+ends = ["cap/minus", "imu/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_ground"]
+
+[connections.imu_ground_io]
+kind = "solder"
+ends = ["cap/minus", "imu/gndio"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_ground"]
+
+[connections.imu_supply]
+kind = "solder"
+ends = ["cap/plus", "imu/vdd"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["imu_ground", "cap_feed"]
+
+[connections.imu_supply_io]
+kind = "solder"
+ends = ["cap/plus", "imu/vddio"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["imu_ground_io", "cap_feed"]
+
+[connections.i2c_select]
+kind = "solder"
+ends = ["cap/plus", "imu/csb"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["imu_supply_io"]
+
+[connections.i2c_address]
+kind = "solder"
+ends = ["cap/minus", "imu/sdo"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["imu_ground_io"]
+
+[connections.host_ground_start]
+kind = "splice"
+ends = ["cap/minus", "host_ground/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_ground"]
+
+[connections.host_ground_finish]
+kind = "splice"
+ends = ["host_ground/b", "host/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["host_ground_start"]
+
+[connections.host_power_start]
+kind = "splice"
+ends = ["cap/plus", "host_power/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["host_ground_finish", "cap_feed"]
+
+[connections.host_power_finish]
+kind = "splice"
+ends = ["host_power/b", "host/p"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["host_power_start"]
+
+[connections.camera_ground_start]
+kind = "splice"
+ends = ["cap/minus", "camera_ground/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_ground"]
+
+[connections.camera_ground_finish]
+kind = "splice"
+ends = ["camera_ground/b", "camera/g"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["camera_ground_start"]
+
+[connections.camera_power_start]
+kind = "splice"
+ends = ["cap/plus", "camera_power/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["camera_ground_finish", "cap_feed"]
+
+[connections.camera_power_finish]
+kind = "splice"
+ends = ["camera_power/b", "camera/p"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["camera_power_start"]
+
+[connections.camera_link_start]
+kind = "splice"
+ends = ["camera/bus", "camera_link/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["camera_ground_finish", "host_ground_finish"]
+
+[connections.camera_link_finish]
+kind = "splice"
+ends = ["camera_link/b", "host/camera_bus"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["camera_link_start"]
+
+[connections.sda_pull_supply]
+kind = "splice"
+ends = ["cap/plus", "pull_sda/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_feed"]
+
+[connections.sda_pull_signal]
+kind = "splice"
+ends = ["pull_sda/b", "host/sda"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["sda_pull_supply"]
+
+[connections.sda_start]
+kind = "splice"
+ends = ["host/sda", "sda/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["i2c_select", "i2c_address", "sda_pull_signal"]
+
+[connections.sda_finish]
+kind = "solder"
+ends = ["sda/b", "imu/sda"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["sda_start"]
+
+[connections.scl_pull_supply]
+kind = "splice"
+ends = ["cap/plus", "pull_scl/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["cap_feed"]
+
+[connections.scl_pull_signal]
+kind = "splice"
+ends = ["pull_scl/b", "host/scl"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["scl_pull_supply"]
+
+[connections.scl_start]
+kind = "splice"
+ends = ["host/scl", "scl/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["i2c_select", "i2c_address", "scl_pull_signal"]
+
+[connections.scl_finish]
+kind = "solder"
+ends = ["scl/b", "imu/scl"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["scl_start"]
+
+[connections.bypass_vdd_return]
+kind = "solder"
+ends = ["imu/g", "bypass_vdd/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["imu_ground"]
+
+[connections.bypass_vdd_plus]
+kind = "solder"
+ends = ["imu/vdd", "bypass_vdd/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["bypass_vdd_return"]
+
+[connections.bypass_vddio_return]
+kind = "solder"
+ends = ["imu/gndio", "bypass_vddio/b"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["imu_ground_io"]
+
+[connections.bypass_vddio_plus]
+kind = "solder"
+ends = ["imu/vddio", "bypass_vddio/a"]
+resistance_ohm = { measurement = "Четырёхпроводно измерить сопротивление участка и стыка без питания." }
+current_limit_a = { measurement = "Подтвердить ток по проводу, контакту и длительности с контролем нагрева." }
+after = ["bypass_vddio_return"]
+
+[rails.vdd]
+ends = ["imu/vdd", "imu/g"]
+reverse_limit_v = { measurement = "Подтвердить обратное напряжение и предел защиты экземпляра." }
+
+[rails.vddio]
+ends = ["imu/vddio", "imu/gndio"]
+reverse_limit_v = { measurement = "Подтвердить обратное напряжение и предел защиты экземпляра." }
+
+[rails."питание камеры"]
+ends = ["camera/p", "camera/g"]
+reverse_limit_v = { measurement = "Подтвердить обратное напряжение и предел защиты экземпляра." }
+
+[[bindings]]
+ends = ["imu/vdd", "imu/g"]
+target = { kind = "sensor_power", sensor = "импульсы" }

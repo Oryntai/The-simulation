@@ -1,0 +1,2 @@
+# ESP-IDF v6.1.1, Kconfig: префиксы исходников и воспроизводимый образ.
+CONFIG_APP_REPRODUCIBLE_BUILD=y

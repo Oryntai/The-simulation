@@ -1,0 +1,47 @@
+version = 1
+[coverage]
+# Потолки запусков и времени из блока Е.
+runs = 1000
+seconds = 1800
+repeat_worst = true
+
+[[paths]]
+station = "electrical"
+mode = "full"
+path = "electric"
+source = { kind = "derived", reference = "Живой электрический профиль из electrical/acceptance.toml" }
+grids = [
+    { id = "native", hz = 250000, source = { kind = "derived", reference = "physics_hz из stage6-world.toml" } },
+    { id = "refined", hz = 500000, source = { kind = "derived", reference = "Удвоение physics_hz штатного мира для сравнения численной сетки" } },
+]
+electrical_profile = "../../../07-balance-cart/electrical-profile.toml"
+
+[[paths]]
+station = "linked"
+mode = "удержание"
+path = "мост левое"
+source = { kind = "derived", reference = "Путь из tasks/depth-open.toml" }
+grids = [{ id = "native", hz = 250000, source = { kind = "derived", reference = "physics_hz из stage6-world.toml" } }]
+faults = [
+    { node = "controller:регулятор", kind = "controller_halted" },
+    { node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" },
+    { node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" },
+    { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" },
+    { node = "sensor:тележка/иму/x", kind = "sensor_unavailable" },
+    { node = "sensor:тележка/иму/z", kind = "sensor_unavailable" },
+]
+
+[[paths]]
+station = "linked"
+mode = "удержание"
+path = "мост правое"
+source = { kind = "derived", reference = "Путь из tasks/depth-open.toml" }
+grids = [{ id = "native", hz = 250000, source = { kind = "derived", reference = "physics_hz из stage6-world.toml" } }]
+faults = [
+    { node = "controller:регулятор", kind = "controller_halted" },
+    { node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" },
+    { node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" },
+    { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" },
+    { node = "sensor:тележка/иму/x", kind = "sensor_unavailable" },
+    { node = "sensor:тележка/иму/z", kind = "sensor_unavailable" },
+]

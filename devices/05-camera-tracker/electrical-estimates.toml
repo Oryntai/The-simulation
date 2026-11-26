@@ -1,0 +1,59 @@
+format = 1
+# Точки диагностической схемы. Для неизвестного железа монтажный каталог
+# оставляет диапазоны открытыми, а лист требует замеры. Общих паспортных
+# пределов ключа, защиты, камеры, источника и контроллера из этих чисел нет.
+
+[parts.bench_supply.emf]
+# Используется только для силового источника. Шину AS5600 задаёт отдельная позиция.
+volt = { min = 6.0, nominal = 6.0, max = 6.0, source = { estimate = "Уставка опыта по номиналу Pololu #2214, https://www.pololu.com/product/2214. Снять напряжение выбранного источника при снятии и восстановлении нагрузки." } }
+
+[parts.bench_supply.internal]
+ohm = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "1 Ом из эквивалента Тевенина Э1, catalog/electrical/reference.toml. Замерить динамическое выходное сопротивление источника и способность принять обратный ток." } }
+
+[parts.as5600_fixture_supply.emf]
+volt = { min = 3.3, nominal = 3.3, max = 3.3, source = { estimate = "Уставка опыта по номиналу AS5600, ams v1-06 рис. 6 и 13. Подтвердить напряжение конкретного источника на нагрузке. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf" } }
+
+[parts.as5600_fixture_supply.internal]
+ohm = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "1 Ом из эталона Тевенина Э1. Снять выходную ВАХ, активный разряд и ток перехода физического источника." } }
+
+[parts.harness_copper.copper]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Диагностический пример Э1, catalog/electrical/diagnostics/nominal.toml. Замерить жилу четырёхпроводно." } }
+
+[parts.fuse_series.closed]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Замкнутый эквивалент Э1, catalog/electrical/diagnostics/nominal.toml. Замерить холодное сопротивление предохранителя вместе с держателем." } }
+
+[parts.dc_hbridge_unspecified.dc_load]
+ampere = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "При снятом разрешении начальная модельная обмотка обесточена. Ток живого опыта поступает из модели привода. Ток покоя реального моста требуется замерить." } }
+
+[parts.pololu_2214_brushed.winding_r]
+ohm = { min = 3.75, nominal = 3.75, max = 3.75, source = { estimate = "6 В / 1,60 А = 3,75 Ом по экстраполяции Pololu #2214, https://www.pololu.com/product/2214. Замерить R(T) и влияние положения коллектора." } }
+
+[parts.pololu_2214_brushed.winding_l]
+henry = { min = 1.2818509615384614e-5, nominal = 1.2818509615384614e-5, max = 1.2818509615384614e-5, source = { estimate = "Из stage6-device.toml: L = 3,75 Ом × 0,0711 мГн / 20,8 Ом по аналогу maxon DCX 6 M, https://www.maxongroup.com/medias/sys_master/root/8881015652382/EN-21-085.pdf. Замерить на установленном моторе." } }
+
+[parts.as5600_bare_3v3.idd]
+ohm = { min = 507.6923076923077, nominal = 507.6923076923077, max = 507.6923076923077, source = { estimate = "3,3 В / 6,5 мА = 507,6923077 Ом по точке NOM (без внешней нагрузки) из ams AS5600 v1-06, рис. 6. Замерить переходный и установившийся ток. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf" } }
+
+[parts.as5600_pullup_unspecified.pull]
+ohm = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { estimate = "Точка эталона Э3 catalog/electrical/diagnostics/nominal.toml i2c_pullup. В опыте нет обмена, согласовать реальные подтяжки по фронтам и нагрузке выводов." } }
+
+[parts.as5600_bypass.cap]
+farad = { min = 1e-7, nominal = 1e-7, max = 1e-7, source = { estimate = "Паспортный номинал C1 100 нФ ams AS5600 v1-06, рис. 13 и 39, без допуска изделия. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf. Замерить C с DC bias." } }
+
+[parts.supply_fixture_bulk.cap]
+farad = { min = 1e-4, nominal = 1e-4, max = 1e-4, source = { estimate = "100 мкФ из стенда Э1 и electrical-profile.toml устройства 03. С 1 Ом источника это примерно 100 мкс; замерить установленный накопитель и переход источника." } }
+
+[parts.dc_hbridge_unspecified.pwm_idle]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из Э3, catalog/electrical/diagnostics/nominal.toml. Уровни и пороги EN/PWM/DIR физической платы открыты." } }
+
+[parts.dc_hbridge_unspecified.dir_idle]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из Э3, catalog/electrical/diagnostics/nominal.toml. Уровни и пороги EN/PWM/DIR физической платы открыты." } }
+
+[parts.dc_hbridge_unspecified.en_idle]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из Э3, catalog/electrical/diagnostics/nominal.toml. Уровни и пороги EN/PWM/DIR физической платы открыты." } }
+
+[parts.dc_hbridge_unspecified.out1_idle]
+ohm = { min = 1000000000.0, nominal = 1000000000.0, max = 1000000000.0, source = { estimate = "1 ГОм из сопротивления выключенного ключа эталона Э2. Слабая опора незапитанных модельных выводов. Не утверждает путь торможения или утечки моста." } }
+
+[parts.dc_hbridge_unspecified.out2_idle]
+ohm = { min = 1000000000.0, nominal = 1000000000.0, max = 1000000000.0, source = { estimate = "1 ГОм из сопротивления выключенного ключа эталона Э2. Слабая опора незапитанных модельных выводов. Не утверждает путь торможения или утечки моста." } }

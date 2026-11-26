@@ -1,0 +1,328 @@
+format = 1
+scope = "assembly"
+name = "Эскиз питания и жгута коллекторного двигателя"
+nets = ["cell_p", "dir", "enable", "feed", "motor_a", "motor_b", "motor_bus", "protected", "pwm", "return"]
+
+# Имена цепей маркируют монтаж. Соединения заданы по каждой жиле и каждому стыку.
+# Общий минус сводится в узел boost/g. Тип распределительной клеммы, число жил
+# на контакт и совместимость с гильзами подтвердить по выбранным деталям.
+# До включения проверить разводку, полярность шин и стыки по сборочному листу.
+# Порог стендового источника назначить после выбора деталей и проверки их
+# огибающих тока. Первое включение провести на закреплённой стендовой сборке
+# с ограниченным ходом и без контакта с человеком.
+# Начать с отсоединённого двигателя и проверить, что разрешение снято.
+# На первом включении записать напряжения ячейки, входа и выхода преобразователя,
+# питания моста и уровни ШИМ/направления/разрешения относительно локальных опор.
+
+[components.cell]
+part = "cell_1s_candidate"
+nets = { p = "cell_p", g = "return" }
+
+[components.bms]
+part = "cell_protection"
+nets = { input = "cell_p", output = "protected", g = "return" }
+
+[components.fuse]
+part = "fuse_inline_candidate"
+nets = { input = "protected", output = "feed" }
+
+[components.boost]
+part = "motor_boost"
+nets = { input = "feed", output = "motor_bus", g = "return" }
+
+[components.bridge]
+part = "motor_h_bridge"
+nets = { p = "motor_bus", g = "return", a = "motor_a", b = "motor_b", pwm = "pwm", dir = "dir", enable = "enable" }
+
+[components.controller]
+part = "motor_controller"
+nets = { p = "feed", g = "return", pwm = "pwm", dir = "dir", enable = "enable" }
+
+[components.motor]
+part = "pololu_2214"
+nets = { a = "motor_a", b = "motor_b" }
+
+[components.cell_return]
+part = "flexible_harness_wire"
+nets = { a = "return", b = "return" }
+
+[components.bms_return]
+part = "flexible_harness_wire"
+nets = { a = "return", b = "return" }
+
+[components.bridge_return]
+part = "flexible_harness_wire"
+nets = { a = "return", b = "return" }
+
+[components.controller_return]
+part = "flexible_harness_wire"
+nets = { a = "return", b = "return" }
+
+[components.cell_feed]
+part = "flexible_harness_wire"
+nets = { a = "cell_p", b = "cell_p" }
+
+[components.bms_feed]
+part = "flexible_harness_wire"
+nets = { a = "protected", b = "protected" }
+
+[components.fused_feed]
+part = "flexible_harness_wire"
+nets = { a = "feed", b = "feed" }
+
+[components.controller_feed]
+part = "flexible_harness_wire"
+nets = { a = "feed", b = "feed" }
+
+[components.bridge_feed]
+part = "flexible_harness_wire"
+nets = { a = "motor_bus", b = "motor_bus" }
+
+[components.pwm_lead]
+part = "flexible_harness_wire"
+nets = { a = "pwm", b = "pwm" }
+
+[components.dir_lead]
+part = "flexible_harness_wire"
+nets = { a = "dir", b = "dir" }
+
+[components.enable_lead]
+part = "flexible_harness_wire"
+nets = { a = "enable", b = "enable" }
+
+[components.motor_a_lead]
+part = "flexible_harness_wire"
+nets = { a = "motor_a", b = "motor_a" }
+
+[components.motor_b_lead]
+part = "flexible_harness_wire"
+nets = { a = "motor_b", b = "motor_b" }
+
+[connections.cell_return_start]
+kind = "splice"
+crimp = true
+ends = ["cell/g", "cell_return/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = []
+
+[connections.cell_return_finish]
+kind = "terminal"
+ends = ["cell_return/b", "boost/g"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["cell_return_start"]
+
+[connections.bms_return_start]
+kind = "splice"
+crimp = true
+ends = ["cell/g", "bms_return/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["cell_return_finish"]
+
+[connections.bms_return_finish]
+kind = "splice"
+crimp = true
+ends = ["bms_return/b", "bms/g"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bms_return_start"]
+
+[connections.bridge_return_start]
+kind = "terminal"
+ends = ["bridge/g", "bridge_return/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["cell_return_finish"]
+
+[connections.bridge_return_finish]
+kind = "terminal"
+ends = ["bridge_return/b", "boost/g"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bridge_return_start"]
+
+[connections.controller_return_start]
+kind = "splice"
+crimp = true
+ends = ["controller/g", "controller_return/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bridge_return_finish"]
+
+[connections.controller_return_finish]
+kind = "terminal"
+ends = ["controller_return/b", "boost/g"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["controller_return_start"]
+
+[connections.cell_feed_start]
+kind = "splice"
+crimp = true
+ends = ["cell/p", "cell_feed/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bms_return_finish"]
+
+[connections.cell_feed_finish]
+kind = "splice"
+crimp = true
+ends = ["cell_feed/b", "bms/input"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["cell_feed_start"]
+
+[connections.bms_feed_start]
+kind = "splice"
+crimp = true
+ends = ["bms/output", "bms_feed/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["cell_feed_finish"]
+
+[connections.bms_feed_finish]
+kind = "solder"
+ends = ["bms_feed/b", "fuse/input"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bms_feed_start"]
+
+[connections.fused_feed_start]
+kind = "solder"
+ends = ["fuse/output", "fused_feed/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bms_feed_finish"]
+
+[connections.fused_feed_finish]
+kind = "terminal"
+ends = ["fused_feed/b", "boost/input"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["fused_feed_start"]
+
+[connections.controller_feed_start]
+kind = "terminal"
+ends = ["boost/input", "controller_feed/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["fused_feed_finish", "controller_return_finish"]
+
+[connections.controller_feed_finish]
+kind = "splice"
+crimp = true
+ends = ["controller_feed/b", "controller/p"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["controller_feed_start"]
+
+[connections.bridge_feed_start]
+kind = "terminal"
+ends = ["boost/output", "bridge_feed/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["fused_feed_finish", "bridge_return_finish"]
+
+[connections.bridge_feed_finish]
+kind = "terminal"
+ends = ["bridge_feed/b", "bridge/p"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bridge_feed_start"]
+
+[connections.pwm_lead_start]
+kind = "solder"
+ends = ["controller/pwm", "pwm_lead/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["controller_feed_finish"]
+
+[connections.pwm_lead_finish]
+kind = "solder"
+ends = ["pwm_lead/b", "bridge/pwm"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["pwm_lead_start"]
+
+[connections.dir_lead_start]
+kind = "solder"
+ends = ["controller/dir", "dir_lead/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["controller_feed_finish"]
+
+[connections.dir_lead_finish]
+kind = "solder"
+ends = ["dir_lead/b", "bridge/dir"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["dir_lead_start"]
+
+[connections.enable_lead_start]
+kind = "solder"
+ends = ["controller/enable", "enable_lead/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["controller_feed_finish"]
+
+[connections.enable_lead_finish]
+kind = "solder"
+ends = ["enable_lead/b", "bridge/enable"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["enable_lead_start"]
+
+[connections.motor_a_lead_start]
+kind = "terminal"
+ends = ["bridge/a", "motor_a_lead/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bridge_feed_finish"]
+
+[connections.motor_a_lead_finish]
+kind = "solder"
+ends = ["motor_a_lead/b", "motor/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["motor_a_lead_start"]
+
+[connections.motor_b_lead_start]
+kind = "terminal"
+ends = ["bridge/b", "motor_b_lead/a"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["bridge_feed_finish"]
+
+[connections.motor_b_lead_finish]
+kind = "solder"
+ends = ["motor_b_lead/b", "motor/b"]
+resistance_ohm = { measurement = "Измерить переходное сопротивление стыка четырёхпроводно без питания." }
+current_limit_a = { measurement = "Определить предел стыка и жилы для ожидаемого тока, длительности и нагрева." }
+after = ["motor_b_lead_start"]
+
+[rails.cell]
+ends = ["cell/p", "cell/g"]
+reverse_limit_v = { measurement = "Проверить обратную полярность по данным выбранной ячейки и защиты." }
+
+[rails.boost_input]
+ends = ["boost/input", "boost/g"]
+reverse_limit_v = { measurement = "Уточнить стойкость входа к обратному напряжению и реакцию защиты." }
+
+[rails.controller]
+ends = ["controller/p", "controller/g"]
+reverse_limit_v = { measurement = "Установить допустимое питание и обратный предел физического контроллера." }
+
+[rails.bridge]
+ends = ["bridge/p", "bridge/g"]
+reverse_limit_v = { measurement = "Уточнить допустимое обратное напряжение физического моста." }
+
+# Локальное имя сохраняется при замене владельца и канала усилия.
+[[bindings]]
+target = { kind = "drive_power", drive = "двигатель" }
+ends = ["bridge/p", "bridge/g"]
+
+# Для режимов без ячейки размыкается штатный плюсовой стык.
+[modes.source_disconnects]
+cell = "cell_feed_start"

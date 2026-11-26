@@ -1,6 +1,7 @@
 //! Сборка электроники и управление в общей шкале времени.
 mod board;
 mod bus;
+pub mod external_board;
 mod install;
 mod journal;
 mod program;
@@ -170,6 +171,7 @@ pub(crate) struct Engine {
     stimulus_integrated: BTreeMap<ChannelId, u64>,
     stimulus_pending: Vec<(ChannelId, String, TimedCommand)>,
     boards: Vec<Board>,
+    pub(crate) external_boards: BTreeSet<String>,
     board_actions: Vec<ScheduledBoardAction>,
     routes: Vec<Route>,
     faults: Vec<FaultSpec>,

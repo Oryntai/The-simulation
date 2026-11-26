@@ -2,7 +2,26 @@
 
 use sim_task::{Fingerprint, Outcome, campaign::RunKey, verdict::Finding};
 
-use crate::view::{CampaignEvent, CampaignPlayback};
+use crate::view::{CampaignBinding, CampaignEvent, CampaignPlayback};
+
+pub(super) fn publish(
+    bytes: &[u8],
+    binding: CampaignBinding,
+    path: &std::path::Path,
+    raw_log: bool,
+) -> Result<(), String> {
+    if !raw_log {
+        return crate::view::bind_campaign(bytes, binding, path);
+    }
+    let log = sim_runtime::Log::read_binary(bytes).map_err(|error| error.to_string())?;
+    if log.fingerprint() != binding.playback.journal
+        || log.header().seed != binding.playback.seed
+        || log.end().time.0 != binding.playback.end_ns
+    {
+        return Err("журнал повтора расходится с отчётом".into());
+    }
+    crate::export(path, |file| std::io::Write::write_all(file, bytes))
+}
 
 pub(in crate::tasks) struct Grid {
     pub variant: Option<String>,

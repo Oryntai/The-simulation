@@ -1,0 +1,30 @@
+# Тот же опыт для владельца «стенд» из world-renamed.toml.
+format = 1
+# R×C = 1 Ом × 100 мкФ = 100 мкс. Шаг равен десятой доле RC и физического такта.
+# Горизонт опыта 116 мс: штатный стоп на 108 мс и ещё 8 мс наблюдения.
+step_ns = 10000
+source = "Численный опыт. Напряжение на входе моста поступает из MNA, знаковый ток шины из модели двигателя. ШИМ с хоста, модельные C и R, входной ток преобразователя и аппаратное отключение требуют стенда."
+control = "control-renamed.toml"
+
+[circuits."стенд"]
+drives = { "двигатель" = "bridge/dc_load" }
+# Детектор 2,0 В перенесён из электрического стенда Э3 (04-wall-switch/electrical-profile.toml).
+# Это проверка реакции модели привода на просадку при сохранённом ШИМ.
+reference_drive_min_v = { "двигатель" = 2.0 }
+diagnostic_connections = { parameters = "electrical-diagnostics.toml", ohm = 0.1, source = "0,1 Ом на стык из численного опыта Э1. Сопротивления фактических стыков замерить четырёхпроводно." }
+# Из окна 8–56 мс прямого ШИМ: снятие полки через два интервала по 8 мс,
+# возврат через третий. Нуль задаёт уставку, источник остаётся с импедансом.
+steps = [
+  { branch = "boost/emf", at_ns = 24000000, value = 0.0 },
+  { branch = "boost/emf", at_ns = 32000000, value = 5.36 },
+]
+
+[circuits."стенд".probes]
+"клеммы ячейки" = { kind = "voltage", ends = ["cell/p", "cell/g"] }
+"вход преобразователя" = { kind = "voltage", ends = ["boost/input", "boost/g"] }
+"выход преобразователя" = { kind = "voltage", ends = ["boost/output", "boost/g"] }
+"шина" = { kind = "voltage", ends = ["bridge/p", "bridge/g"] }
+"ток источника шины" = { kind = "current", branch = "boost/series" }
+"ток выходного фильтра" = { kind = "current", branch = "boost/filter" }
+"ток подающей жилы" = { kind = "current", branch = "bridge_feed/copper" }
+"ток возвратной жилы" = { kind = "current", branch = "bridge_return/copper" }

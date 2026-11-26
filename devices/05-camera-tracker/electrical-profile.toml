@@ -1,0 +1,35 @@
+format = 1
+# Запускать с stage6-world.toml и горизонтом 0,12 с. Он включает два полных
+# окна по 20 мс: снятое разрешение и восстановленная работа моста.
+# Один шаг на такт stage6-world.toml (250 кГц). RC порядка 100 мкс
+# разрешается этой сеткой. Паразитные и коммутационные пики она не разрешает.
+step_ns = 4000
+source = "Диагностический опыт stage6-world.toml, 120 мс: три периода reference-rgb (25 Гц). Модельный двунаправленный ток моста, независимый источник AS5600 и эквивалент IDD. Логическое разрешение подано в модель привода. Плата, физический EN, питание RGB и общий аппаратный ток остаются NotAnalyzed."
+control = "control.toml"
+stimuli = "electrical-stimuli.toml"
+
+[circuits."подвес"]
+diagnostic_connections = { parameters = "electrical-estimates.toml", ohm = 0.1, source = "Численный образец Э1: 0,1 Ом на стык. Фактические стыки и токовые пределы остаются открытыми." }
+drives = { "мотор" = "bridge/dc_load" }
+# 40 и 60 мс: период RGB и его полтора периода. Отдельное снятие и возврат
+# питания AS5600 до проверки разрешения моста на 80 и 100 мс.
+# 0 В — обесточенный выход диагностического источника (активный разряд в
+# эквиваленте Тевенина), 3,3 В — номинал AS5600, ams v1-06, рис. 6 и 13.
+steps = [
+    { branch = "angle_supply/emf", at_ns = 40000000, value = 0.0 },
+    { branch = "angle_supply/emf", at_ns = 60000000, value = 3.3 },
+]
+
+[circuits."подвес".meters."угол"]
+# Опрос 500 Гц из stage6-device.toml. Порог по рис. 6 паспорта ams.
+rate_hz = 500
+minimum_v = 3.0
+source = "ams AS5600 v1-06, рис. 6, 13: нижняя граница VDD в режиме 3,3 В. Измеритель наблюдает шину. Нужны замеры запуска и первой достоверной выборки AS5600. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+
+[circuits."подвес".probes]
+"силовой источник" = { kind = "voltage", ends = ["motor_supply/plus", "motor_supply/minus"] }
+"ток силового источника" = { kind = "current", branch = "motor_supply/emf" }
+"шина моста" = { kind = "voltage", ends = ["bridge/p", "bridge/g"] }
+"VDD5V AS5600" = { kind = "voltage", ends = ["angle/vdd5v", "angle/g"] }
+"VDD3V3 AS5600" = { kind = "voltage", ends = ["angle/vdd3v3", "angle/g"] }
+"ток AS5600" = { kind = "current", branch = "angle/idd" }

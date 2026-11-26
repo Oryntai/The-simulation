@@ -763,6 +763,9 @@ fn show_report(ui: &mut egui::Ui, report: &Report, assembly: Option<&str>) {
         Verdict::ProvenInSimulation => egui::Color32::LIGHT_BLUE,
     };
     ui.colored_label(color, egui::RichText::new(verdict.text()).strong());
+    if let Some(notice) = report.registry_notice() {
+        ui.colored_label(egui::Color32::YELLOW, notice);
+    }
     ui.label(format!("Статус конвейера · {}", report.status()));
     if let Some(outcome) = report.outcome() {
         ui.label(format!("Исход задачи · {outcome}"));
@@ -1025,7 +1028,15 @@ fn panel(mut contexts: EguiContexts, mut st: NonSendMut<Studio>, time: Res<TimeS
                     if let Some(replay) = &slot.replay {
                         ui.label(format!("Зерно {} · журнал {:016x} · {:?}",replay.seed,replay.journal,replay.status));
                         if let Some(binding) = &replay.campaign {
-                            ui.label(format!("Повтор {} · {:?} · {:?}", binding.key, binding.verdict, binding.readiness));
+                            let report = st.campaign_report.as_ref().filter(|report| {
+                                report.playback(&binding.key).is_some() && verify_playback(report, replay).is_ok()
+                            });
+                            if let Some((report, (id, _))) = report.zip(binding.key.split_once('/')) {
+                                ui.label(format!("Повтор {} · {} · {}", binding.key,
+                                    report.verdict(Some(id)).text(), report.readiness(id).unwrap_or("не оценено")));
+                            } else {
+                                ui.label(format!("Повтор {} · {:?} · {:?}", binding.key, binding.verdict, binding.readiness));
+                            }
                             ui.label(format!("Исполнено {} из {}", binding.coverage.executed, binding.coverage.required));
                             let p = &binding.playback;
                             ui.label(format!("{} / {} · {} Гц", p.child.mode, p.child.path, p.physics_hz));

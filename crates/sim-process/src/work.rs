@@ -6,6 +6,7 @@ use sim_signal::{SignalSpec, Time};
 
 use crate::{Analysis, ProcessError};
 
+pub mod cable_flex;
 pub mod electrical;
 pub mod heat;
 pub mod immersion;
@@ -13,7 +14,10 @@ pub mod ingress;
 pub mod mechanical_limits;
 pub mod mechanics;
 pub mod rotary;
+pub mod solder_window;
 pub mod trace;
+
+pub use cable_flex::{CableFlexEvidence, CableFlexInput, CableFlexRatings, assess_cable_flex};
 
 mod math;
 

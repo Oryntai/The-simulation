@@ -1,4 +1,4 @@
-//! Две сосредоточенные теплоёмкости и отдельная проверка горячего касания.
+//! Сосредоточенные теплоёмкости и отдельная проверка горячего касания.
 
 use sim_env::contact::{BURN_TIMES_S, ContactClass, burn_threshold_c};
 use sim_signal::{Rng, Time};
@@ -7,6 +7,9 @@ use sim_world::Provenance;
 use crate::{Analysis, Interval, ProcessError, SourcedRange, StepModel};
 
 use super::{HazardCheck, math::*};
+
+#[path = "solder_network.rs"]
+pub mod solder_network;
 
 /// Точный переход между двумя изотермическими телами при постоянной мощности
 /// источника и контактной проводимости в пределах шага. Других границ здесь нет.
@@ -184,6 +187,113 @@ fn integral_kernels(x: f64) -> (f64, f64) {
         let phi = -(-x).exp_m1() / x;
         (phi, (1.0 - phi) / x)
     }
+}
+
+/// Тепловой переход при постоянных проводимостях и мощности. В столбце
+/// перехода хранится распределение единицы энергии узла, в векторе подачи —
+/// распределение энергии, равномерно поданной за интервал. Граница с заданной
+/// температурой считается накопителем знаковой энергии относительно неё.
+struct ThermalResponse<const N: usize> {
+    transition: [[f64; N]; N],
+    supply: [f64; N],
+}
+
+impl<const N: usize> ThermalResponse<N> {
+    /// rates[приёмник][донор] = G/C_донора, диагональ нулевая. Для граничного
+    /// накопителя исходящих скоростей нет. Решается dE/dt = Q·E + P, где
+    /// Q = rates − diag(сумма исходящих скоростей каждого узла).
+    fn new(rates: &[[f64; N]; N], source: usize, mut dt: f64) -> Result<Self, ProcessError> {
+        let out: [f64; N] = std::array::from_fn(|j| rates.iter().map(|row| row[j]).sum());
+        computed(&out)?;
+        let rate = out.into_iter().fold(0.0, f64::max);
+        let mut doublings = 0;
+        while rate * dt > 1.0 {
+            dt *= 0.5;
+            doublings += 1;
+        }
+        // Сдвиг Q·dt + xI при x = max(−Qii)·dt делает ряд экспоненты
+        // неотрицательным. Множитель exp(−x) общий, его даёт нормировка.
+        let x = rate * dt;
+        let mut shifted = rates.map(|row| row.map(|r| r * dt));
+        for (i, row) in shifted.iter_mut().enumerate() {
+            row[i] = x - out[i] * dt;
+            if rates[i]
+                .iter()
+                .zip(row)
+                .enumerate()
+                .any(|(j, (&r, s))| i != j && r > 0.0 && *s == 0.0)
+            {
+                return Err(execution("доля теплового перехода не представима"));
+            }
+        }
+
+        let identity = std::array::from_fn(|i| std::array::from_fn(|j| f64::from(i == j)));
+        let mut result = Self {
+            transition: identity,
+            supply: [0.0; N],
+        };
+        let mut term = identity;
+        let mut feed = [0.0; N];
+        let mut constant = 1.0;
+        // Последний столбец расширенной матрицы добавляет интеграл экспоненты:
+        // его источник постоянен и после сдвига имеет диагональ x. При x ≤ 1
+        // хвост после N + 19 членов меньше ε даже с запасом N на путь через сеть.
+        // 1/19! ≈ 8,22·10⁻¹⁸, последующие члены убывают быстрее геометрического ряда.
+        for k in 1..=N + 19 {
+            let k = k as f64;
+            term = term.map(|column| mul_thermal(&shifted, column).map(|value| value / k));
+            feed = mul_thermal(&shifted, feed);
+            feed[source] += constant;
+            feed = feed.map(|value| value / k);
+            constant *= x / k;
+            for (sum, add) in result.transition.iter_mut().zip(term) {
+                for (sum, add) in sum.iter_mut().zip(add) {
+                    *sum += add;
+                }
+            }
+            for (sum, add) in result.supply.iter_mut().zip(feed) {
+                *sum += add;
+            }
+        }
+        result.normalize();
+        for _ in 0..doublings {
+            // Первая половина поданной энергии проходит второй переход, вторая
+            // добавляется напрямую. Нормировка не даёт ошибке суммы расти при удвоении.
+            let first_half = result.distribute(result.supply);
+            for (weight, from_first) in result.supply.iter_mut().zip(first_half) {
+                *weight = (*weight + from_first) * 0.5;
+            }
+            result.transition = result.transition.map(|column| result.distribute(column));
+            result.normalize();
+        }
+        Ok(result)
+    }
+
+    fn normalize(&mut self) {
+        for weights in self.transition.iter_mut().chain([&mut self.supply]) {
+            let sum: f64 = weights.iter().sum();
+            weights.iter_mut().for_each(|value| *value /= sum);
+        }
+    }
+
+    fn distribute(&self, energy: [f64; N]) -> [f64; N] {
+        std::array::from_fn(|i| {
+            self.transition
+                .iter()
+                .zip(energy)
+                .map(|(col, e)| col[i] * e)
+                .sum()
+        })
+    }
+
+    fn apply(&self, energy: [f64; N], supplied_j: f64) -> [f64; N] {
+        let redistributed = self.distribute(energy);
+        std::array::from_fn(|i| redistributed[i] + self.supply[i] * supplied_j)
+    }
+}
+
+fn mul_thermal<const N: usize>(rates: &[[f64; N]; N], column: [f64; N]) -> [f64; N] {
+    rates.map(|row| row.into_iter().zip(column).map(|(a, b)| a * b).sum())
 }
 
 /// Подтверждение применимости сухой кожи к области тела и геометрии контакта.

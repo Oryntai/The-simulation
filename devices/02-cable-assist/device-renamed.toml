@@ -2,6 +2,7 @@
 # Барабан: радиус 12 мм из эскиза трассы, значение передано закону свободной длины.
 format = 3
 name = "Тросовая ортеза кисти"
+schematic = "electrical-scheme.toml"
 
 [[links]]
 name = "станина"
@@ -32,7 +33,7 @@ pose = { position_m = [-0.027, -0.155, 0.696], quat_wxyz = [1.0, 0.0, 0.0, 0.0] 
 name = "барабан"
 parent = "станина"
 pose = { position_m = [-0.025, -0.15, 0.814] }
-joint = { kind = "hinge", name = "подача", axis = [0.0, 0.0, 1.0], damping = 0.002, friction_loss = 0.0, efforts = [{ name = "выход", dof = 0 }] }
+joint = { kind = "hinge", name = "подача", axis = [0.0, 0.0, 1.0], damping = 0.002, friction_loss = 0.0, efforts = [{ name = "выход", dof = 0 }, { name = "выход-bus-v", dof = 0 }] }
 mass = { kind = "explicit", mass_kg = 0.025, com_m = [0, 0, 0], inertia_kg_m2 = [1e-05, 1e-05, 1e-05, 0, 0, 0], provenance = { estimate = "Эскизные масса и инерция стендового звена, требуется обмер." } }
 
 [[links.mounts]]
@@ -47,6 +48,8 @@ part = "n20-100-6v-hp"
 effort = "выход"
 
 [drives.params]
+# Нижняя граница численного входа шины. Порог реального моста требует замера.
+voltage_min_v = 0.0
 # Паспорт Pololu #2214: 310 об/мин, 6 В, I0=0,1 А и Istall=1,6 A.
 # k=(6−3,75·0,1)/(100,37·310·2π/60). η=(Tstall/Istall)/(k·100,37).
 motor_constant = 0.0017263477807439788

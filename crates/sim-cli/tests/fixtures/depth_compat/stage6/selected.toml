@@ -1,0 +1,15 @@
+version = 1
+
+[assemblies.over-travel]
+scope = "Каретка под ступенью усилия"
+[assemblies.over-travel.experiments.loaded]
+kind = "scenario"
+campaign = "corpus/over-travel.toml"
+installation = "corpus/over-travel-install.toml"
+
+[assemblies.under-travel]
+scope = "Парная каретка под допустимой нагрузкой"
+[assemblies.under-travel.experiments.loaded]
+kind = "scenario"
+campaign = "corpus/under-travel.toml"
+installation = "corpus/under-travel-install.toml"

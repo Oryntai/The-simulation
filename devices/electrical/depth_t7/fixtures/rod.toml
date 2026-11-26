@@ -1,0 +1,37 @@
+# Синтетический стержень. Два режима, один путь и одна сетка.
+# Вторая позиция удерживается упором. После исключения остаётся по одной
+# паре для каждой из C(3, 2) = 3 групп, включая пару без фактора «режим».
+# Троек нет, потому что факторов безопасности только два.
+triples = []
+
+[[pairs]]
+factors = ["grid", "mode"]
+levels = [["base", "free"]]
+
+[[pairs]]
+factors = ["grid", "path"]
+levels = [["base", "main"]]
+
+[[pairs]]
+factors = ["mode", "path"]
+levels = [["free", "main"]]
+
+[description.factors.grid]
+safety = false
+source = { kind = "derived", reference = "сетка синтетического стержня" }
+levels = { kind = "grid", values = { base = "base" } }
+
+[description.factors.mode]
+safety = true
+source = { kind = "derived", reference = "две позиции синтетического стержня" }
+levels = { kind = "mode", values = { free = { station = "rod", mode = "free" }, held = { station = "rod", mode = "held" } } }
+
+[description.factors.path]
+safety = true
+source = { kind = "derived", reference = "путь синтетического стержня" }
+levels = { kind = "path", values = { main = "main" } }
+
+[description.constraints.held]
+when = { mode = "held" }
+reason = "позиция удерживается упором"
+source = { kind = "derived", reference = "таблица условий синтетического стержня" }

@@ -15,6 +15,7 @@ pub mod battery;
 pub mod checks;
 pub mod circuit;
 pub mod devices;
+pub mod emc;
 pub mod error;
 pub mod examples;
 pub mod mna;

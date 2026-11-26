@@ -350,3 +350,136 @@ pub(in crate::tasks) fn inventory(
     });
     LinkedInventory { report, hazards }
 }
+
+/// Конечные оси проходят ту же валидацию и установку, что и старый разброс.
+pub(super) fn coverage_sampling(axes: &[Axis]) -> Result<Sampling, String> {
+    #[derive(Serialize)]
+    struct Axes<'a> {
+        axes: &'a [Axis],
+    }
+    let description = toml::to_string(&Axes { axes }).map_err(|error| error.to_string())?;
+    let mut sampling: Sampling = toml::from_str(&description).map_err(|error| error.to_string())?;
+    sampling.validate().map_err(|error| error.to_string())?;
+    Ok(sampling)
+}
+
+pub(super) fn coverage_receipt(
+    runtime: &mut Runtime,
+    sampled: &sim_task::campaign::SampledInputs,
+    compiled: &CompiledWorld,
+) -> Result<sim_task::metrics::Installation, String> {
+    let actual = apply_settings(runtime, &sampled.settings)?;
+    let values = super::native::installed_values(
+        sampled.values(), &sampled.world, compiled, &actual, runtime,
+    )?;
+    if runtime.seed() != sampled.sample.seeds.run
+        || runtime.physics_rate() != compiled.physics
+        || sampled.values().iter().any(|item| {
+            values.get(&item.id).is_none_or(|actual| actual.to_bits() != item.value.to_bits())
+        })
+    {
+        return Err("фактическая установка не соответствует зерну, сетке или выборке".into());
+    }
+    Ok(sim_task::metrics::Installation {
+        fingerprint: sampled.fingerprint,
+        run_seed: runtime.seed(),
+        physics_hz: runtime.physics_rate().as_hz() as u64,
+        values,
+    })
+}
+
+/// Передаёт наложенный мир существующему файловому загрузчику электрического
+/// опыта. Исходные схемы продолжают разрешаться относительно своих устройств.
+pub(super) fn coverage_world(
+    input: &WorldInputs, file_seed: u64, scratch: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    use std::{fs, path::Path};
+    fn meshes(base: &Path, geometries: &mut [sim_world::Geometry]) {
+        for geometry in geometries {
+            if let sim_world::Shape::Mesh { file, .. } = &mut geometry.shape {
+                *file = base.join(&*file);
+            }
+        }
+    }
+    fn write(path: &Path, data: &impl Serialize) -> Result<(), String> {
+        let data = toml::to_string(data).map_err(|error| error.to_string())?;
+        fs::write(path, data).map_err(|error| format!("{}: {error}", path.display()))
+    }
+
+    let mut world = input.world.clone();
+    // TOML читает знаковые целые. Полное зерно u64 ставит LiveExperiment::load.
+    world.seed = file_seed;
+    let parent = input.path.parent().ok_or("нет папки исходного мира")?;
+    meshes(parent, &mut world.environment.collision);
+    meshes(parent, &mut world.environment.visual);
+    for object in &mut world.objects {
+        meshes(parent, &mut object.collision);
+        meshes(parent, &mut object.visual);
+    }
+    for (index, placement) in world.devices.iter_mut().enumerate() {
+        let item = input.devices.get(&placement.name).ok_or("нет выбранного размещения")?;
+        let nominal = sim_world::load_device(&item.path, &sim_world::LegacyCatalog)?;
+        if item.device == nominal {
+            placement.file = item.path.clone();
+            continue;
+        }
+        let directory = scratch.join(index.to_string());
+        fs::create_dir(&directory).map_err(|error| error.to_string())?;
+        let base = item.path.parent().ok_or("нет папки исходного описания")?;
+        let mut device = item.device.clone();
+        if let Some(file) = &mut device.schematic {
+            let original = base.join(&*file);
+            let link = "schematic.toml";
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(original, directory.join(link)).map_err(|error| error.to_string())?;
+            #[cfg(not(unix))]
+            fs::copy(original, directory.join(link)).map_err(|error| error.to_string())?;
+            *file = link.into();
+        }
+        for link in &mut device.links {
+            meshes(base, &mut link.collision);
+            meshes(base, &mut link.visual);
+        }
+        placement.file = directory.join("device.toml");
+        write(&placement.file, &device)?;
+    }
+    let path = scratch.join("world.toml");
+    write(&path, &world)?;
+    Ok(path)
+}
+
+pub(super) struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    pub fn new() -> Result<Self, String> {
+        use std::{fs, io::ErrorKind};
+        let temp = std::env::temp_dir().canonicalize().map_err(|error| error.to_string())?;
+        for serial in 0.. {
+            let path = temp.join(format!("sim-coverage-{}-{serial}", std::process::id()));
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            match builder.create(&path) {
+                Ok(()) => return Ok(Self(path)),
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        unreachable!("номера временных каталогов исчерпаны")
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::remove_dir_all(&self.0) {
+            eprintln!("{}: {error}", self.0.display());
+        }
+    }
+}

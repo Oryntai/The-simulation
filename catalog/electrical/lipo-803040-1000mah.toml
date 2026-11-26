@@ -1,0 +1,45 @@
+format = 1
+
+[parts.lipo_803040_1000mah]
+kind = "battery"
+source = "Li-Po 803040, 1000 мА·ч — заявленный номинал из ТЗ; производитель, партия и условия нормирования ёмкости неизвестны."
+internal_nodes = ["emf"]
+model_gap = "Идентифицировать изготовителя и партию, сверить выводы и наличие платы защиты. Замерить нагрузочные кривые и доступную ёмкость по току, температуре и состоянию заряда в разрешённом для экземпляра окне. Для установленной защиты замерить на отдельном стенде пороги, задержки и восстановление. Автономность остаётся открытой."
+
+# Полярность лепестков показана на чертеже аналога Honcell HCP-803040 (§5, ссылка ниже).
+# Тип и распиновку разъёма, если он есть, сверить по экземпляру.
+[parts.lipo_803040_1000mah.pins]
+plus  = { contact = "bare", role = "power" }
+minus = { contact = "bare", role = "return" }
+
+# Ориентиры аналогов для замеров. Указанные числа относятся только к названным изделиям.
+# Honcell HCP-803040 (голая ячейка), §3 и §9:
+# https://www.honcell.com/Public/Uploads/uploadfile/files/20240401/DATASHEETHCP8030403.7V1000mAhCELL2024.pdf
+#   Кривые напряжения под нагрузкой для разных токов и температур, окно по паспорту 3,0…4,2 В.
+# Honcell HCP803040ZC, HCV-24-01, §3 и §5.4:
+# https://www.honcell.com/Public/Uploads/uploadfile/files/20240401/DATASHEETHCP803040ZC3.7V1000mAhPACK2024.pdf
+#   Указанные импедансы при 1 кГц после стандартного заряда: 130…250 мОм от ячейки до сборки с PCM.
+#   Отдельные пороги PCM при +25 °C: разряд 3,0 ± 0,05 В, заряд 4,28 ± 0,025 В.
+# LP Power LP 803040, предварительный паспорт, Lipo Battery Specification и Battery Protection:
+# https://www.fpbattery.com/wp-content/uploads/2024/04/fpbattery-803040-3.7V-1000mAh-Lithium-Polymer-Battery-Specification.pdf
+#   Паспортные отсечки разряда у этих аналогов лежат в 2,45…3,0 В (нижняя граница LP Power с допуском,
+#   верхняя — Honcell). Зарядное напряжение у обоих 4,2 В. Порог PCM имеет отдельный допуск и выдержку.
+
+[parts.lipo_803040_1000mah.elements.emf]
+kind = "voltage"
+nodes = ["emf", "minus"]
+parameters.volt.measurement = "Замерить OCV после отдыха при разных состояниях заряда и температурах. Снять семейство нагрузочных кривых и интеграл тока до подтверждённой отсечки. Справочное окно кривых Honcell HCP-803040 — 3,0…4,2 В (§3, §9)."
+
+[parts.lipo_803040_1000mah.elements.internal]
+kind = "resistor"
+nodes = ["emf", "plus"]
+parameters.ohm.measurement = "Замерить ΔU/ΔI по ступеням тока при заданном заряде и температуре; отделить вклад защиты, проводов и стыков. Отдельный справочный диапазон значений импеданса 130…250 мОм относится к замеру на 1 кГц у аналога Honcell HCP803040ZC (§3)."
+
+[parts.lipo_803040_1000mah.ratings.output]
+quantity = "current_a"
+nodes = ["plus", "minus"]
+conditions = "Ориентир паспортных значений длительного тока у двух исполнений Honcell; температура и наличие PCM зависят от исполнения."
+limit.measurement = "Уточнить по паспорту экземпляра и замерить допустимый длительный ток и нагрев при требуемой температуре и состоянии заряда."
+# §3 двух документов Honcell выше: 0,5 А для сборки с PCM, 1,0 А для голой ячейки.
+# Номинал диапазона повторяет ориентир для исполнения с PCM.
+limit.range = { min = 0.5, nominal = 0.5, max = 1.0, source = { estimate = "Аналоги Honcell HCP803040ZC §3 https://www.honcell.com/Public/Uploads/uploadfile/files/20240401/DATASHEETHCP803040ZC3.7V1000mAhPACK2024.pdf и HCP-803040 §3 https://www.honcell.com/Public/Uploads/uploadfile/files/20240401/DATASHEETHCP8030403.7V1000mAhCELL2024.pdf" } }

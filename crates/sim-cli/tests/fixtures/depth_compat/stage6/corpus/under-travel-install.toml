@@ -1,0 +1,41 @@
+version = 1
+snapshot_ns = 2000000 # На границе двух интервалов, до второй команды.
+
+[[paths]]
+station = "stand"
+mode = "loaded"
+path = "axis"
+source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }
+grids = [{ id = "base", hz = 1000, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } }]
+
+[[checks]]
+class = "travel_jam"
+object = "каретка/стержень"
+window = { start_ns = 0, end_ns = 4000000, max_gap_ns = 1000000 }
+applicability = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }
+scope = "Ход из начальной координаты по одной оси. Предельный зазор 8 мкм задан геометрией оснастки."
+inputs = [{ kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }]
+verification = { kind = "truth", limit = { kind = "range", signal = { name = "qpos[0]", unit = "m" }, max = 0.000008, source = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." } } }
+
+[[checks]]
+class = "static_strength"
+object = "каретка/стержень"
+window = { start_ns = 0, end_ns = 4000000, max_gap_ns = 1000000 }
+applicability = { kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }
+scope = "Независимая статическая нагрузка поперёк прямоугольного стержня длиной 1 м."
+inputs = [{ kind = "datasheet", reference = "Спецификация нейтрального стенда: два интервала по 2 мс, ход ограничен 8 мкм, изгиб вдоль оси стержня." }]
+# M = F·1 м. Порог 5 МПа принят в приёмке синтетической постановки B.
+verification = { kind = "section", geometry = 0, axis = "x", moment_nm = [2.0, 2.0], live_load = { effort = "каретка/сила", moment_per_effort = 1.0 }, allowable_pa = [5000000.0, 5000000.0], load = { kind = "datasheet", reference = "Протокол штатного режима: до 2 Н на плече 1 м." }, limit = { kind = "datasheet", reference = "Расчётный предел 5 МПа из приёмки B для синтетического материала." } }
+
+[inventory]
+off_participant = { kind = "datasheet", reference = "Модель ограничена изолированным расчётным стендом без участника и доступного пути к человеку." }
+
+[inventory.coverage]
+parts = { state = "resolved", source = { kind = "datasheet", reference = "Один однородный стержень в rod.toml. Нагрузка сечения пропорциональна усилию оснастки по плечу 1 м. Предел задан выше." } }
+geometry = { state = "resolved", source = { kind = "datasheet", reference = "Одна поступательная ось. Полная геометрия и допуск начального положения заданы файлами стенда." } }
+attachments = { state = "resolved", source = { kind = "datasheet", reference = "У стенда отсутствуют соединения, сменные стыки и насадки." } }
+catalog = { state = "resolved", source = { kind = "datasheet", reference = "Стенд использует пустой каталог и не подключает комплектующие." } }
+power = { state = "resolved", source = { kind = "datasheet", reference = "В области расчёта отсутствуют привод, батарея, цепи и накопители. Усилие задано как внешнее условие опыта." } }
+control = { state = "resolved", source = { kind = "datasheet", reference = "В области расчёта отсутствуют датчики, проводка и управление. Стимулы подаются напрямую в модели." } }
+environment = { state = "resolved", source = { kind = "datasheet", reference = "Модель охватывает горизонтальное движение без контакта и сопротивления среды на заданном окне." } }
+measurements = { state = "resolved", source = { kind = "datasheet", reference = "Постановка задаёт истинный ряд положения и предел хода. Стендовые измерения физического экземпляра остаются открыты." } }

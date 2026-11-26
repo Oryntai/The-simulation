@@ -1,0 +1,739 @@
+# Монтажные модели и открытые параметры. Численные оценки остаются во входах опытов.
+format = 1
+
+
+[parts.cell_1s_candidate]
+kind = "battery"
+source = "Топология с одной ячейкой следует из эскиза энергии 0,5 А·ч × 3,7 В в setup.toml. Артикул и химия открыты."
+model_gap = "Выбрать ячейку. Снять OCV, R и допустимые длительности тока по SOC и температуре в обоих направлениях."
+internal_nodes = ["open"]
+pins = { p = { contact = "bare", role = "power" }, g = { contact = "bare", role = "return" } }
+
+[parts.cell_1s_candidate.elements]
+emf = { kind = "voltage", nodes = ["open", "g"], parameters = { volt = { measurement = "Снять OCV на выбранной ячейке по заряду и температуре." } } }
+series = { kind = "resistor", nodes = ["open", "p"], parameters = { ohm = { measurement = "Снять импульсное сопротивление на той же сетке SOC и температур." } } }
+
+[parts.cell_1s_candidate.ratings]
+current = { quantity = "current_a", nodes = ["p", "g"], limit = { measurement = "Получить огибающие заряда и разряда по паспорту и замеру." }, conditions = "Конкретная ячейка, SOC и температура" }
+
+[parts.cell_protection]
+kind = "other"
+source = "Монтажный эскиз. Защита одной ячейки показана в плюсовой ветви с общей опорой. Выбор модуля и расположение ключей открыты."
+model_gap = "Подтвердить топологию, распиновку, двустороннюю ВАХ, пороги и выдержки отключения и восстановления. Опыт использует замкнутую ветвь."
+pins = { input = { contact = "bare", role = "power" }, output = { contact = "bare", role = "power" }, g = { contact = "bare", role = "return" } }
+
+[parts.cell_protection.elements]
+closed = { kind = "resistor", nodes = ["input", "output"], parameters = { ohm = { measurement = "Измерить сопротивление открытых ключей защиты четырёхпроводно при безопасном тестовом токе." } } }
+
+[parts.fuse_inline_candidate]
+kind = "other"
+source = "Позиция последовательного предохранителя по монтажному эскизу. Семейство-кандидат и кривые см. в catalog/electrical/components.toml, fuse_series."
+model_gap = "Выбрать артикул по отключающей способности, напряжению, энергии I²t и фактическому жгуту."
+pins = { input = { contact = "pad", role = "power" }, output = { contact = "pad", role = "power" } }
+
+[parts.fuse_inline_candidate.elements]
+closed = { kind = "resistor", nodes = ["input", "output"], parameters = { ohm = { measurement = "Измерить холодное сопротивление предохранителя и держателя." } }, continuity = true }
+
+[parts.fuse_inline_candidate.ratings]
+current = { quantity = "current_a", nodes = ["input", "output"], limit = { measurement = "Сверить номинал и кривую отключения с жгутом." }, conditions = "Артикул, держатель и температура" }
+
+[parts.motor_boost]
+kind = "switching_regulator"
+source = "Монтажный эскиз: повышение от одной ячейки до номинальной шины двигателя по паспорту Pololu #2214 https://www.pololu.com/product/2214. Модуль и фильтр не выбраны."
+model_gap = "Измерить Vin/Iin, Vout/Iout, пуск, токоограничение, C/ESR и обратный ток. Диагностический выход Тевенина питается независимо от входа и может поглощать энергию."
+internal_nodes = ["regulated"]
+pins = { input = { contact = "terminal", role = "power" }, output = { contact = "terminal", role = "power" }, g = { contact = "terminal", role = "return" } }
+
+[parts.motor_boost.elements]
+emf = { kind = "voltage", nodes = ["regulated", "g"], parameters = { volt = { measurement = "Снять выходное напряжение и его режимы, включая запрещённый обратный ток и выключение." } } }
+series = { kind = "resistor", nodes = ["regulated", "output"], parameters = { ohm = { measurement = "Снять выходной импеданс по фронту нагрузки и при возврате энергии." } } }
+input = { kind = "resistor", nodes = ["input", "g"], parameters = { ohm = { measurement = "Снять входную ВАХ с реальной выходной нагрузкой и при выключении." } } }
+filter = { kind = "capacitor", nodes = ["output", "g"], parameters = { farad = { measurement = "Подтвердить эффективную выходную ёмкость, ESR и утечку в рабочем диапазоне." } } }
+
+[parts.motor_boost.ratings]
+output = { quantity = "current_a", nodes = ["output", "g"], limit = { measurement = "Уточнить допустимый выходной ток и длительность по Vin и температуре." }, conditions = "Минимальное Vin под нагрузкой и фактическое охлаждение" }
+
+[parts.motor_h_bridge]
+kind = "switch_module"
+source = "Функциональные клеммы коллекторного Н-моста из двуполярной команды ШИМ control.toml. ШИМ/направление/разрешение являются проектной распиновкой."
+model_gap = "Выбрать мост и защиту. Снять ВАХ, пуск, межключевые паузы, сброс, порог отключения, торможение и выбросы. Живой опыт связывает только шину DC; выходы A/B оставлены без коммутации."
+
+[parts.motor_h_bridge.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+pwm = { contact = "pad", role = { signal_in = "g" } }
+dir = { contact = "pad", role = { signal_in = "g" } }
+enable = { contact = "pad", role = { signal_in = "g" } }
+a = { contact = "terminal", role = "passive" }
+b = { contact = "terminal", role = "passive" }
+
+[parts.motor_h_bridge.elements]
+dc_load = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "Записать знаковый ток шины вместе с напряжением в пуске, реверсе, останове и отказах." } } }
+pwm_input = { kind = "resistor", nodes = ["pwm", "g"], parameters = { ohm = { measurement = "Измерить вход ШИМ, уровень, ток и состояние при отключении." } } }
+dir_input = { kind = "resistor", nodes = ["dir", "g"], parameters = { ohm = { measurement = "Измерить вход направления в обоих состояниях питания." } } }
+enable_input = { kind = "resistor", nodes = ["enable", "g"], parameters = { ohm = { measurement = "Снять вход разрешения, порог и состояние при обесточенном контроллере." } } }
+off_a = { kind = "resistor", nodes = ["a", "g"], parameters = { ohm = { measurement = "Снять пути утечки и защитные пути выхода A выключенного моста." } } }
+off_b = { kind = "resistor", nodes = ["b", "g"], parameters = { ohm = { measurement = "Снять пути утечки и защитные пути выхода B выключенного моста." } } }
+
+[parts.motor_h_bridge.ratings]
+bus = { quantity = "current_a", nodes = ["p", "g"], limit = { measurement = "Получить пределы питающего и обратного тока, температуры и времени для выбранного моста." }, conditions = "Отдельно пуск, заклинивание, реверс и выбег" }
+
+[parts.motor_controller]
+kind = "other"
+source = "Контроллер на защищённой шине ячейки в монтажном эскизе. Исполнительный опыт берёт команду из файла стимулов."
+model_gap = "Выбрать контроллер и его питание. Подтвердить уровни, распиновку, сброс, сторож, безопасные состояния выходов и независимое снятие разрешения."
+
+[parts.motor_controller.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+pwm = { contact = "pad", role = { signal_out = "g" } }
+dir = { contact = "pad", role = { signal_out = "g" } }
+enable = { contact = "pad", role = { signal_out = "g" } }
+
+[parts.motor_controller.elements]
+load = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Снять ток питания по режимам и при провале напряжения." } } }
+
+[parts.pololu_2214]
+kind = "other"
+source = "Pololu #2214, HP 6 В, холостой ход 0,10 А, стоповый ток 1,60 А экстраполирован https://www.pololu.com/product/2214. A/B обозначают выводы обмотки, полярность меняется мостом."
+model_gap = "Снять R(T) и L по положениям ротора, пуск и реверс, обратную ЭДС и нагрев. Обмотка в монтажном графе пассивная, живой ток приходит из электромеханической модели device.toml."
+internal_nodes = ["winding"]
+pins = { a = { contact = "pad", role = "passive" }, b = { contact = "pad", role = "passive" } }
+
+[parts.pololu_2214.elements]
+copper = { kind = "resistor", nodes = ["a", "winding"], parameters = { ohm = { measurement = "Измерить сопротивление обмотки по положениям ротора и температуре." } } }
+inductance = { kind = "inductor", nodes = ["winding", "b"], parameters = { henry = { measurement = "Снять LCR или короткую ступень тока на разных положениях ротора." } } }
+
+[parts.pololu_2214.ratings]
+winding = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Определить огибающую тока по длительности и температуре. 0,40 А — численный длительный предел из device.toml, 1,60 А — экстраполяция, а не разрешённый стоповый ток." }, conditions = "Конкретный двигатель и монтаж, раздельно длительный и импульсный режим" }
+
+[parts.flexible_harness_wire]
+kind = "wire"
+source = "Гибкая жила по монтажному эскизу. Марка, длина и сечение открыты."
+model_gap = "Подтвердить фиксацию на подвижном узле, радиус изгиба, циклическую стойкость и нагрев в собранном жгуте."
+pins = { a = { contact = "bare", role = "passive" }, b = { contact = "bare", role = "passive" } }
+
+[parts.flexible_harness_wire.elements]
+copper = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводно измерить сопротивление жилы в прямом и согнутом положении." } }, continuity = true }
+
+[parts.flexible_harness_wire.ratings]
+current = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Сверить допустимые ток и нагрев по сечению, изоляции и прокладке." }, conditions = "Собранный жгут, ожидаемая температура и интервалы нагрузки" }
+
+[parts.as5600_fixture_supply]
+kind = "bench_supply"
+source = "Отдельный стендовый источник для питания AS5600. Номинал по рис. 6 и 13 паспорта ams v1-06. Артикул источника не задан."
+internal_nodes = ["emf"]
+model_gap = "Замерить выходную ВАХ, активный разряд и ток пуска. Ступени профиля задают диагностический активный переход источника."
+
+[parts.as5600_fixture_supply.pins]
+plus = { contact = "terminal", role = "power" }
+minus = { contact = "terminal", role = "return" }
+
+[parts.as5600_fixture_supply.elements]
+emf = { kind = "voltage", nodes = ["emf", "minus"], parameters = { volt = { measurement = "Снять напряжение холостого хода при заданных условиях" } } }
+internal = { kind = "resistor", nodes = ["emf", "plus"], parameters = { ohm = { measurement = "Измерить падение на ступени тока" } } }
+
+[parts.as5600_fixture_supply.ratings]
+output = { quantity = "current_a", nodes = ["plus", "minus"], limit = { measurement = "По паспорту или нагрузочным тестом определить порог и длительность тока" }, conditions = "Ограничение, температура и состояние источника для опыта" }
+
+[parts.dc_hbridge_unspecified]
+kind = "switch_module"
+source = "Функциональный мост двухпроводного двигателя из device.toml и stage6-device.toml. Артикул, разводка и драйвер отсутствуют."
+model_gap = "Выбрать мост с защитой и путём энергии при торможении. Снять EN, PWM, направление, VM, напряжения OUT1/OUT2 и токи при пуске, реверсе, заклинивании и снятии EN. Эквивалент только отражает знаковый ток модели привода на VM и не воспроизводит ключи, коммутацию и пороги."
+
+[parts.dc_hbridge_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+out1 = { contact = "bare", role = "passive" }
+out2 = { contact = "bare", role = "passive" }
+en = { contact = "bare", role = { signal_in = "g" } }
+pwm = { contact = "bare", role = { signal_in = "g" } }
+dir = { contact = "bare", role = { signal_in = "g" } }
+
+[parts.dc_hbridge_unspecified.elements]
+dc_load = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "Снять знаковый входной ток моста относительно его VM и GND. В живом опыте это порт тока двигателя." } } }
+
+pwm_idle = { kind = "resistor", nodes = ["pwm", "g"], parameters = { ohm = { measurement = "Снять входной импеданс вывода по состояниям питания." } } }
+dir_idle = { kind = "resistor", nodes = ["dir", "g"], parameters = { ohm = { measurement = "Снять входной импеданс вывода по состояниям питания." } } }
+en_idle = { kind = "resistor", nodes = ["en", "g"], parameters = { ohm = { measurement = "Снять входной импеданс вывода по состояниям питания." } } }
+out1_idle = { kind = "resistor", nodes = ["out1", "g"], parameters = { ohm = { measurement = "Снять импеданс отключённого плеча относительно GND и измерить обратные токи." } } }
+out2_idle = { kind = "resistor", nodes = ["out2", "g"], parameters = { ohm = { measurement = "Снять импеданс отключённого плеча относительно GND и измерить обратные токи." } } }
+
+[parts.dc_hbridge_unspecified.ratings]
+vm = { quantity = "voltage_v", nodes = ["p", "g"], limit = { measurement = "По паспорту выбранного моста определить рабочий диапазон VM и переходный максимум." }, conditions = "Пуск, реверс, останов и регенерация, с реальным ограничителем." }
+output = { quantity = "current_a", nodes = ["out1", "out2"], limit = { measurement = "Подтвердить огибающую допустимого тока и длительность импульса при фактическом теплоотводе." }, conditions = "Паспорт моста, температура и теплоотвод экземпляра." }
+
+[parts.pololu_2214_brushed]
+kind = "other"
+source = "Pololu #2214, номинал 6 В, холостой ход 100 мА, экстраполированный стоповый ток 1,60 А. https://www.pololu.com/product/2214"
+model_gap = "Снять R(T), индуктивность, ток пуска и реверса. Ток на входе моста поступает из sim-drive: выходная ветвь в численном опыте пассивна, коммутация и выбег реального моста требуют осциллограммы."
+internal_nodes = ["winding"]
+
+[parts.pololu_2214_brushed.pins]
+m1 = { contact = "pad", role = "passive" }
+m2 = { contact = "pad", role = "passive" }
+
+[parts.pololu_2214_brushed.elements]
+winding_r = { kind = "resistor", nodes = ["m1", "winding"], parameters = { ohm = { measurement = "Четырёхпроводно снять сопротивление по положениям ротора и температурам." } } }
+winding_l = { kind = "inductor", nodes = ["winding", "m2"], parameters = { henry = { measurement = "Снять переход тока неподвижной обмотки коротким импульсом или измерить LCR-метром." } } }
+
+[parts.pololu_2214_brushed.ratings]
+winding = { quantity = "current_a", nodes = ["m1", "m2"], limit = { measurement = "Снять длительно допустимый ток и допустимое время пусковой перегрузки по температуре обмотки." }, conditions = "Стоповый ток в паспорте экстраполирован. Предел защиты и тепловая огибающая экземпляра требуют замера." }
+
+[parts.external_control_unspecified]
+kind = "other"
+source = "control.toml и stage6-control.toml: вычисления на хосте, синтетический RGB в stdin/stdout, цифровая команда привода. Местный физический контроллер и внешний вычислитель не выбраны."
+model_gap = "Выбрать контроллер I²C и моста, способ подключения хоста и его питание. Снять профили токов местного контроллера и хоста, уровни GPIO при сбросе, а также сквозную задержку от экспозиции до PWM. Выводы здесь обозначают функции, распиновка требует паспорта."
+
+[parts.external_control_unspecified.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+en = { contact = "bare", role = { signal_out = "g" } }
+pwm = { contact = "bare", role = { signal_out = "g" } }
+dir = { contact = "bare", role = { signal_out = "g" } }
+sda = { contact = "bare", role = { signal_io = "g" } }
+scl = { contact = "bare", role = { signal_out = "g" } }
+camera_data = { contact = "bare", role = { signal_in = "g" } }
+
+[parts.external_control_unspecified.ratings]
+supply = { quantity = "current_a", nodes = ["p", "g"], limit = { measurement = "Определить требования к питанию выбранной платы и хоста. Замерить токи при загрузке, измерении, обработке кадра и отказе связи." }, conditions = "Конкретная конфигурация и ревизия, штатная нагрузка и момент запуска." }
+
+[parts.rgb_rails_unspecified]
+kind = "other"
+source = "reference-rgb описывает синтетический кадр. Пины VDD, VDDIO и data обозначают функции для выбора модуля и проверки его интерфейса."
+model_gap = "Выбрать модуль камеры, паспорт и разъём. Установить состав шин, уровни и порядок подачи, топологию возвратов и интерфейс (в том числе вариант со встроенными стабилизаторами). Снять VDD/VDDIO и ток покоя, пуска, захвата и передачи. Камера и внешний контроллер остаются обесточенными физическими нагрузками данного расчёта."
+
+[parts.rgb_rails_unspecified.pins]
+vdd = { contact = "bare", role = "power" }
+vddio = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+data = { contact = "bare", role = { signal_out = "g" } }
+
+[parts.rgb_rails_unspecified.ratings]
+vdd = { quantity = "voltage_v", nodes = ["vdd", "g"], limit = { measurement = "Установить рабочий диапазон и последовательность подачи питания ядра по модулю." }, conditions = "Шина VDD, если она выведена на выбранном модуле." }
+vddio = { quantity = "voltage_v", nodes = ["vddio", "g"], limit = { measurement = "Установить допуск VDDIO и предел инжекции при выключенном VDD." }, conditions = "Шина VDDIO, если она выведена на выбранном модуле." }
+
+[parts.as5600_bare_3v3]
+kind = "other"
+source = "ams AS5600 v1-06, рис. 4, 6, 13 и 38: питание 3,0–3,6 В, VDD5V и VDD3V3 вместе, отдельного VDDIO нет. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+model_gap = "Проверить ревизию модуля, перемычки VDD, стартовый пик, ток режима NOM с обменом, напряжения и фронты I²C, захват магнита и время первой валидной выборки. Опыт без программирования OTP. Сопротивление отражает одну паспортную точку, не переходы микросхемы."
+
+[parts.as5600_bare_3v3.pins]
+vdd5v = { contact = "pad", role = "power" }
+vdd3v3 = { contact = "pad", role = "power" }
+g = { contact = "pad", role = "return" }
+sda = { contact = "pad", role = { signal_io = "g" } }
+scl = { contact = "pad", role = { signal_in = "g" } }
+dir = { contact = "pad", role = "control" }
+pgo = { contact = "pad", role = "control" }
+out = { contact = "pad", role = "passive" }
+
+[parts.as5600_bare_3v3.elements]
+idd = { kind = "resistor", nodes = ["vdd5v", "g"], parameters = { ohm = { measurement = "Замерить ток при включении и в NOM, с фактической нагрузкой I²C и магнитом, в диапазоне напряжения и температуры." } } }
+
+[parts.as5600_bare_3v3.ratings]
+supply = { quantity = "voltage_v", nodes = ["vdd5v", "g"], limit = { measurement = "Проверить напряжения обоих объединённых контактов на экземпляре.", range = { min = 3.6, nominal = 3.6, max = 3.6, source = { datasheet = "ams AS5600 v1-06, рис. 6: верхняя граница рабочего диапазона 3,3-В режима. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf" } } }, conditions = "Рис. 13: выводы VDD3V3 и VDD5V объединены. Без OTP." }
+
+[parts.as5600_pullup_unspecified]
+kind = "resistor"
+source = "ams AS5600 v1-06, рис. 38: внешние RPU на SDA/SCL. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+model_gap = "Определить номинал по ёмкости линии, скорости, напряжению, допустимому току стока и наличию уже установленных подтяжек. Снять фронты SDA/SCL и обратный ток при пропадании VDD."
+
+[parts.as5600_pullup_unspecified.pins]
+p = { contact = "bare", role = "passive" }
+s = { contact = "bare", role = "passive" }
+
+[parts.as5600_pullup_unspecified.elements]
+pull = { kind = "resistor", nodes = ["p", "s"], parameters = { ohm = { measurement = "Снять сопротивление шины к питанию при отключённом датчике и хосте." } } }
+
+[parts.as5600_bypass]
+kind = "capacitor"
+source = "ams AS5600 v1-06, рис. 13 и 39: C1 100 нФ между общим VDD и GND у корпуса. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+model_gap = "Выбрать артикул, проверить рабочую ёмкость, ESR и ESL в установленной разводке."
+
+[parts.as5600_bypass.pins]
+p = { contact = "bare", role = "passive" }
+g = { contact = "bare", role = "passive" }
+
+[parts.as5600_bypass.elements]
+cap = { kind = "capacitor", nodes = ["p", "g"], parameters = { farad = { measurement = "Замерить эффективную ёмкость на рабочем смещении." } } }
+
+[parts.supply_fixture_bulk]
+kind = "polar_capacitor"
+source = "Стендовый накопитель для отдельной шины AS5600. Номинал диагностического опыта взят из Э1 и электрического профиля устройства 03."
+model_gap = "Для физического стенда определить, нужна ли дополнительная ёмкость. Выбрать тип, допуск, предельное напряжение и ESR. Подтвердить, что источник допускает разряд накопителя при снятии питания."
+
+[parts.supply_fixture_bulk.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.supply_fixture_bulk.elements]
+cap = { kind = "capacitor", nodes = ["p", "g"], parameters = { farad = { measurement = "Замерить ёмкость на рабочем смещении." } } }
+
+[parts.supply_fixture_bulk.ratings]
+reverse = { quantity = "reverse_voltage_v", nodes = ["p", "g"], limit = { measurement = "Проверить предел обратного напряжения выбранного конденсатора по паспорту." }, conditions = "Переходы при снятии и восстановлении питания." }
+
+[parts.xyz_supply]
+kind = "other"
+source = "Позиция источника и ограничения тока портала по DEPTH_PLAN.md, Т1; тип и артикул выбирает владелец."
+model_gap = "Открыты рабочая шина, обратная ВАХ, доступный ток КЗ, реакция ограничения, предзаряд и нагрев."
+internal_nodes = ["emf"]
+
+[parts.xyz_supply.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.xyz_supply.elements]
+emf = { kind = "voltage", nodes = ["emf","g"], parameters = { volt = { measurement = "Измерить напряжение холостого хода и его разброс" } } }
+series = { kind = "resistor", nodes = ["emf","p"], parameters = { ohm = { measurement = "Снять просадку и восстановление шины на известной ступени тока" } } }
+
+[parts.xyz_supply.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить предел тока и выдержку ограничения по паспорту и стенду" }, conditions = "Пуск, торможение, КЗ и худшая штатная нагрузка" }
+
+[parts.xyz_fuse]
+kind = "other"
+source = "Позиция защиты силового плюса, эскиз. Номинал и тип подбираются после измерений источника и нагрузки."
+model_gap = "Открыты отключающая способность, времятоковая характеристика и координация с ключом и жгутом."
+
+[parts.xyz_fuse.pins]
+input = { contact = "pad", role = "power" }
+output = { contact = "pad", role = "passive" }
+
+[parts.xyz_fuse.elements]
+closed = { kind = "resistor", nodes = ["input","output"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+
+[parts.xyz_fuse.ratings]
+current = { quantity = "current_a", nodes = ["input","output"], limit = { measurement = "Установить огибающую отключения и допустимый ток по паспорту" }, conditions = "Артикул, режим тока и температура" }
+
+[parts.xyz_cable]
+kind = "wire"
+source = "Жила предварительной схемы монтажа и подвижного жгута; марка, сечение, длина и наконечники открыты."
+model_gap = "Замерить падение, нагрев и сопротивление при изгибе; подтвердить прокладку и фиксацию."
+
+[parts.xyz_cable.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.xyz_cable.elements]
+core = { kind = "resistor", nodes = ["a","b"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+
+[parts.xyz_cable.ratings]
+current = { quantity = "current_a", nodes = ["a","b"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Длина, сечение и изоляция штатного жгута, диапазон температуры и изгиба" }
+
+[parts.xyz_axis_channel]
+kind = "other"
+source = "Место силового канала оси из axes.toml и operations.toml. Модель усилия не задаёт число моторов или фаз, распиновку и драйвер."
+model_gap = "Уточнить реальный комплект, интерфейс управления, удержание, пуск, реверс, заклинивание, отключение и путь рекуперации."
+
+[parts.xyz_axis_channel.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.xyz_axis_channel.elements]
+load = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять ВАХ и пики тока во всех режимах выбранного узла" } } }
+
+[parts.xyz_axis_channel.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Выбранные моторы, драйвер, цикл и охлаждение" }
+
+[parts.xyz_controller]
+kind = "other"
+source = "Функциональная позиция логики портала. Фактическая плата, шина логики и интерфейсы привода открыты."
+model_gap = "Контроллер и преобразование питания не аттестованы. Замерить VDD, сброс, обработку концевиков, блокировку при смене и реакцию драйверов."
+
+[parts.xyz_controller.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+enable = { contact = "pad", role = { signal_out = "g" } }
+limit_x = { contact = "pad", role = { signal_in = "g" } }
+limit_y = { contact = "pad", role = { signal_in = "g" } }
+limit_z = { contact = "pad", role = { signal_in = "g" } }
+
+[parts.xyz_controller.elements]
+idle = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять ВАХ и пики тока во всех режимах выбранного узла" } } }
+command = { kind = "voltage", nodes = ["enable","g"], parameters = { volt = { measurement = "Замерить разрешение питания на пуске, сбросе и при смене оснастки" } } }
+input_x = { kind = "resistor", nodes = ["limit_x","g"], parameters = { ohm = { measurement = "Снять входную характеристику и подтяжку канала X" } } }
+input_y = { kind = "resistor", nodes = ["limit_y","g"], parameters = { ohm = { measurement = "Снять входную характеристику и подтяжку канала Y" } } }
+input_z = { kind = "resistor", nodes = ["limit_z","g"], parameters = { ohm = { measurement = "Снять входную характеристику и подтяжку канала Z" } } }
+
+[parts.xyz_controller.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Установленная плата и питание логики" }
+
+[parts.xyz_endstop]
+kind = "other"
+source = "Функциональное место концевиков для оси, тип, количество, питание и полярность открыты."
+model_gap = "Диагностический сигнал не содержит механического срабатывания. Проверить пороги, дребезг, обрыв, замыкание и останов."
+
+[parts.xyz_endstop.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+state = { contact = "pad", role = { signal_out = "g" } }
+
+[parts.xyz_endstop.elements]
+idle = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять ВАХ и пики тока во всех режимах выбранного узла" } } }
+state = { kind = "voltage", nodes = ["state","g"], parameters = { volt = { measurement = "Снять уровни сигнала при срабатывании и при обрыве относительно локального возврата" } } }
+
+[parts.xyz_power_gate]
+kind = "switch_module"
+source = "Функциональное место отключения силового плюса. Технологию ключа и драйвер выбирают по измеренной огибающей."
+model_gap = "Замерить утечку, обратный путь, падение, нагрев, время снятия питания и поведение при сбросе и залипании."
+
+[parts.xyz_power_gate.pins]
+input = { contact = "terminal", role = "power" }
+output = { contact = "terminal", role = "passive" }
+enable = { contact = "pad", role = { signal_in = "g" } }
+g = { contact = "terminal", role = "return" }
+
+[parts.xyz_power_gate.elements]
+key = { kind = "switch", nodes = ["input", "output", "enable", "g"], parameters = { on_ohm = { measurement = "Замерить падение напряжения и ток открытого ключа по температуре" }, off_ohm = { measurement = "Замерить ток утечки и обратный ток при снятом разрешении" }, threshold_v = { measurement = "Замерить фактический порог по уровню управления относительно местного возврата" }, hysteresis_v = { measurement = "Снять пороги включения и выключения при включении и сбросе" } } }
+
+[parts.xyz_power_gate.ratings]
+current = { quantity = "current_a", nodes = ["input","output"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Выбранный ключ, охлаждение, импульсный режим и линейная область" }
+
+[parts.xyz_portal_connector]
+kind = "header"
+source = "Неподвижная половина на каретке. Ключи plus и return обозначают проектные роли до утверждения семейства и распиновки."
+model_gap = "Проверить маркировку, недоступность контактов, последовательность контакта/разрыва, удержание, наработку и сопротивление при движении."
+
+[parts.xyz_portal_connector.pins]
+p = { contact = "socket", role = "power", family = "xyz_tool_proposal", key = "plus" }
+g = { contact = "socket", role = "return", family = "xyz_tool_proposal", key = "return" }
+p_tail = { contact = "pad", role = "passive" }
+g_tail = { contact = "pad", role = "passive" }
+
+[parts.xyz_portal_connector.elements]
+plus = { kind = "resistor", nodes = ["p_tail","p"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+return = { kind = "resistor", nodes = ["g_tail","g"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+
+[parts.xyz_portal_connector.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Конкретный сменный разъём с парной половиной" }
+
+[parts.xyz_tool_connector]
+kind = "header"
+source = "Ответная половина на активной насадке. Ключи plus и return обозначают проектные роли до утверждения семейства и распиновки."
+model_gap = "Проверить маркировку, недоступность контактов, последовательность контакта/разрыва, удержание, наработку и сопротивление при движении."
+
+[parts.xyz_tool_connector.pins]
+p = { contact = "plug", role = "power", family = "xyz_tool_proposal", key = "plus" }
+g = { contact = "plug", role = "return", family = "xyz_tool_proposal", key = "return" }
+p_tail = { contact = "pad", role = "passive" }
+g_tail = { contact = "pad", role = "passive" }
+
+[parts.xyz_tool_connector.elements]
+plus = { kind = "resistor", nodes = ["p_tail","p"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+return = { kind = "resistor", nodes = ["g_tail","g"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+
+[parts.xyz_tool_connector.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Конкретный сменный разъём с парной половиной" }
+
+[parts.xyz_outlet_monitor]
+kind = "other"
+source = "Предварительная разрядная ветвь для проверки напряжения на незанятом разъёме; выбор схемы остаётся открытым."
+model_gap = "Диагностическое сопротивление не доказывает разряд реальной ёмкости или безопасность контактов."
+
+[parts.xyz_outlet_monitor.pins]
+p = { contact = "bare", role = "power" }
+g = { contact = "bare", role = "return" }
+
+[parts.xyz_outlet_monitor.elements]
+bleed = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять диапазон сопротивления в рабочем диапазоне температуры и положения" } } }
+
+[parts.xyz_outlet_monitor.ratings]
+power = { quantity = "power_w", nodes = ["p","g"], limit = { measurement = "Установить допустимое рассеяние по паспорту и нагреву" }, conditions = "Номинальное и максимальное напряжение, температура крепления" }
+
+[parts.xyz_mating_boundary]
+kind = "other"
+source = "Условная позиция границы каждой съёмной схемы. Физически соответствует portal/outlet; в опыте — изолированный эквивалент стенда за ответной частью."
+model_gap = "Это точка подачи тестового напряжения, не второй источник в насадке. Общий ток портала и насадки и связь с фактической сменой открыты."
+internal_nodes = ["emf"]
+
+[parts.xyz_mating_boundary.pins]
+p = { contact = "socket", role = "power", family = "xyz_tool_proposal", key = "plus" }
+g = { contact = "socket", role = "return", family = "xyz_tool_proposal", key = "return" }
+
+[parts.xyz_mating_boundary.elements]
+emf = { kind = "voltage", nodes = ["emf","g"], parameters = { volt = { measurement = "Записать синхронное напряжение между контактами каретки под нагрузкой" } } }
+series = { kind = "resistor", nodes = ["emf","p"], parameters = { ohm = { measurement = "Измерить выходную ВАХ установленного тракта питания на сменном стыке" } } }
+
+[parts.xyz_mating_boundary.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Штатный ключ, жгут и разъём портала" }
+
+[parts.xyz_heater_control]
+kind = "other"
+source = "Функциональная позиция управления нагревом. Тепловая модель operations.toml задаёт подвод тепла 24 Вт, электрические параметры остаются открыты."
+model_gap = "Неизвестны датчик, пороги и реакция на потерю измерения. Снять совместный ряд температуры, команды и снабжающего напряжения."
+
+[parts.xyz_heater_control.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+enable = { contact = "pad", role = { signal_out = "g" } }
+
+[parts.xyz_heater_control.elements]
+idle = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять ВАХ и пики тока во всех режимах выбранного узла" } } }
+command = { kind = "voltage", nodes = ["enable","g"], parameters = { volt = { measurement = "Снять команду на ключ при холодном старте, сбросе и обрыве термодатчика" } } }
+
+[parts.xyz_heater_control.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Логика и питание выбранного регулятора температуры" }
+
+[parts.xyz_thermal_cutout]
+kind = "other"
+source = "Предварительная независимая последовательная термоотсечка в цепи нагревателя."
+model_gap = "Диагностическая ветвь показывает замкнутый участок; порог, время, остаточный ток и повторное включение требуют стенда."
+
+[parts.xyz_thermal_cutout.pins]
+input = { contact = "terminal", role = "power" }
+output = { contact = "terminal", role = "passive" }
+
+[parts.xyz_thermal_cutout.elements]
+closed = { kind = "resistor", nodes = ["input","output"], parameters = { ohm = { measurement = "Четырёхпроводно измерить указанный участок в обесточенном состоянии" } }, continuity = true }
+
+[parts.xyz_thermal_cutout.ratings]
+current = { quantity = "current_a", nodes = ["input","output"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Тип, положение и условия срабатывания независимой отсечки" }
+
+[parts.xyz_heater_load]
+kind = "resistor"
+source = "Электрическая позиция нагревателя из operations.toml. 24 Вт в тепловом опыте не задают U, I или R(T)."
+model_gap = "Выбрать нагреватель, измерить R(T), пусковой ток, электрическую мощность и теплопередачу; оценить питание и изоляцию."
+
+[parts.xyz_heater_load.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.xyz_heater_load.elements]
+load = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Измерить R(T) четырёхпроводно на холодном узле и в штатном температурном диапазоне" } } }
+
+[parts.xyz_heater_load.ratings]
+power = { quantity = "power_w", nodes = ["p","g"], limit = { measurement = "Снять допустимую мощность по паспорту и со штатным отводом тепла" }, conditions = "Условия крепления, тип, температура корпуса и длительность импульса" }
+
+[parts.xyz_grip_channel]
+kind = "other"
+source = "Электрическая позиция узла губок; усилия из operations.toml задаются численно, тип и число исполнительных элементов открыты."
+model_gap = "Нужны сведения о приводе, драйвере, датчиках, отпускании при потере питания и токах удержания, пуска и упора."
+
+[parts.xyz_grip_channel.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.xyz_grip_channel.elements]
+load = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять ВАХ и пики тока во всех режимах выбранного узла" } } }
+
+[parts.xyz_grip_channel.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Выбранный привод, управление, удержание и упор" }
+
+[parts.xyz_spindle_channel]
+kind = "other"
+source = "Электрическая позиция шпиндельного узла; момент из operations.toml задаётся численно, тип мотора и драйвера открыты."
+model_gap = "Замерить пуск, рабочий ток, заклинивание, выбег и рекуперацию. Установить способ измерения глубины или момента, если он входит в сборку."
+
+[parts.xyz_spindle_channel.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.xyz_spindle_channel.elements]
+load = { kind = "resistor", nodes = ["p","g"], parameters = { ohm = { measurement = "Снять ВАХ и пики тока во всех режимах выбранного узла" } } }
+
+[parts.xyz_spindle_channel.ratings]
+current = { quantity = "current_a", nodes = ["p","g"], limit = { measurement = "Определить допустимый постоянный и импульсный ток с учётом температуры и монтажа" }, conditions = "Выбранный шпиндель, драйвер, нагрузка резьбы и охлаждение" }
+
+# Функциональные позиции до выбора аппаратных модулей. Числа опыта вынесены в electrical-estimates.toml.
+
+[parts.cart_bus_supply]
+kind = "battery"
+source = "Одна силовая шина из stage6-control.toml. Диагностическая уставка 5,36 В из опыта 02 для двигателя с паспортным номиналом 6 В."
+model_gap = "Условная сборочная позиция: выбрать ячейки, BMS, кондиционирование шины и защиту от рекуперации. Эквивалент Тевенина обратимо поглощает энергию; ток ячеек и отсечка BMS не вычисляются."
+internal_nodes = ["emf"]
+
+[parts.cart_bus_supply.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.cart_bus_supply.elements]
+emf = { kind = "voltage", nodes = ["emf", "g"], parameters = { volt = { measurement = "Снять выходную ВАХ в обоих направлениях, по SOC и температуре." } } }
+series = { kind = "resistor", nodes = ["emf", "p"], parameters = { ohm = { measurement = "Снять импульсный выходной импеданс и обратную ВАХ." } } }
+filter = { kind = "capacitor", nodes = ["p", "g"], parameters = { farad = { measurement = "Измерить эффективную ёмкость, ESR и ток пульсаций." } } }
+
+[parts.cart_bus_supply.ratings]
+output = { quantity = "current_a", nodes = ["p", "g"], limit = { measurement = "Получить огибающие разряда и поглощения энергии, ток ограничения, пороги и выдержки BMS." }, conditions = "Минимальный заряд, рабочие температуры, совместный пуск и торможение" }
+
+[parts.cart_series_fuse]
+kind = "other"
+source = "Проектная позиция общего предохранителя в положительной линии."
+model_gap = "Выбрать артикул по отключающей способности, ВАХ, кривой I²t и жгуту. В опыте моделируется холодное сопротивление."
+
+[parts.cart_series_fuse.pins]
+p = { contact = "terminal", role = "power" }
+q = { contact = "terminal", role = "power" }
+
+[parts.cart_series_fuse.elements]
+closed = { kind = "resistor", nodes = ["p", "q"], parameters = { ohm = { measurement = "Измерить сопротивление предохранителя с держателем." } }, continuity = true }
+
+[parts.cart_series_fuse.ratings]
+series = { quantity = "current_a", nodes = ["p", "q"], limit = { measurement = "Сверить номинал и время отключения с пределами жгута и ключей." }, conditions = "Суммарный ток двух каналов, температура, характеристика источника" }
+
+[parts.cart_bus_terminal]
+kind = "screw_terminal"
+source = "Распределительная точка для радиальных ветвей плюса."
+model_gap = "Выбрать клеммник с отдельным местом для каждой жилы, подтвердить схему перемычек, сечения, момент затяжки и допустимый суммарный ток."
+
+[parts.cart_bus_terminal.pins]
+t = { contact = "terminal", role = "power" }
+
+[parts.cart_return_terminal]
+kind = "screw_terminal"
+source = "Общая распределительная точка для радиальных возвратов."
+model_gap = "Выбрать клеммник с отдельным местом для каждой жилы, подтвердить схему перемычек, сечения, момент затяжки и допустимый суммарный ток."
+
+[parts.cart_return_terminal.pins]
+t = { contact = "terminal", role = "return" }
+
+[parts.cart_harness_core]
+kind = "wire"
+source = "Отдельная жила по проектной проводке."
+model_gap = "Выбрать длину, сечение, изоляцию, номинальный ток и разгрузку от натяжения с учётом вибрации и изгиба."
+
+[parts.cart_harness_core.pins]
+a = { contact = "bare", role = "passive" }
+b = { contact = "bare", role = "passive" }
+
+[parts.cart_harness_core.elements]
+copper = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводно измерить сопротивление жилы и стыка в собранном жгуте." } }, continuity = true }
+
+[parts.cart_harness_core.ratings]
+copper = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Определить допустимый ток по длительности, сечению, температуре и характеристике стыка." }, conditions = "Собранный жгут, прокладка и температура" }
+
+[parts.cart_high_side_cut]
+kind = "switch_module"
+source = "Проектное отключение в плюсовой ветви каждого канала. Возврат проходит непосредственно к общему узлу."
+model_gap = "Выбрать независимый силовой ключ и тракт разряда. Идеальная команда gate переключает питание и разряд. Замерить взаимную блокировку, обратный ток, энергию разряда, порог, задержку и отказ."
+internal_nodes = ["reference"]
+
+[parts.cart_high_side_cut.pins]
+p = { contact = "terminal", role = "power" }
+q = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+gate = { contact = "pad", role = { signal_in = "g" } }
+
+[parts.cart_high_side_cut.elements]
+gate = { kind = "voltage", nodes = ["gate", "g"], parameters = { volt = { measurement = "Записать управляющее напряжение ключа и состояние при потере питания и сбросе." } } }
+switch = { kind = "switch", nodes = ["p", "q", "gate", "g"], parameters = { on_ohm = { measurement = "Замерить падение на замкнутом ключе по току и температуре." }, off_ohm = { measurement = "Замерить утечку и обратный ток при отключении." }, threshold_v = { measurement = "Снять порог и задержку коммутации под нагрузкой." }, hysteresis_v = { measurement = "Снять гистерезис в обоих направлениях." } } }
+reference = { kind = "voltage", nodes = ["reference", "g"], parameters = { volt = { measurement = "Снять уровни реальной взаимной блокировки." } } }
+discharge = { kind = "switch", nodes = ["q", "g", "reference", "gate"], parameters = { on_ohm = { measurement = "Снять суммарное сопротивление пути разряда и его тепловой предел." }, off_ohm = { measurement = "Снять утечку отключённой ветви разряда." }, threshold_v = { measurement = "Снять порог и задержку разряда." }, hysteresis_v = { measurement = "Снять гистерезис в обоих направлениях." } } }
+
+[parts.cart_high_side_cut.ratings]
+channel = { quantity = "current_a", nodes = ["p", "q"], limit = { measurement = "Получить токовую и тепловую огибающую, включая пуск, торможение, выбросы и отказ." }, conditions = "Артикул ключа, корпус, фактическое охлаждение" }
+
+[parts.cart_dc_bridge]
+kind = "switch_module"
+source = "Два экземпляра модели коллекторного моста из closed-device.toml и stage6-device.toml. Контакты ШИМ, DIR и EN предложены для монтажа."
+model_gap = "Живой знаковый ток приходит из модели привода только на вход DC. Выходы A/B пассивны. Реальная коммутация, входные уровни, ограничение тока, путь рекуперации и EN требуют стенда."
+
+[parts.cart_dc_bridge.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+a = { contact = "pad", role = "passive" }
+b = { contact = "pad", role = "passive" }
+pwm = { contact = "pad", role = { signal_in = "g" } }
+dir = { contact = "pad", role = { signal_in = "g" } }
+enable = { contact = "pad", role = { signal_in = "g" } }
+
+[parts.cart_dc_bridge.elements]
+dc_load = { kind = "current", nodes = ["p", "g"], parameters = { ampere = { measurement = "Снять знаковый ток питания в стартовом, рабочем, обратном и выключенном состояниях." } } }
+bleed = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Замерить ток покоя/разряда входа при отключении ключа." } } }
+term_a = { kind = "resistor", nodes = ["a", "g"], parameters = { ohm = { measurement = "Снять входную ВАХ или утечку этой клеммы при потере разрешения." } } }
+term_b = { kind = "resistor", nodes = ["b", "g"], parameters = { ohm = { measurement = "Снять входную ВАХ или утечку этой клеммы при потере разрешения." } } }
+term_pwm = { kind = "resistor", nodes = ["pwm", "g"], parameters = { ohm = { measurement = "Снять входную ВАХ или утечку этой клеммы при потере разрешения." } } }
+term_dir = { kind = "resistor", nodes = ["dir", "g"], parameters = { ohm = { measurement = "Снять входную ВАХ или утечку этой клеммы при потере разрешения." } } }
+term_enable = { kind = "resistor", nodes = ["enable", "g"], parameters = { ohm = { measurement = "Снять входную ВАХ или утечку этой клеммы при потере разрешения." } } }
+
+[parts.cart_dc_bridge.ratings]
+bus = { quantity = "current_a", nodes = ["p", "g"], limit = { measurement = "Выбрать мост по импульсной, двусторонней и длительной токовой огибающей." }, conditions = "Конкретные питание, температура, способ торможения и охлаждение" }
+
+[parts.cart_motor_2214]
+kind = "other"
+source = "Pololu #2214, HP 6 В, I0 0,10 А, экстраполированный Istall 1,60 А. https://www.pololu.com/product/2214"
+model_gap = "R(T), L, токи, нагрев и характеристики передачи проверить на экземпляре. По A/B ток в MNA не возбуждается, модель динамики потребляет ток через DC-мост."
+
+[parts.cart_motor_2214.pins]
+a = { contact = "pad", role = "passive" }
+b = { contact = "pad", role = "passive" }
+
+[parts.cart_motor_2214.elements]
+winding = { kind = "resistor", nodes = ["a", "b"], parameters = { ohm = { measurement = "Четырёхпроводно измерить обмотку по углу и температуре, замерить L ступенью тока." } } }
+
+[parts.cart_motor_2214.ratings]
+winding = { quantity = "current_a", nodes = ["a", "b"], limit = { measurement = "Снять тепловую огибающую. 1,60 А означает стоповую экстраполяцию, фактические пределы тока неизвестны." }, conditions = "Конкретный мотор, температура и длительность" }
+
+[parts.cart_logic_supply]
+kind = "linear_regulator"
+source = "Проектное питание управления от защищённой общей шины."
+model_gap = "Диагностический последовательный сдвиг 6 В − 3,3 В сохраняет баланс тока. Применяется на нагруженной положительной шине. Выбрать преобразователь, измерить пуск, dropout, UVLO, ток покоя и обратную подпитку."
+
+[parts.cart_logic_supply.pins]
+p = { contact = "terminal", role = "power" }
+q = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+
+[parts.cart_logic_supply.elements]
+drop = { kind = "voltage", nodes = ["p", "q"], parameters = { volt = { measurement = "Снять Vin/Vout/Iin/Iout и характеристики пуска и отключения." } } }
+input = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Снять ток покоя и выключенного входа преобразователя." } } }
+
+[parts.cart_control_unit]
+kind = "other"
+source = "Функциональные контакты регулятора из controller.toml и двух разрешений из stage6-control.toml. Физическая плата не выбрана."
+model_gap = "Установить контроллер, подтвердить аппаратную схему отключения, распиновку, питание, сброс и сторожевой таймер. Пассивные окончания и команды хоста не проверяют запуск платы и настоящие сигналы."
+
+[parts.cart_control_unit.pins]
+p = { contact = "terminal", role = "power" }
+g = { contact = "terminal", role = "return" }
+pwm_l = { contact = "pad", role = { signal_out = "g" } }
+dir_l = { contact = "pad", role = { signal_out = "g" } }
+enable_l = { contact = "pad", role = { signal_out = "g" } }
+pwm_r = { contact = "pad", role = { signal_out = "g" } }
+dir_r = { contact = "pad", role = { signal_out = "g" } }
+enable_r = { contact = "pad", role = { signal_out = "g" } }
+cut_l = { contact = "pad", role = { signal_out = "g" } }
+cut_r = { contact = "pad", role = { signal_out = "g" } }
+enca_l = { contact = "pad", role = { signal_in = "g" } }
+encb_l = { contact = "pad", role = { signal_in = "g" } }
+enca_r = { contact = "pad", role = { signal_in = "g" } }
+encb_r = { contact = "pad", role = { signal_in = "g" } }
+scl = { contact = "pad", role = { signal_out = "g" } }
+sda = { contact = "pad", role = { signal_io = "g" } }
+
+[parts.cart_control_unit.elements]
+load = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Снять ток платы при включении, сбросе, в работе и при выключении." } } }
+enca_l = { kind = "resistor", nodes = ["enca_l", "g"], parameters = { ohm = { measurement = "Замерить подтяжку, уровень и утечку входа тахометрии." } } }
+encb_l = { kind = "resistor", nodes = ["encb_l", "g"], parameters = { ohm = { measurement = "Замерить подтяжку, уровень и утечку входа тахометрии." } } }
+enca_r = { kind = "resistor", nodes = ["enca_r", "g"], parameters = { ohm = { measurement = "Замерить подтяжку, уровень и утечку входа тахометрии." } } }
+encb_r = { kind = "resistor", nodes = ["encb_r", "g"], parameters = { ohm = { measurement = "Замерить подтяжку, уровень и утечку входа тахометрии." } } }
+
+[parts.cart_imu_bmi270]
+kind = "other"
+source = "BMI270 из stage6-device.toml. VDD и VDDIO, функциональные линии I²C: Bosch BST-BMI270-DS000-07, https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf"
+model_gap = "Выбрать реализацию модуля, сверить подтяжки, конфигурационные выводы и развязку. Питание наблюдается, перезапуск и данные датчика от шины не моделируются."
+
+[parts.cart_imu_bmi270.pins]
+vdd = { contact = "pad", role = "power" }
+vddio = { contact = "pad", role = "power" }
+g = { contact = "pad", role = "return" }
+scl = { contact = "pad", role = { signal_in = "g" } }
+sda = { contact = "pad", role = { signal_io = "g" } }
+
+[parts.cart_imu_bmi270.elements]
+core = { kind = "resistor", nodes = ["vdd", "g"], parameters = { ohm = { measurement = "Снять ток VDD по режимам и напряжению." } } }
+io = { kind = "resistor", nodes = ["vddio", "g"], parameters = { ohm = { measurement = "Снять отдельно ток VDDIO и ток интерфейса." } } }
+scl = { kind = "resistor", nodes = ["scl", "g"], parameters = { ohm = { measurement = "Замерить нагрузку линии, подтяжки, фронты и обратную подпитку." } } }
+sda = { kind = "resistor", nodes = ["sda", "g"], parameters = { ohm = { measurement = "Замерить нагрузку линии, подтяжки, фронты и обратную подпитку." } } }
+
+[parts.cart_encoder_candidate]
+kind = "other"
+source = "Тахометрические наблюдения из tasks/profile.toml. Две линии A/B предложены как кандидат интерфейса."
+model_gap = "Выбрать датчик положения, питание и протокол, подтвердить разделение каналов, разрешение, задержку, помехоустойчивость и потерю данных. Тахометр опыта идеализирован."
+
+[parts.cart_encoder_candidate.pins]
+p = { contact = "pad", role = "power" }
+g = { contact = "pad", role = "return" }
+a = { contact = "pad", role = { signal_out = "g" } }
+b = { contact = "pad", role = { signal_out = "g" } }
+
+[parts.cart_encoder_candidate.elements]
+load = { kind = "resistor", nodes = ["p", "g"], parameters = { ohm = { measurement = "Измерить питание энкодера, ток покоя и переходы." } } }

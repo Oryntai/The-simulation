@@ -1,0 +1,49 @@
+format = 1
+# 250 кГц из stage6-world.toml, один отсчёт на физический такт.
+# Сетка разрешает RC источника 0,25 Ом × 100 мкФ = 25 мкс.
+step_ns = 4000
+source = "Два моста на общем численном источнике. Одновременный пуск и повторное включение, затем реверс. Разрешения, входы ключей, эквивалент питания логики и датчики идеализированы. Натурные пороги и задержки отсечки, нагрев, логика сброса и рекуперация остаются NotAnalyzed."
+control = "electrical-stimuli.toml"
+
+[circuits."тележка"]
+drives = { "мотор_левое" = "bridge_l/dc_load", "мотор_правое" = "bridge_r/dc_load" }
+diagnostic_connections = { parameters = "electrical-estimates.toml", ohm = 0.1, source = "Оценка Э1: 0,1 Ом на стык. Переходные сопротивления фактических стыков замерить четырёхпроводно." }
+# Расписание на такте 1 мс из stage6-control.toml, окна нагрузки по 4 мс
+# по такту регулятора. Сначала закрывается силовой ключ, затем приходит EN.
+# При отключении сначала снимается EN, через один такт открывается ключ.
+# 0 В и 3,3 В задают команды идеальным ключам по логической полке опыта 03.
+steps = [
+  { branch = "cut_l/gate", at_ns = 4000000, value = 3.3 },
+  { branch = "cut_r/gate", at_ns = 4000000, value = 3.3 },
+  { branch = "cut_l/gate", at_ns = 10000000, value = 0.0 },
+  { branch = "cut_r/gate", at_ns = 14000000, value = 0.0 },
+  { branch = "cut_l/gate", at_ns = 18000000, value = 3.3 },
+  { branch = "cut_r/gate", at_ns = 18000000, value = 3.3 },
+]
+
+[circuits."тележка".meters."иму"]
+rate_hz = 250
+minimum_v = 1.71
+source = "250 Гц из stage6-device.toml, нижняя рабочая граница VDD 1,71 В по Bosch BST-BMI270-DS000-07. Это наблюдение VDD, время запуска и первая достоверная выборка требуют замера."
+
+[circuits."тележка".probes]
+"источник" = { kind = "voltage", ends = ["source/p", "source/g"] }
+"общая шина" = { kind = "voltage", ends = ["feed_bus/t", "return_bus/t"] }
+"ток источника" = { kind = "current", branch = "source/series" }
+"ток накопителя" = { kind = "current", branch = "source/filter" }
+"ток общей подачи" = { kind = "current", branch = "main_feed/copper" }
+"ток общего возврата" = { kind = "current", branch = "main_return/copper" }
+"питание контроллера" = { kind = "voltage", ends = ["controller/p", "controller/g"] }
+"VDDIO ИМУ" = { kind = "voltage", ends = ["imu/vddio", "imu/g"] }
+"шина левое" = { kind = "voltage", ends = ["bridge_l/p", "bridge_l/g"] }
+"ток ключа левое" = { kind = "current", branch = "cut_l/switch" }
+"ток разряда левое" = { kind = "current", branch = "cut_l/discharge" }
+"ток подачи левое" = { kind = "current", branch = "bridge_feed_l/copper" }
+"ток возврата левое" = { kind = "current", branch = "bridge_return_l/copper" }
+"питание энкодера левое" = { kind = "voltage", ends = ["encoder_l/p", "encoder_l/g"] }
+"шина правое" = { kind = "voltage", ends = ["bridge_r/p", "bridge_r/g"] }
+"ток ключа правое" = { kind = "current", branch = "cut_r/switch" }
+"ток разряда правое" = { kind = "current", branch = "cut_r/discharge" }
+"ток подачи правое" = { kind = "current", branch = "bridge_feed_r/copper" }
+"ток возврата правое" = { kind = "current", branch = "bridge_return_r/copper" }
+"питание энкодера правое" = { kind = "voltage", ends = ["encoder_r/p", "encoder_r/g"] }

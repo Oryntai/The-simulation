@@ -1,0 +1,15 @@
+format = 1 # Версия самостоятельного каталога из Т5.2.
+
+# T/K = t/°C + 273,15. Indium Corporation, Solder Alloy Directory 97720 R9,
+# стр. 3, раздел Tin. Независимая сверка по Kester Alloy Temperature Chart:
+# https://www.kester.com/knowledge-base/alloy-temperature-chart
+
+[alloys.indalloy-106]
+# Эвтектика Sn63/Pb37: 183 °C для обеих границ.
+solidus_k = { min = 456.15, nominal = 456.15, max = 456.15, source.datasheet = "Indium Solder Alloy Directory 97720 R9, стр. 3, 106: https://www.indium.com/wp-content/uploads/2025/03/Solder-Alloy-Directory-97720-A4-R9.pdf" }
+liquidus_k = { min = 456.15, nominal = 456.15, max = 456.15, source.datasheet = "Indium Solder Alloy Directory 97720 R9, стр. 3, 106: https://www.indium.com/wp-content/uploads/2025/03/Solder-Alloy-Directory-97720-A4-R9.pdf" }
+
+[alloys.indalloy-256]
+# SAC305: солидус 217 °C, ликвидус 220 °C.
+solidus_k = { min = 490.15, nominal = 490.15, max = 490.15, source.datasheet = "Indium Solder Alloy Directory 97720 R9, стр. 3, 256: https://www.indium.com/wp-content/uploads/2025/03/Solder-Alloy-Directory-97720-A4-R9.pdf" }
+liquidus_k = { min = 493.15, nominal = 493.15, max = 493.15, source.datasheet = "Indium Solder Alloy Directory 97720 R9, стр. 3, 256: https://www.indium.com/wp-content/uploads/2025/03/Solder-Alloy-Directory-97720-A4-R9.pdf" }

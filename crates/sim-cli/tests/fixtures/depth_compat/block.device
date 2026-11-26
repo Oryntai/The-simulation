@@ -1,0 +1,100 @@
+# Проект мастерской устройств
+# Формат sim-device 2
+
+[device]
+name = Умные очки
+template = glasses
+mount = head
+
+[use]
+ambient_c = 25
+cycles = 100000
+long_wear = false
+hours_per_day = 2
+
+[electronics]
+board = rp2040
+driver = 
+regulator = 
+cell = Samsung INR18650-30Q
+series = 1
+parallel = 1
+fuse_a = 10
+wire_mm2 = 1.5
+wire_m = 0.5
+bms = false
+firmware = 
+board_regulated = false
+
+[design]
+sex = female
+strength_pct = 5
+
+[link]
+name = Оправа
+parent = none
+offset_mm = 0 0 0
+direction = left
+length_mm = 140
+section = rect 4 8
+material = al6061-t6
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = face
+contact_lever_mm = 140
+joint = fixed
+axis = y
+min_deg = 0
+max_deg = 0
+actuator = 
+speed_limit_dps = 0
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+
+[link]
+name = Левая дужка
+parent = 1
+offset_mm = 0 140 0
+direction = back
+length_mm = 130
+section = rect 12 30
+material = petg
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = head
+contact_lever_mm = 130
+joint = fixed
+axis = y
+min_deg = 0
+max_deg = 0
+actuator = 
+speed_limit_dps = 0
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false
+
+[link]
+name = Правая дужка
+parent = 1
+offset_mm = 0 0 0
+direction = back
+length_mm = 130
+section = rect 12 30
+material = petg
+print = none
+hole_mm = 0
+end_mass_kg = 0
+near_body = head
+contact_lever_mm = 130
+joint = fixed
+axis = y
+min_deg = 0
+max_deg = 0
+actuator = 
+speed_limit_dps = 0
+torque_limit_nm = 0
+pinch_gap_mm = 0
+guarded = false

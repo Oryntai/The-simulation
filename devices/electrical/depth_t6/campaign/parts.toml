@@ -1,0 +1,23 @@
+format = 1
+
+[parts.bench_board]
+kind = "other"
+source = "Электрический эквивалент платы стенда Т6.7"
+reference_only = true
+[parts.bench_board.pins]
+p = { contact = "pad", role = "power" }
+g = { contact = "pad", role = "return" }
+io = { contact = "pad", role = { signal_in = "g" } }
+adc = { contact = "pad", role = { signal_in = "g" } }
+[parts.bench_board.elements]
+rail = { kind = "voltage", nodes = ["p", "g"], parameters.volt = { measurement = "Шина стенда Т6.7", range = { min = 3.3, nominal = 3.3, max = 3.3, source = { derived = "Идеальная шина 3,3 В стенда Т6.7" } } } }
+demand = { kind = "current", nodes = ["p", "g"], parameters.ampere = { measurement = "Ток модели в режиме покоя", range = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Шина идеальна, ток платы в стенде Т6.7 принят равным нулю" } } } }
+input = { kind = "voltage", nodes = ["io", "g"], parameters.volt = { measurement = "Смещение дифференциального входа", range = { min = 3.0, nominal = 3.0, max = 3.0, source = { derived = "Напряжение покоя входа стенда Т6.7" } } } }
+
+[parts.bench_switch]
+kind = "other"
+source = "Адрес источника тока коммутации стенда Т6.7, ток задаётся профилем ЭМС"
+reference_only = true
+model_gap = "Общий возврат описан в профиле ЭМС, отдельная шина питания от него не зависит"
+[parts.bench_switch.pins]
+g = { contact = "pad", role = "return" }

@@ -1,0 +1,55 @@
+# Электрический вариант той же механической постановки. Численные данные совпадают с одноимённым файлом на уровень выше.
+format = 3
+name = "XYZ с ремнём X и винтом Z"
+schematic = "../axes-electrical.toml"
+
+[[links]]
+name = "каретка-x"
+joint = { kind = "slide", name = "каретка-x", axis = [1, 0, 0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "каретка-x", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.05, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [1e-05, 1e-05, 1e-05, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links]]
+name = "каретка-y"
+parent = "каретка-x"
+joint = { kind = "slide", name = "каретка-y", axis = [0, 1, 0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "каретка-y", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.05, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [1e-05, 1e-05, 1e-05, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links]]
+name = "каретка-z"
+parent = "каретка-y"
+joint = { kind = "slide", name = "каретка-z", axis = [0, 0, 1], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "каретка-z", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.05, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [1e-05, 1e-05, 1e-05, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links.mounts]]
+name = "фланец"
+kind = "mechanical"
+interface = "эскизный фланец стенда"
+
+[[links.mounts]]
+name = "питание-оснастки"
+kind = "power"
+interface = "xyz_tool_proposal"
+
+[[links]]
+name = "ремень"
+joint = { kind = "slide", name = "ремень", axis = [1, 0, 0], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "ремень", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.04, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [1e-05, 1e-05, 1e-05, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links]]
+name = "винт"
+joint = { kind = "hinge", name = "винт", axis = [0, 0, 1], damping = 0.0, friction_loss = 0.0, armature = 0.0, efforts = [{ name = "винт", dof = 0 }] }
+mass = { kind = "explicit", mass_kg = 0.012, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [8e-07, 8e-07, 8e-07, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[transmissions]]
+kind = "belt"
+name = "ременная-передача"
+input = "ремень"
+output = "каретка-x"
+ratio = 1.0
+
+[[transmissions]]
+kind = "screw"
+name = "винтовая-подача"
+input = "винт"
+output = "каретка-z"
+lead_m_per_turn = 0.016

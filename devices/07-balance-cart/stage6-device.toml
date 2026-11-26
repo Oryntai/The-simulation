@@ -1,6 +1,7 @@
 # Корпус на свободном основании, начало кадра на оси колёс. Размеры — оценка компоновки.
 format = 3
 name = "Балансирующая тележка"
+schematic = "electrical-scheme.toml"
 
 [[links]]
 name = "корпус"
@@ -38,7 +39,7 @@ axis = [0.0, 1.0, 0.0]
 damping = 0.001
 friction_loss = 0.0
 armature = 0.0
-efforts = [{ name = "момент_левое", dof = 0 }, { name = "момент_левое-power", dof = 0 }]
+efforts = [{ name = "момент_левое", dof = 0 }, { name = "момент_левое-power", dof = 0 }, { name = "момент_левое-bus-v", dof = 0 }]
 
 [links.mass]
 kind = "geometry"
@@ -64,7 +65,7 @@ axis = [0.0, 1.0, 0.0]
 damping = 0.001
 friction_loss = 0.0
 armature = 0.0
-efforts = [{ name = "момент_правое", dof = 0 }, { name = "момент_правое-power", dof = 0 }]
+efforts = [{ name = "момент_правое", dof = 0 }, { name = "момент_правое-power", dof = 0 }, { name = "момент_правое-bus-v", dof = 0 }]
 
 [links.mass]
 kind = "geometry"
@@ -85,6 +86,9 @@ part = "n20-100-6v-hp-switched"
 effort = "момент_левое"
 
 [drives.params]
+# Нижняя граница входа численной шины: 0 В означает снятое питание.
+# Порог фактического моста не выбран, см. electrical-parts.toml.
+voltage_min_v = 0.0
 # Паспорт Pololu #2214 (catalog/drives/n20-100-6v-hp.toml): U=6 В, R=3.75 Ом,
 # ω0=310 об/мин, I0=0.10 A, Istall=1.60 A, Tstall=0.16671305 Н·м, N=100.37.
 # Предел стенда равен экстраполированному Istall, аппаратная защита неизвестна.
@@ -122,6 +126,9 @@ part = "n20-100-6v-hp-switched"
 effort = "момент_правое"
 
 [drives.params]
+# Нижняя граница входа численной шины: 0 В означает снятое питание.
+# Порог фактического моста не выбран, см. electrical-parts.toml.
+voltage_min_v = 0.0
 # Паспорт Pololu #2214 (catalog/drives/n20-100-6v-hp.toml): U=6 В, R=3.75 Ом,
 # ω0=310 об/мин, I0=0.10 A, Istall=1.60 A, Tstall=0.16671305 Н·м, N=100.37.
 # Предел стенда равен экстраполированному Istall, аппаратная защита неизвестна.

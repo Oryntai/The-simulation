@@ -1,0 +1,16 @@
+electrical_format = 1
+catalog = "../../../catalog"
+
+# Горизонт стенда Т6.7 из acceptance.toml. Оба опыта используют
+# одну установку и различаются только сопротивлением общего возврата.
+[assemblies.emi_reset_unsafe]
+world = "campaign/world.toml"
+profile = "campaign/live.toml"
+emc = "campaign/reset-unsafe.toml"
+horizon_ns = 60000
+
+[assemblies.emi_reset_fixed]
+world = "campaign/world.toml"
+profile = "campaign/live.toml"
+emc = "campaign/reset-fixed.toml"
+horizon_ns = 60000

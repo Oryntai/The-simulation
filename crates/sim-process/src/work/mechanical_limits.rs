@@ -9,6 +9,65 @@ use super::{
     trace::{matches_pair, validate_frame, validate_pair},
 };
 
+/// Длина осевой линии и максимум её кривизны. Каждый внутренний узел
+/// заменён круговой дугой, касательной к двум отрезкам на заданном отступе
+/// от вершины. Наложение зон скругления и разворот на π не задают такой трассы.
+pub(super) fn rounded_route(
+    points_m: &[[f64; 3]],
+    setbacks_m: &[f64],
+) -> Result<Option<[f64; 2]>, ProcessError> {
+    let mut spans = Vec::with_capacity(points_m.len() - 1);
+    for points in points_m.windows(2) {
+        let delta = sub(points[1], points[0]);
+        let length = norm(delta);
+        computed(&[length])?;
+        if length == 0.0 {
+            return Ok(None);
+        }
+        spans.push((length, delta.map(|x| x / length)));
+    }
+    let mut length = 0.0;
+    for (index, &(span_length, _)) in spans.iter().enumerate() {
+        // У концов трассы скруглений нет. Внутри отрезка остаётся только
+        // длина между двумя точками касания.
+        let left = index.checked_sub(1).map_or(0.0, |i| setbacks_m[i]);
+        let right = setbacks_m.get(index).copied().unwrap_or(0.0);
+        let straight = span_length - left - right;
+        if straight < 0.0 {
+            return Ok(None);
+        }
+        length += straight;
+    }
+    let mut peak_curvature: f64 = 0.0;
+    for (spans, &setback) in spans.windows(2).zip(setbacks_m) {
+        let incoming = spans[0].1;
+        let outgoing = spans[1].1;
+        // Для единичных касательных отношение норм разности и суммы —
+        // tan(θ/2). Из треугольника радиус равен setback / tan(θ/2).
+        let sine = norm(sub(incoming, outgoing));
+        let cosine = norm(add(incoming, outgoing));
+        if cosine == 0.0 {
+            return Ok(None);
+        }
+        if sine == 0.0 {
+            length += 2.0 * setback; // Предел длины дуги при θ → 0.
+            continue;
+        }
+        let tangent = sine / cosine;
+        let curvature = tangent / setback;
+        let angle = 2.0 * sine.atan2(cosine);
+        let arc_length = setback * (angle / tangent);
+        computed(&[curvature, arc_length])?;
+        if curvature == 0.0 || arc_length == 0.0 {
+            return Ok(None);
+        }
+        length += arc_length;
+        peak_curvature = peak_curvature.max(curvature);
+    }
+    computed(&[length, peak_curvature])?;
+    Ok(Some([length, peak_curvature]))
+}
+
 /// Сравнение фактического значения с огибающей допустимого максимума.
 pub fn upper_check(
     value: f64,

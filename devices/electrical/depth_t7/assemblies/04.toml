@@ -1,0 +1,79 @@
+version = 1
+world = "../../../04-wall-switch/world.toml"
+catalog = "../../../../catalog"
+seed = 4 # Зерно из world.toml.
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 6000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 04 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qpos[1]", unit = "rad" }, max = 0.20943951023931956, source = { kind = "estimate", reference = "Модельный верхний упор из switch.toml: 12° в радианах" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 6000000
+max_gap_ns = 1000 # Один такт physics_hz штатного мира.
+
+# Отдельная постановка из реестра 7.3 сохраняет живой путь и свою инъекцию.
+[stations.linked]
+experiment = { kind = "control", task = "../../../04-wall-switch/tasks/depth-open.toml" }
+
+[stations.linked.modes."нажатие"]
+horizon_ns = 220000000
+source = { kind = "derived", reference = "Горизонт из tasks/depth-open.toml" }
+faults = [
+    { fault = { node = "board:плата", kind = "controller_halted" }, at_ns = 145000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+]
+
+# Границы окна и шаг наблюдения из того же контрольного задания.
+[stations.linked.modes."нажатие".windows.injection]
+start_ns = 95000000
+end_ns = 200000000
+max_gap_ns = 1000000
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический опыт и отдельная постановка из tasks/depth-open.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" }, linked = { station = "linked", mode = "нажатие" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Электрический путь и пути из tasks/depth-open.toml" }
+levels = { kind = "path", values = { electric = "electric", linked_1 = "мост" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }
+
+[depth_factors.factors.injection]
+safety = true
+source = { kind = "derived", reference = "Одиночные инъекции из tasks/depth-open.toml" }
+[depth_factors.factors.injection.levels]
+kind = "faults"
+[depth_factors.factors.injection.levels.values]
+nominal = []
+fault_1 = [{ node = "board:плата", kind = "controller_halted" }]
+
+[depth_factors.constraints.linked_electric]
+when = { mode = "linked", path = "electric" }
+reason = "Связанный режим исполняется на собственном пути"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+
+[depth_factors.constraints.full_linked_1]
+when = { mode = "full", path = "linked_1" }
+reason = "Электрический режим исполняется на пути электрического профиля"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_1]
+when = { path = "electric", injection = "fault_1" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.linked_native]
+when = { mode = "linked", grid = "refined" }
+reason = "Связанный контрольный профиль подтверждён только на штатной сетке"
+source = { kind = "derived", reference = "Сетка задачи tasks/depth-open.toml и её штатного мира" }

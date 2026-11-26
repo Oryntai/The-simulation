@@ -1,0 +1,70 @@
+# 48 г — проектный бюджет рамы. 3 опоры радиуса 10 мм на геометрии r0001.
+# Горизонтальный центр масс из баланса вертикальных компонент трёх опор в нейтрали.
+format = 3
+schematic = "electrical-scheme.toml"
+name = "Рама датчиков с тремя мягкими опорами"
+
+[[links]]
+name = "рама"
+
+pose = { position_m = [0, 0, 0] }
+joint = { kind = "free", name = "положение" }
+mass = { kind = "explicit", mass_kg = 0.048, com_m = [0.004791767822522733, 0.0, 0.07659351762755207], inertia_kg_m2 = [9e-05, 7e-05, 0.0001, 0, 0, 0], provenance = { estimate = "Эскизные масса и инерция стендового звена, требуется обмер." } }
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.01 }
+pose = { position_m = [0.07328434618847239, 0.0, 0.08551478262456169] }
+contact_mask = [1, 0]
+
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.01 }
+pose = { position_m = [-0.04655669455536256, 0.05788144420409817, 0.07268733613576384] }
+contact_mask = [1, 0]
+
+
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.01 }
+pose = { position_m = [-0.04655669455536256, -0.05788144420409817, 0.07268733613576384] }
+contact_mask = [1, 0]
+
+
+[[links.mounts]]
+name = "передняя"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [0.06572629389541387, 0.0, 0.07896681763264302], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links.mounts]]
+name = "левая"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [-0.04225372906902733, 0.050347647406404614, 0.06771477202511922], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links.mounts]]
+name = "правая"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [-0.04225372906902733, -0.050347647406404614, 0.06771477202511922], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[links.mounts]]
+name = "инерциальная-метка"
+kind = "mechanical"
+interface = "контактная поверхность"
+pose = { position_m = [0, 0, 0], quat_wxyz = [1.0, 0.0, 0.0, 0.0] }
+
+[[sensors]]
+name = "импульсы"
+part = "bmi270"
+link = "рама"
+# Идеальные параметры сверочного режима. Оценка точности носимого датчика открыта.
+params = { rate_hz = 2000.0, latency_s = 0.0, fault = 0.0, drop_probability = 0.0, saturation = 0.0, bias = 0.0, noise_std = 0.0, quantum = 0.0, drift_per_s = 0.0, drift_rw_std = 0.0, gyro_saturation = 0.0, mount_dx_m = 0.0, mount_dy_m = 0.0, mount_dz_m = 0.0, mount_roll_rad = 0.0, mount_pitch_rad = 0.0, mount_yaw_rad = 0.0, gyro_bias = 0.0, gyro_noise_std = 0.0, gyro_drift_per_s = 0.0, gyro_drift_rw_std = 0.0, gyro_quantum = 0.0 }
+
+[[sensors]]
+name = "кадр"
+part = "reference-rgb"
+link = "рама"
+# Камера +Z вперёд по миру +X, X направлена по −Y, Y по −Z.
+pose = { position_m = [0.13, 0.0, 0.045], quat_wxyz = [0.5, -0.5, 0.5, -0.5] }
+# Мгновенная экспозиция для независимой сверки по центру сферы.
+params = { exposure_s = 0.0, exposure_samples = 1.0 }

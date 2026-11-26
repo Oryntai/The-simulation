@@ -1,0 +1,2659 @@
+{
+  "подвес": {
+    "proof_scope": "сборка",
+    "schematic": 11607860817104304092,
+    "sheet": {
+      "bindings": [
+        {
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "target": "DrivePower { drive: \"мотор\" }"
+        },
+        {
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "target": "SensorPower { sensor: \"угол\" }"
+        }
+      ],
+      "inspections": [
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_power_source",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "angle_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_return_source",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_return",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_return",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_return",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_dir_cw",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_vdd5v",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd3v3"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_vdd3v3",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "g"
+            },
+            {
+              "component": "angle_return",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bulk_ground",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bulk_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bypass",
+              "pin": "g"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bypass_ground",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bypass",
+              "pin": "p"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bypass_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feed_source",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "feed_fuse",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "fuse_bridge",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "motor_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_source",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "motor_return",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "return_bridge",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "out1"
+            },
+            {
+              "component": "motor",
+              "pin": "m1"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "motor_a",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "out2"
+            },
+            {
+              "component": "motor",
+              "pin": "m2"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "motor_b",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "star_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "star_motor",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "star_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "controller_return",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "dir"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_dir",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "en"
+            },
+            {
+              "component": "bridge",
+              "pin": "en"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_en",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "pwm"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "bridge_pwm",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "star_return",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "star_angle",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "scl"
+            },
+            {
+              "component": "angle",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_scl",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "sda"
+            },
+            {
+              "component": "angle",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "angle_sda",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "scl_pull",
+              "pin": "s"
+            },
+            {
+              "component": "angle",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "scl_pull_signal",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "scl_pull",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "scl_pull_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sda_pull",
+              "pin": "s"
+            },
+            {
+              "component": "angle",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sda_pull_signal",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить и изолировать участок от параллельных цепей",
+          "ends": [
+            {
+              "component": "sda_pull",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "Четырёхпроводно измерить стык без параллельных путей, при снятом питании.",
+            "range": null,
+            "unit": "Ω"
+          },
+          "stage": "before_power",
+          "subject": "sda_pull_supply",
+          "test": "resistance"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "p"
+            },
+            {
+              "component": "bulk",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "bulk/reverse",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "p"
+            },
+            {
+              "component": "bulk",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "bulk/reverse",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «angle_supply»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «angle_supply»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «angle_vdd»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «angle_vdd»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd3v3"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «angle_vdd3v3»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd3v3"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «angle_vdd3v3»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "rgb",
+              "pin": "vdd"
+            },
+            {
+              "component": "rgb",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «camera_vdd_reserved»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "rgb",
+              "pin": "vdd"
+            },
+            {
+              "component": "rgb",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «camera_vdd_reserved»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "rgb",
+              "pin": "vddio"
+            },
+            {
+              "component": "rgb",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «camera_vddio_reserved»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "rgb",
+              "pin": "vddio"
+            },
+            {
+              "component": "rgb",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «camera_vddio_reserved»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "p"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «controller_power_reserved»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "p"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «controller_power_reserved»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «supply6»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «supply6»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "обесточить, сверить маркировку плюса и возврата с монтажом",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vm»",
+          "test": "positive_mark"
+        },
+        {
+          "conditions": "обесточить, отключить детали и проверить изоляцию монтажных цепей",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "шина «vm»",
+          "test": "no_direct_bridge"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "g"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "angle/sda → controller/sda",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/dir → bridge/dir",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/en → bridge/en",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/pwm → bridge/pwm",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/scl → angle/scl",
+          "test": "continuity"
+        },
+        {
+          "conditions": "прозвонить штатный возврат при снятом питании, без обхода через сигнал",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": null,
+          "stage": "before_power",
+          "subject": "controller/sda → angle/sda",
+          "test": "continuity"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_power_source",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "angle_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_return_source",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_return",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_return",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_return",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_dir_cw",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_vdd5v",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd3v3"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_vdd3v3",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "g"
+            },
+            {
+              "component": "angle_return",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bulk_ground",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bulk_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bypass",
+              "pin": "g"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bypass_ground",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bypass",
+              "pin": "p"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bypass_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "feed",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feed_source",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "feed_fuse",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "fuse_bridge",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "motor_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_source",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "motor_return",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "return_bridge",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "out1"
+            },
+            {
+              "component": "motor",
+              "pin": "m1"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "motor_a",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "out2"
+            },
+            {
+              "component": "motor",
+              "pin": "m2"
+            }
+          ],
+          "limit": {
+            "measurement": "Сверить токовый предел стыка по сечению, нагреву и пусковой огибающей. Проверить координацию с предохранителем.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "motor_b",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "star_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "star_motor",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "star_return",
+              "pin": "a"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "controller_return",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "dir"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_dir",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "en"
+            },
+            {
+              "component": "bridge",
+              "pin": "en"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_en",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "pwm"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "bridge_pwm",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "star_return",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "star_angle",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "scl"
+            },
+            {
+              "component": "angle",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_scl",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "sda"
+            },
+            {
+              "component": "angle",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "angle_sda",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "scl_pull",
+              "pin": "s"
+            },
+            {
+              "component": "angle",
+              "pin": "scl"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "scl_pull_signal",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "scl_pull",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "scl_pull_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sda_pull",
+              "pin": "s"
+            },
+            {
+              "component": "angle",
+              "pin": "sda"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sda_pull_signal",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "на первом включении с ограничением измерить ток последовательно этому участку",
+          "ends": [
+            {
+              "component": "sda_pull",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "limit": {
+            "measurement": "По маркировке жилы, клеммы и условиям прокладки определить допустимый ток.",
+            "range": null,
+            "unit": "A"
+          },
+          "stage": "current_limited_start",
+          "subject": "sda_pull_supply",
+          "test": "current_limit"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; Переходы при снятии и восстановлении питания.",
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "p"
+            },
+            {
+              "component": "bulk",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Проверить предел обратного напряжения выбранного конденсатора по паспорту.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "bulk/reverse",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            }
+          ],
+          "limit": {
+            "measurement": "Проверить обратный предел источника при снятии и восстановлении питания.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «angle_supply»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Проверить предел обратной полярности AS5600 в установленном модуле.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «angle_vdd»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "angle",
+              "pin": "vdd3v3"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Проверить VDD3V3, привязку к VDD5V и обратный предел на фактическом модуле.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «angle_vdd3v3»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "rgb",
+              "pin": "vdd"
+            },
+            {
+              "component": "rgb",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Выбрать модуль, сверить наличие шины, назначение клемм и обратный предел.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «camera_vdd_reserved»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "rgb",
+              "pin": "vddio"
+            },
+            {
+              "component": "rgb",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Выбрать модуль, сверить наличие VDDIO, порядок питания и обратный предел.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «camera_vddio_reserved»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "p"
+            },
+            {
+              "component": "controller",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Выбрать вход питания и источник. Сверить допустимую полярность и условия совместной работы с внешним хостом.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «controller_power_reserved»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            }
+          ],
+          "limit": {
+            "measurement": "Проверить обратную ВАХ источника и способность принять ток при торможении.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «supply6»",
+          "test": "reverse_voltage"
+        },
+        {
+          "conditions": "измерить плюс относительно возврата при ограничении тока; установившееся DC шины",
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "p"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "limit": {
+            "measurement": "Подтвердить предел обратного напряжения VM фактического моста.",
+            "range": null,
+            "unit": "V"
+          },
+          "stage": "current_limited_start",
+          "subject": "шина «vm»",
+          "test": "reverse_voltage"
+        }
+      ],
+      "operations": [
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "a"
+            }
+          ],
+          "id": "angle_power_source",
+          "kind": "Terminal"
+        },
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "angle_return",
+              "pin": "a"
+            }
+          ],
+          "id": "angle_return_source",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "angle_return_source"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_return",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "id": "angle_return",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_return"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_return",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "dir"
+            }
+          ],
+          "id": "angle_dir_cw",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_power_source",
+            "angle_return"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            }
+          ],
+          "id": "angle_vdd5v",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_vdd5v"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd3v3"
+            }
+          ],
+          "id": "angle_vdd3v3",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_return"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "g"
+            },
+            {
+              "component": "angle_return",
+              "pin": "b"
+            }
+          ],
+          "id": "bulk_ground",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_vdd3v3",
+            "bulk_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bulk",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "id": "bulk_supply",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_return"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bypass",
+              "pin": "g"
+            },
+            {
+              "component": "angle",
+              "pin": "g"
+            }
+          ],
+          "id": "bypass_ground",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_vdd3v3",
+            "bypass_ground"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bypass",
+              "pin": "p"
+            },
+            {
+              "component": "angle",
+              "pin": "vdd5v"
+            }
+          ],
+          "id": "bypass_supply",
+          "kind": "Solder"
+        },
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "plus"
+            },
+            {
+              "component": "feed",
+              "pin": "a"
+            }
+          ],
+          "id": "feed_source",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "feed_source"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "feed",
+              "pin": "b"
+            },
+            {
+              "component": "fuse",
+              "pin": "input"
+            }
+          ],
+          "id": "feed_fuse",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "feed_fuse"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "fuse",
+              "pin": "output"
+            },
+            {
+              "component": "bridge",
+              "pin": "p"
+            }
+          ],
+          "id": "fuse_bridge",
+          "kind": "Solder"
+        },
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "motor_return",
+              "pin": "a"
+            }
+          ],
+          "id": "return_source",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "return_source"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "motor_return",
+              "pin": "b"
+            },
+            {
+              "component": "bridge",
+              "pin": "g"
+            }
+          ],
+          "id": "return_bridge",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "return_bridge"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "out1"
+            },
+            {
+              "component": "motor",
+              "pin": "m1"
+            }
+          ],
+          "id": "motor_a",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "return_bridge"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "bridge",
+              "pin": "out2"
+            },
+            {
+              "component": "motor",
+              "pin": "m2"
+            }
+          ],
+          "id": "motor_b",
+          "kind": "Solder"
+        },
+        {
+          "after": [],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "motor_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "star_return",
+              "pin": "a"
+            }
+          ],
+          "id": "star_motor",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "star_motor"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "g"
+            },
+            {
+              "component": "star_return",
+              "pin": "a"
+            }
+          ],
+          "id": "controller_return",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "controller_return",
+            "return_bridge"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "dir"
+            },
+            {
+              "component": "bridge",
+              "pin": "dir"
+            }
+          ],
+          "id": "bridge_dir",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "controller_return",
+            "return_bridge"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "en"
+            },
+            {
+              "component": "bridge",
+              "pin": "en"
+            }
+          ],
+          "id": "bridge_en",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "controller_return",
+            "return_bridge"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "pwm"
+            },
+            {
+              "component": "bridge",
+              "pin": "pwm"
+            }
+          ],
+          "id": "bridge_pwm",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "star_motor"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "angle_supply",
+              "pin": "minus"
+            },
+            {
+              "component": "star_return",
+              "pin": "b"
+            }
+          ],
+          "id": "star_angle",
+          "kind": "Terminal"
+        },
+        {
+          "after": [
+            "angle_return",
+            "controller_return",
+            "star_angle"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "scl"
+            },
+            {
+              "component": "angle",
+              "pin": "scl"
+            }
+          ],
+          "id": "angle_scl",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_return",
+            "controller_return",
+            "star_angle"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "controller",
+              "pin": "sda"
+            },
+            {
+              "component": "angle",
+              "pin": "sda"
+            }
+          ],
+          "id": "angle_sda",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_scl"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "scl_pull",
+              "pin": "s"
+            },
+            {
+              "component": "angle",
+              "pin": "scl"
+            }
+          ],
+          "id": "scl_pull_signal",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_vdd3v3",
+            "scl_pull_signal"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "scl_pull",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "id": "scl_pull_supply",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_sda"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sda_pull",
+              "pin": "s"
+            },
+            {
+              "component": "angle",
+              "pin": "sda"
+            }
+          ],
+          "id": "sda_pull_signal",
+          "kind": "Solder"
+        },
+        {
+          "after": [
+            "angle_vdd3v3",
+            "sda_pull_signal"
+          ],
+          "compatible": true,
+          "ends": [
+            {
+              "component": "sda_pull",
+              "pin": "p"
+            },
+            {
+              "component": "angle_feed",
+              "pin": "b"
+            }
+          ],
+          "id": "sda_pull_supply",
+          "kind": "Solder"
+        }
+      ],
+      "parts": [
+        {
+          "component": "angle",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/idd/ohm": "Замерить ток при включении и в NOM, с фактической нагрузкой I²C и магнитом, в диапазоне напряжения и температуры."
+          },
+          "model_gap": "Проверить ревизию модуля, перемычки VDD, стартовый пик, ток режима NOM с обменом, напряжения и фронты I²C, захват магнита и время первой валидной выборки. Опыт без программирования OTP. Сопротивление отражает одну паспортную точку, не переходы микросхемы.",
+          "part": "as5600_bare_3v3",
+          "pins": {
+            "dir": "return",
+            "g": "return",
+            "out": "out_nc",
+            "pgo": "pgo_nc",
+            "scl": "scl",
+            "sda": "sda",
+            "vdd3v3": "supply33",
+            "vdd5v": "supply33"
+          },
+          "source": "ams AS5600 v1-06, рис. 4, 6, 13 и 38: питание 3,0–3,6 В, VDD5V и VDD3V3 вместе, отдельного VDDIO нет. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+        },
+        {
+          "component": "angle_feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "supply33",
+            "b": "supply33"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "angle_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "angle_supply",
+          "kind": "BenchSupply",
+          "missing_parameters": {
+            "elements/emf/volt": "Снять напряжение холостого хода при заданных условиях",
+            "elements/internal/ohm": "Измерить падение на ступени тока",
+            "ratings/output": "По паспорту или нагрузочным тестом определить порог и длительность тока"
+          },
+          "model_gap": "Замерить выходную ВАХ, активный разряд и ток пуска. Ступени профиля задают диагностический активный переход источника.",
+          "part": "as5600_fixture_supply",
+          "pins": {
+            "minus": "return",
+            "plus": "supply33"
+          },
+          "source": "Отдельный стендовый источник для питания AS5600. Номинал по рис. 6 и 13 паспорта ams v1-06. Артикул источника не задан."
+        },
+        {
+          "component": "bridge",
+          "kind": "SwitchModule",
+          "missing_parameters": {
+            "elements/dc_load/ampere": "Снять знаковый входной ток моста относительно его VM и GND. В живом опыте это порт тока двигателя.",
+            "elements/dir_idle/ohm": "Снять входной импеданс вывода по состояниям питания.",
+            "elements/en_idle/ohm": "Снять входной импеданс вывода по состояниям питания.",
+            "elements/out1_idle/ohm": "Снять импеданс отключённого плеча относительно GND и измерить обратные токи.",
+            "elements/out2_idle/ohm": "Снять импеданс отключённого плеча относительно GND и измерить обратные токи.",
+            "elements/pwm_idle/ohm": "Снять входной импеданс вывода по состояниям питания.",
+            "ratings/output": "Подтвердить огибающую допустимого тока и длительность импульса при фактическом теплоотводе.",
+            "ratings/vm": "По паспорту выбранного моста определить рабочий диапазон VM и переходный максимум."
+          },
+          "model_gap": "Выбрать мост с защитой и путём энергии при торможении. Снять EN, PWM, направление, VM, напряжения OUT1/OUT2 и токи при пуске, реверсе, заклинивании и снятии EN. Эквивалент только отражает знаковый ток модели привода на VM и не воспроизводит ключи, коммутацию и пороги.",
+          "part": "dc_hbridge_unspecified",
+          "pins": {
+            "dir": "dir",
+            "en": "en",
+            "g": "return",
+            "out1": "motor_a",
+            "out2": "motor_b",
+            "p": "protected6",
+            "pwm": "pwm"
+          },
+          "source": "Функциональный мост двухпроводного двигателя из device.toml и stage6-device.toml. Артикул, разводка и драйвер отсутствуют."
+        },
+        {
+          "component": "bulk",
+          "kind": "PolarCapacitor",
+          "missing_parameters": {
+            "elements/cap/farad": "Замерить ёмкость на рабочем смещении.",
+            "ratings/reverse": "Проверить предел обратного напряжения выбранного конденсатора по паспорту."
+          },
+          "model_gap": "Для физического стенда определить, нужна ли дополнительная ёмкость. Выбрать тип, допуск, предельное напряжение и ESR. Подтвердить, что источник допускает разряд накопителя при снятии питания.",
+          "part": "supply_fixture_bulk",
+          "pins": {
+            "g": "return",
+            "p": "supply33"
+          },
+          "source": "Стендовый накопитель для отдельной шины AS5600. Номинал диагностического опыта взят из Э1 и электрического профиля устройства 03."
+        },
+        {
+          "component": "bypass",
+          "kind": "Capacitor",
+          "missing_parameters": {
+            "elements/cap/farad": "Замерить эффективную ёмкость на рабочем смещении."
+          },
+          "model_gap": "Выбрать артикул, проверить рабочую ёмкость, ESR и ESL в установленной разводке.",
+          "part": "as5600_bypass",
+          "pins": {
+            "g": "return",
+            "p": "supply33"
+          },
+          "source": "ams AS5600 v1-06, рис. 13 и 39: C1 100 нФ между общим VDD и GND у корпуса. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+        },
+        {
+          "component": "controller",
+          "kind": "Other",
+          "missing_parameters": {
+            "ratings/supply": "Определить требования к питанию выбранной платы и хоста. Замерить токи при загрузке, измерении, обработке кадра и отказе связи."
+          },
+          "model_gap": "Выбрать контроллер I²C и моста, способ подключения хоста и его питание. Снять профили токов местного контроллера и хоста, уровни GPIO при сбросе, а также сквозную задержку от экспозиции до PWM. Выводы здесь обозначают функции, распиновка требует паспорта.",
+          "part": "external_control_unspecified",
+          "pins": {
+            "camera_data": "camera_data_reserved",
+            "dir": "dir",
+            "en": "en",
+            "g": "return",
+            "p": "controller_power_reserved",
+            "pwm": "pwm",
+            "scl": "scl",
+            "sda": "sda"
+          },
+          "source": "control.toml и stage6-control.toml: вычисления на хосте, синтетический RGB в stdin/stdout, цифровая команда привода. Местный физический контроллер и внешний вычислитель не выбраны."
+        },
+        {
+          "component": "feed",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "supply6",
+            "b": "supply6"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "fuse",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/closed/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Определить номинал и кривую времени отключения держателя."
+          },
+          "model_gap": "Замерить холодное сопротивление. Выбрать артикул по напряжению, отключающей способности, кривой I²t и жгуту.",
+          "part": "fuse_series",
+          "pins": {
+            "input": "supply6",
+            "output": "protected6"
+          },
+          "source": "Littelfuse 0451/0453 NANO², кривые отключения https://www.littelfuse.com/assetdocs/451-series-time-curve-data?assetguid=e50cd9d4-cfe0-4341-ba60-73b19722a700; семейство кандидатов. Номинал и артикул экземпляра не установлены."
+        },
+        {
+          "component": "motor",
+          "kind": "Other",
+          "missing_parameters": {
+            "elements/winding_l/henry": "Снять переход тока неподвижной обмотки коротким импульсом или измерить LCR-метром.",
+            "elements/winding_r/ohm": "Четырёхпроводно снять сопротивление по положениям ротора и температурам.",
+            "ratings/winding": "Снять длительно допустимый ток и допустимое время пусковой перегрузки по температуре обмотки."
+          },
+          "model_gap": "Снять R(T), индуктивность, ток пуска и реверса. Ток на входе моста поступает из sim-drive: выходная ветвь в численном опыте пассивна, коммутация и выбег реального моста требуют осциллограммы.",
+          "part": "pololu_2214_brushed",
+          "pins": {
+            "m1": "motor_a",
+            "m2": "motor_b"
+          },
+          "source": "Pololu #2214, номинал 6 В, холостой ход 100 мА, экстраполированный стоповый ток 1,60 А. https://www.pololu.com/product/2214"
+        },
+        {
+          "component": "motor_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        },
+        {
+          "component": "motor_supply",
+          "kind": "BenchSupply",
+          "missing_parameters": {
+            "elements/emf/volt": "Снять напряжение холостого хода при заданных условиях",
+            "elements/internal/ohm": "Измерить падение на ступени тока",
+            "ratings/output": "По паспорту или нагрузочным тестом определить порог и длительность тока"
+          },
+          "model_gap": "Требуются режимы источника, предел тока и обратная ВАХ; для батареи также состояние заряда",
+          "part": "bench_supply",
+          "pins": {
+            "minus": "return",
+            "plus": "supply6"
+          },
+          "source": "Эквивалент Тевенина при фиксированном режиме; идентифицировать установленный источник"
+        },
+        {
+          "component": "rgb",
+          "kind": "Other",
+          "missing_parameters": {
+            "ratings/vdd": "Установить рабочий диапазон и последовательность подачи питания ядра по модулю.",
+            "ratings/vddio": "Установить допуск VDDIO и предел инжекции при выключенном VDD."
+          },
+          "model_gap": "Выбрать модуль камеры, паспорт и разъём. Установить состав шин, уровни и порядок подачи, топологию возвратов и интерфейс (в том числе вариант со встроенными стабилизаторами). Снять VDD/VDDIO и ток покоя, пуска, захвата и передачи. Камера и внешний контроллер остаются обесточенными физическими нагрузками данного расчёта.",
+          "part": "rgb_rails_unspecified",
+          "pins": {
+            "data": "camera_data_reserved",
+            "g": "camera_return_reserved",
+            "vdd": "camera_vdd_reserved",
+            "vddio": "camera_vddio_reserved"
+          },
+          "source": "reference-rgb описывает синтетический кадр. Пины VDD, VDDIO и data обозначают функции для выбора модуля и проверки его интерфейса."
+        },
+        {
+          "component": "scl_pull",
+          "kind": "Resistor",
+          "missing_parameters": {
+            "elements/pull/ohm": "Снять сопротивление шины к питанию при отключённом датчике и хосте."
+          },
+          "model_gap": "Определить номинал по ёмкости линии, скорости, напряжению, допустимому току стока и наличию уже установленных подтяжек. Снять фронты SDA/SCL и обратный ток при пропадании VDD.",
+          "part": "as5600_pullup_unspecified",
+          "pins": {
+            "p": "supply33",
+            "s": "scl"
+          },
+          "source": "ams AS5600 v1-06, рис. 38: внешние RPU на SDA/SCL. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+        },
+        {
+          "component": "sda_pull",
+          "kind": "Resistor",
+          "missing_parameters": {
+            "elements/pull/ohm": "Снять сопротивление шины к питанию при отключённом датчике и хосте."
+          },
+          "model_gap": "Определить номинал по ёмкости линии, скорости, напряжению, допустимому току стока и наличию уже установленных подтяжек. Снять фронты SDA/SCL и обратный ток при пропадании VDD.",
+          "part": "as5600_pullup_unspecified",
+          "pins": {
+            "p": "supply33",
+            "s": "sda"
+          },
+          "source": "ams AS5600 v1-06, рис. 38: внешние RPU на SDA/SCL. https://files.seeedstudio.com/wiki/Grove-12-bit-Magnetic-Rotary-Position-Sensor-AS5600/res/Magnetic%20Rotary%20Position%20Sensor%20AS5600%20Datasheet.pdf"
+        },
+        {
+          "component": "star_return",
+          "kind": "Wire",
+          "missing_parameters": {
+            "elements/copper/ohm": "Измерить сопротивление между указанными концами четырёхпроводно при снятом питании.",
+            "ratings/current": "Установить сечение и предел тока по нагреву."
+          },
+          "model_gap": "Четырёхпроводно измерить жилу с наконечниками, определить допустимый ток и температуру по фактической длине, сечению и прокладке.",
+          "part": "harness_copper",
+          "pins": {
+            "a": "return",
+            "b": "return"
+          },
+          "source": "Монтажный эскиз. Марку, сечение, длину и изоляцию подтвердить по жгуту."
+        }
+      ]
+    }
+  }
+}

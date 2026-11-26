@@ -1,0 +1,180 @@
+format = 1
+# Номиналы численных опытов из прежних эталонов Э1 и Э3.
+# Эти оценки не подставляются в статическую проверку или сборочный лист.
+
+[parts.harness_copper.copper]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.harness_terminal.contact]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.servo_header_power.contact]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.servo_header_return.contact]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.servo_header_signal.contact]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.fuse_series.closed]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.lg_m50_6s2p.emf]
+volt = { min = 24.56431461808109, nominal = 24.56431461808109, max = 24.56431461808109, source = { estimate = "Модель 6S2P из sampled-drive.toml, SOC 90%, параметры при 25 °C. ЭДС по Chen 2020, R0 по Lone et al., sim-circuit/src/battery.rs." } }
+
+[parts.lg_m50_6s2p.series]
+ohm = { min = 0.08020800000000006, nominal = 0.08020800000000006, max = 0.08020800000000006, source = { estimate = "Модель 6S2P из sampled-drive.toml, SOC 90%, параметры при 25 °C. ЭДС по Chen 2020, R0 по Lone et al., sim-circuit/src/battery.rs." } }
+
+[parts.lg_m50_6s2p.polarization]
+ohm = { min = 0.03, nominal = 0.03, max = 0.03, source = { estimate = "Оценка sim-circuit/src/battery.rs для SOC ≥60%: 10 мОм и 2913.1 Ф на ячейку. Пересчёт R×6/2 и C×2/6." } }
+
+[parts.lg_m50_6s2p.capacity]
+farad = { min = 971.0333333333333, nominal = 971.0333333333333, max = 971.0333333333333, source = { estimate = "Оценка sim-circuit/src/battery.rs для SOC ≥60%: 10 мОм и 2913.1 Ф на ячейку. Пересчёт R×6/2 и C×2/6." } }
+
+[parts.cell_pack_unspecified.emf]
+volt = { min = 4.094052436346849, nominal = 4.094052436346849, max = 4.094052436346849, source = { estimate = "LG INR21700-M50: sampled-drive.toml, модель Chen 2020, https://doi.org/10.1149/1945-7111/ab9050; ОCV одной ячейки как диагностическое условие." } }
+
+[parts.servo_pack_unspecified.emf]
+volt = { min = 4.8, nominal = 4.8, max = 4.8, source = { estimate = "TowerPro MG90S, паспортное напряжение 4,8 В https://towerpro.com.tw/product/mg90s-3/; 4,8 В как диагностическая полка, химия и число ячеек неизвестны." } }
+
+[parts.bms_series_unspecified.closed]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Сопротивление 0,1 Ом из Э1 для диагностической ветви, без переноса на реальный монтаж." } }
+
+[parts.logic_buck_24.load]
+ampere = { min = 0.12, nominal = 0.12, max = 0.12, source = { estimate = "Ток электроники 0.12 А из sampled-drive.toml." } }
+
+[parts.logic_buck_24.regulator]
+volt = { min = 3.3, nominal = 3.3, max = 3.3, source = { estimate = "Номинальное питание IO каталога VMCU-C3. Уставка модуля в сборке не определена." } }
+
+[parts.wearable_ldo_33.emf]
+volt = { min = 3.3, nominal = 3.3, max = 3.3, source = { estimate = "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1." } }
+
+[parts.wearable_ldo_33.series]
+ohm = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1." } }
+
+[parts.wearable_ldo_33.input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.servo_buck_boost.emf]
+volt = { min = 4.8, nominal = 4.8, max = 4.8, source = { estimate = "Эскизный источник: 4.8 В по control.toml, 0.25 Ом по стенду этапа 4. Это стендовый эквивалент, параметры батареи требуют замеров." } }
+
+[parts.servo_buck_boost.series]
+ohm = { min = 0.25, nominal = 0.25, max = 0.25, source = { estimate = "Эскизный источник: 4.8 В по control.toml, 0.25 Ом по стенду этапа 4. Это стендовый эквивалент, параметры батареи требуют замеров." } }
+
+[parts.servo_buck_boost.input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.servo_ldo_33.logic]
+volt = { min = 1.5, nominal = 1.5, max = 1.5, source = { estimate = "Стендовая последовательная модель: падение 4.8−3.3=1.5 В из номиналов испытания. Ток платы возвращается через общий R источника. Регулирование и обратный путь модуля требуют замеров." } }
+
+[parts.virtual_controller_io.pwm]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.virtual_controller_io.dir]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.virtual_controller_io.enable]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.virtual_controller_io.adcangle]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.virtual_controller_io.adccurrent]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.virtual_controller_io.adctemp]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.virtual_controller_io.adcbattery]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.bldc_bridge_unspecified.dc_load]
+ampere = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "До первой команды модель привода обесточена. Далее ток приходит из привода." } }
+
+[parts.bldc_bridge_unspecified.u]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.bldc_bridge_unspecified.v]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.bldc_bridge_unspecified.w]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.analogue_feedback_unspecified.divider]
+gain = { min = 0.09090909090909091, nominal = 0.09090909090909091, max = 0.09090909090909091, source = { estimate = "control.toml: передаточное отношение 1/11; нагрузка делителя не задана." } }
+
+[parts.bmi270_i2c.sensor]
+ohm = { min = 4817.518248175183, nominal = 4817.518248175183, max = 4817.518248175183, source = { estimate = "Диагностический эквивалент R=3.3 В / 685 мкА. Просадка меняет ток в модели. Фактическая ВАХ BMI270 и его VDDIO требуют измерения." } }
+
+[parts.bmi270_i2c.sda]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.bmi270_i2c.scl]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.bmi270_i2c.csb]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.bmi270_i2c.sdo]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.ble_host_unspecified.camera_input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.esp32_c3_io.board]
+ampere = { min = 0.2, nominal = 0.2, max = 0.2, source = { estimate = "Линейная передача 3.3/4.8 для стендового проседания логики. Ток фаз 0/50/150/200 мА из синтетического блока tests/electrical_runtime.rs рантайма, не ток ESP32-C3." } }
+
+[parts.esp32_c3_io.adc]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквиваленты линий стендового блока рантайма: выход 10 Ом, подтяжка 1 кОм, вход и утечка 1 МОм. Защитные пути не аттестованы." } }
+
+[parts.esp32_c3_io.pull]
+ohm = { min = 10000.0, nominal = 10000.0, max = 10000.0, source = { estimate = "Идеальный ключ эталонного блока рантайма: порог 1 В, нагрузка 10 Ом и подтяжка 10 кОм. Ron/Roff из SPICE-примера Э2. Это диагностическая ветвь наблюдения вывода, не модель внутренностей сервопривода." } }
+
+[parts.high_side_key_pwm.key]
+on_ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." } }
+off_ohm = { min = 1000000000.0, nominal = 1000000000.0, max = 1000000000.0, source = { estimate = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." } }
+threshold_v = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." } }
+hysteresis_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "Стендовый ключ: Ron 0.1 Ом и Roff 1 ГОм из Э2, порог 1 В из эталона рантайма. Ключ подаёт питание на привод по огибающей физического вывода." } }
+
+[parts.high_side_key_pwm.envelope_r]
+ohm = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { estimate = "Эталонная огибающая PWM: R=1 кОм из стенда Э2, RC=100 мкс (половина периода обмена платы из control.toml). Это внешняя цепь численного опыта." } }
+
+[parts.high_side_key_pwm.envelope_pull]
+ohm = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { estimate = "Разряд огибающей на высокоимпедансном выводе. R=1 кОм из стенда Э2. Вместе с 100 нФ задаёт постоянную разряда около 100 мкс." } }
+
+[parts.high_side_key_pwm.envelope_c]
+farad = { min = 1e-07, nominal = 1e-07, max = 1e-07, source = { estimate = "Эталонная огибающая PWM: R=1 кОм из стенда Э2, RC=100 мкс (половина периода обмена платы из control.toml). Это внешняя цепь численного опыта." } }
+
+[parts.mg90s_servo.drive]
+ampere = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "До первой команды ток привода равен нулю." } }
+
+[parts.mg90s_servo.load_bleed]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эталонный путь утечки 1 МОм из блока Э3." } }
+
+[parts.mg90s_servo.load_cap]
+farad = { min = 1e-05, nominal = 1e-05, max = 1e-05, source = { estimate = "Расчётный накопитель 10 мкФ. Энергия обмотки ½·23.44 мкГн·(0.7 А)²≈5.74 мкДж из device.toml, сопоставима с ½·C·(4.8²−4.68²). Схему защиты от рекуперации нужно проверить на стенде." } }
+
+[parts.mg90s_servo.signal]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Эквивалент входа 1 МОм из численного опыта Э3. Сопротивление конкретного входа измерить." } }
+
+[parts.imu_decoupling.cap]
+farad = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { estimate = "Стендовый источник 3.3 В как на цифровых стендах проекта. Последовательный 1 Ом из эталона Тевенина Э1. Конденсатор 100 мкФ из каталога стенда Э1." } }
+
+[parts.servo_bulk_cap.cap]
+farad = { min = 0.0002, nominal = 0.0002, max = 0.0002, source = { estimate = "Два конденсатора 100 мкФ из эталона Э1 параллельно. При начальных 4.75 В связка с нагрузочными 10 мкФ даёт 4.75·200/210=4.524 В без тока источника. Для VDD≥3.0 В с падением 1.5 В нужно ≥180 мкФ." } }
+
+[parts.i2c_pullup.pull]
+ohm = { min = 1000, nominal = 1000, max = 1000, source = { estimate = "Номинал 1 кОм из модели подтяжки Э3, диагностическая нагрузка." } }
+
+[parts.bldc_bridge_unspecified.hall_supply]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение линии в опыте, величина 1 МОм из эквивалента входа Э3. Питание и сигнал Холла не моделируются." } }
+
+[parts.bldc_bridge_unspecified.hall_1]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение линии в опыте, величина 1 МОм из эквивалента входа Э3. Питание и сигнал Холла не моделируются." } }
+
+[parts.bldc_bridge_unspecified.hall_2]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение линии в опыте, величина 1 МОм из эквивалента входа Э3. Питание и сигнал Холла не моделируются." } }
+
+[parts.bldc_bridge_unspecified.hall_3]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Пассивное завершение линии в опыте, величина 1 МОм из эквивалента входа Э3. Питание и сигнал Холла не моделируются." } }

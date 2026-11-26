@@ -1,0 +1,144 @@
+# Профиль потребления МК. Формат 1, отдельный от профиля контактов и сброса.
+# Каждая строка задаёт одну конфигурацию. Между конфигурациями ток не интерполируется.
+# Пики Wi-Fi измерены при 3,3 В и 25 °C, для TX скважность составляет 100 % включения.
+# Типовые значения и измеренные пики не задают огибающую, в том числе на переходах.
+# Для BLE, других частот, произвольной периферии и доступа к flash полных строк нет.
+format = 1
+board = "esp32-c3"
+datasheet = "Espressif ESP32-C3 Series Datasheet v2.5, https://documentation.espressif.com/esp32-c3_datasheet_en.pdf"
+
+[[states]]
+id = "modem_sleep_80_mhz_running_clocks_off"
+current_a = 0.017
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "80 МГц, CPU выполняет код, такты всей периферии выключены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_80_mhz_running_clocks_on"
+current_a = 0.022
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "80 МГц, CPU выполняет код, такты всей периферии включены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_80_mhz_idle_clocks_off"
+current_a = 0.013
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "80 МГц, CPU простаивает, такты всей периферии выключены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_80_mhz_idle_clocks_on"
+current_a = 0.018
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "80 МГц, CPU простаивает, такты всей периферии включены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_160_mhz_running_clocks_off"
+current_a = 0.023
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "160 МГц, CPU выполняет код, такты всей периферии выключены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_160_mhz_running_clocks_on"
+current_a = 0.028
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "160 МГц, CPU выполняет код, такты всей периферии включены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_160_mhz_idle_clocks_off"
+current_a = 0.016
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "160 МГц, CPU простаивает, такты всей периферии выключены, Wi-Fi без тактирования"
+
+[[states]]
+id = "modem_sleep_160_mhz_idle_clocks_on"
+current_a = 0.021
+kind = "typical"
+section = "5.6.2"
+table = "5-8"
+conditions = "160 МГц, CPU простаивает, такты всей периферии включены, Wi-Fi без тактирования"
+
+[[states]]
+id = "light_sleep"
+current_a = 0.000130
+kind = "typical"
+section = "5.6.2"
+table = "5-9"
+conditions = "VDD_SPI и Wi-Fi обесточены, все GPIO в высокоимпедансном состоянии"
+
+[[states]]
+id = "deep_sleep"
+current_a = 0.000005
+kind = "typical"
+section = "5.6.2"
+table = "5-9"
+conditions = "Работают таймер RTC и память RTC"
+
+[[states]]
+id = "power_off"
+current_a = 0.000001
+kind = "typical"
+section = "5.6.2"
+table = "5-9"
+conditions = "CHIP_EN на низком уровне, МК выключен"
+
+[[states]]
+id = "wifi_tx_b_1_mbps_21_dbm"
+current_a = 0.335
+kind = "peak"
+section = "5.6.1"
+table = "5-7"
+conditions = "3,3 В, 25 °C, 802.11b, 1 Мбит/с, 21 дБм, передача включена 100 % времени"
+
+[[states]]
+id = "wifi_tx_g_54_mbps_19_dbm"
+current_a = 0.285
+kind = "peak"
+section = "5.6.1"
+table = "5-7"
+conditions = "3,3 В, 25 °C, 802.11g, 54 Мбит/с, 19 дБм, передача включена 100 % времени"
+
+[[states]]
+id = "wifi_tx_n_ht20_mcs7_18_5_dbm"
+current_a = 0.276
+kind = "peak"
+section = "5.6.1"
+table = "5-7"
+conditions = "3,3 В, 25 °C, 802.11n, HT20, MCS7, 18,5 дБм, передача включена 100 % времени"
+
+[[states]]
+id = "wifi_tx_n_ht40_mcs7_18_5_dbm"
+current_a = 0.278
+kind = "peak"
+section = "5.6.1"
+table = "5-7"
+conditions = "3,3 В, 25 °C, 802.11n, HT40, MCS7, 18,5 дБм, передача включена 100 % времени"
+
+[[states]]
+id = "wifi_rx_bgn_ht20"
+current_a = 0.084
+kind = "peak"
+section = "5.6.1"
+table = "5-7"
+conditions = "3,3 В, 25 °C, приём 802.11b/g/n, HT20"
+
+[[states]]
+id = "wifi_rx_n_ht40"
+current_a = 0.087
+kind = "peak"
+section = "5.6.1"
+table = "5-7"
+conditions = "3,3 В, 25 °C, приём 802.11n, HT40"

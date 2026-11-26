@@ -46,6 +46,37 @@ pub enum ResetCause {
     Watchdog,
     Software,
     Host,
+    /// Холодный старт цифрового домена после Deep-sleep ESP32-C3.
+    DeepSleep,
+}
+
+/// Режим питания ESP32-C3 в пределах модели без работающего RF.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EspSleepMode {
+    Modem,
+    Light,
+    Deep,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EspWake {
+    pub mode: EspSleepMode,
+    /// Граница обнаружения сигнала на шкале платы.
+    pub cycle: u64,
+    pub rtc_slow_tick: u64,
+    pub timer: bool,
+    /// Номера выводов в битовой маске. При одновременном будильнике верны обе причины.
+    pub gpio_mask: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EspSleepStatus {
+    pub mode: EspSleepMode,
+    /// Такт завершения инструкции SLEEP_EN, пока плата спит.
+    pub entered_at: Option<u64>,
+    /// Аппаратный 48-битный счётчик на номинальной частоте RC_SLOW.
+    pub rtc_slow_ticks: u64,
+    pub last_wake: Option<EspWake>,
 }
 
 /// Состояние буферов и подтяжки физического контакта в рабочей периферии.
@@ -118,6 +149,81 @@ pub struct Packet {
     pub rssi_dbm: Option<i8>,
 }
 
+/// Номера логических портов ABI пакетного адаптера C3, определённые в esp_radio.rs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum EspRadioPort {
+    // Порт 0 остаётся за прежним ABI виртуального МК.
+    Wifi = 1,
+    Ble = 2,
+    EspNow = 3,
+}
+
+impl EspRadioPort {
+    pub const fn max_bytes(self) -> usize {
+        match self {
+            // ESP-IDF: esp_wifi.h, esp_wifi_80211_tx (верхняя граница буфера).
+            Self::Wifi => 1500,
+            // ESP-IDF: NimBLE ble_att.h, BLE_ATT_ATTR_MAX_LEN. MTU задаёт маршрут.
+            Self::Ble => 512,
+            // ESP-IDF: esp_now.h, ESP_NOW_MAX_DATA_LEN_V2.
+            Self::EspNow => 1470,
+        }
+    }
+}
+
+/// Результат пакетной модели, который видит адаптер прошивки.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RadioStatus {
+    Pending,
+    MacConfirmed,
+    BroadcastSent,
+    ApplicationConfirmed,
+    ApplicationTimedOut,
+    Failed,
+    NotAnalyzed(&'static str),
+}
+
+/// ABI пакетного адаптера C3. Блок команды состоит из little-endian слов
+/// (функция, порт, размер, статус, RSSI), затем байты пакета. При SEND
+/// длину задаёт гость, при RECEIVE гость задаёт ёмкость и получает длину.
+/// Коды ABI определены здесь и не соответствуют кодам возврата ESP-IDF.
+pub struct EspRadioAbi;
+
+impl EspRadioAbi {
+    // RISC-V Unprivileged ISA, таблица major opcodes: custom-0, биты 6:0 = 0001011.
+    pub const INSTRUCTION: u32 = 0x0000_000b;
+    pub const INSTRUCTION_BYTES: u32 = size_of::<u32>() as u32;
+    pub const CALL_BYTES: u32 = Self::INSTRUCTION_BYTES + size_of::<u32>() as u32;
+    pub const FUNCTION: usize = 0;
+    pub const PORT: usize = Self::FUNCTION + size_of::<u32>();
+    pub const LENGTH: usize = Self::PORT + size_of::<u32>();
+    pub const STATUS: usize = Self::LENGTH + size_of::<u32>();
+    pub const RSSI: usize = Self::STATUS + size_of::<u32>();
+    pub const PAYLOAD_OFFSET: usize = Self::RSSI + size_of::<u32>();
+
+    pub const OPEN: u32 = 0;
+    pub const SEND: u32 = 1;
+    pub const RECEIVE: u32 = 2;
+    pub const TX_STATUS: u32 = 3;
+    /// Отправить ответ приложения для последнего прочитанного ESP-NOW пакета.
+    pub const ACK: u32 = 4;
+
+    pub const OK: u32 = 0;
+    pub const EMPTY: u32 = 1;
+    pub const BUSY: u32 = 2;
+    pub const BUFFER_TOO_SMALL: u32 = 3;
+    pub const PENDING: u32 = 4;
+    pub const MAC_CONFIRMED: u32 = 5;
+    pub const BROADCAST_SENT: u32 = 6;
+    pub const APPLICATION_CONFIRMED: u32 = 7;
+    pub const APPLICATION_TIMED_OUT: u32 = 8;
+    pub const FAILED: u32 = 9;
+    pub const NOT_ANALYZED: u32 = 10;
+    /// Пустой RSSI вне представимого диапазона i8 (дБм).
+    pub const RSSI_UNAVAILABLE: i32 = i32::MIN;
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum BoardInput {
     Gpio {
@@ -153,6 +259,16 @@ pub enum BoardInput {
     Radio {
         port: u32,
         packet: Packet,
+    },
+    RadioResult {
+        port: u32,
+        sent_cycle: u64,
+        status: RadioStatus,
+    },
+    /// Адрес ответа приложения для только что принятого BoardInput::Radio.
+    RadioReplyId {
+        port: u32,
+        id: u64,
     },
     Power {
         on: bool,
@@ -190,6 +306,15 @@ pub enum BoardOutput {
     Radio {
         port: u32,
         packet: Packet,
+    },
+    RadioStatus {
+        port: u32,
+        sent_cycle: u64,
+        status: RadioStatus,
+    },
+    RadioAck {
+        port: u32,
+        id: u64,
     },
     I2c(I2cRequest),
     Spi(SpiRequest),
@@ -229,7 +354,7 @@ pub struct OutputEvent {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Advance {
     pub cycle: u64,
-    /// Новый запрос шины следует забрать через `take_events` перед продолжением.
+    /// Запрос шины или пакетного адаптера следует забрать через `take_events`.
     pub bus_request_pending: bool,
 }
 
@@ -297,7 +422,12 @@ pub fn capabilities(profile: BoardId) -> Capabilities {
             uart_rx_in_flight: if profile == Esp32C3 { 128 } else { 0 },
             i2c_fifo: (profile == Esp32C3).then_some(32),
             spi_bytes: (profile == Esp32C3).then_some(64),
-            radio: None,
+            radio: (profile == Esp32C3).then_some(RadioLimits {
+                ports: EspRadioPort::EspNow as u32 + 1,
+                packet_bytes: EspRadioPort::Wifi.max_bytes(),
+                // ABI адаптера C3: один непрочитанный пакет на порт.
+                fifo: 1,
+            }),
             blocks_hardware_proof: true,
         },
     }

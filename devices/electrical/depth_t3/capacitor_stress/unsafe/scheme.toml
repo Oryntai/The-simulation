@@ -1,0 +1,37 @@
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["p", "g"]
+
+[components.cap]
+part = "cap_10"
+nets = { a = "p", b = "g" }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Аналитическая постановка синтетического стенда Т3" }
+probes = [{ kind = "current", branch = { kind = "element", component = "cap", element = "c" } }, { kind = "voltage", ends = ["cap/a", "cap/b"] }]
+# Две половины окна и точное начальное состояние DC.
+window = { step_ns = 500000, end_ns = 1000000 }
+
+[[depth_checks]]
+id = "capacitor_stress"
+mode = { kind = "normal" }
+branch = { kind = "element", component = "cap", element = "c" }
+window = { start_ns = 0, end_ns = 1000000 }
+applicability = { derived = "Аналитическая постановка синтетического стенда Т3" }
+reference_only = true
+
+[depth_checks.check]
+kind = "capacitor_stress"
+# В установившемся режиме Uc = Uист, I = C·dU/dt = 0.
+# Запас до предела 12 В × 0,75 = 9 В равен −1 / +1 В.
+terminals = ["cap/a", "cap/b"]
+voltage_sense = "forward"
+rating = "capacitor_bench_10"
+series = { time_ns = [0, 1000000], voltage_v = [10.0, 10.0], current_a = [0.0, 0.0] }
+voltage_error_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Напряжение равно постоянной ЭДС идеального источника" } }
+current_error_a = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Производная постоянного напряжения равна нулю" } }
+frequency_hz = { min = 1000.0, nominal = 1000.0, max = 1000.0, source = { derived = "Полоса паспортной сверки ESR: 1 кГц; постоянный режим даёт нулевой RMS" } }
+temperatures = { ambient_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "Изотермический стенд 300 К" } } }
+thermal = { kind = "steady_state", thermal_resistance_k_per_w = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Тепловое сопротивление стенда 2 К/Вт" } }, peak_above_mean_k = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Нет переменной тепловой нагрузки" } } }

@@ -2,17 +2,22 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use sim_boards::{
-    BoardInput, BoardOutput, BoardSim, InputEvent, InputOutcome, OutputEvent, OutputPort, Packet,
-    PortValue, TransferStatus,
+    BoardId, BoardInput, BoardOutput, BoardSim, EspRadioPort, InputEvent, InputOutcome,
+    OutputEvent, OutputPort, Packet, PortValue, RadioStatus, TransferStatus,
 };
-use sim_radio::timed::{Outcome, PacketEvent, TimedChannel};
-use sim_signal::{Clock, SignalId, Time};
+use sim_radio::timed::{
+    AttemptLink, EspNowChannel, EspNowConfirmation, EspNowError, EspNowEventKind, Outcome,
+    PacketEvent, TimedChannel,
+};
+use sim_signal::{Clock, Rng, SignalId, Time};
 
 use crate::{ObservationBus, Runtime, checked_due};
 
 use super::bus::{BusModel, Profile};
-use super::schema::{BoardWire, DeliverySlot};
+use super::schema::{BoardWire, DeliverySlot, EspNowPacketProfile};
 use super::{CommandOrigin, Engine, EventKind, FaultAction, Rejection, Schedule, add};
+
+const QUARTERS_PER_NS: u128 = 4;
 
 #[derive(Clone)]
 pub(super) struct Board {
@@ -36,13 +41,55 @@ pub(super) struct Board {
 }
 
 impl Board {
+    fn epoch_offset(&self, at: Time) -> Result<u64, String> {
+        at.0.checked_sub(self.epoch.0)
+            .ok_or_else(|| "отметка платы относится к прошлой эпохе".into())
+    }
+
     fn cycle_at(&self, at: Time) -> Result<u64, String> {
         self.epoch_cycle
             .checked_add(time_cycle(
-                Time(at.0 - self.epoch.0),
+                Time(self.epoch_offset(at)?),
                 self.sim.capabilities().cpu_hz,
             )?)
             .ok_or_else(|| "такт платы вне диапазона".into())
+    }
+
+    fn time_at(&self, cycle: u64) -> Result<Time, String> {
+        let from_epoch = cycle
+            .checked_sub(self.epoch_cycle)
+            .ok_or("событие платы относится к прошлой эпохе")?;
+        let offset = match (
+            self.sim
+                .cycle_time_quarter_ns(self.epoch_cycle)
+                .map_err(|e| e.to_string())?,
+            self.sim
+                .cycle_time_quarter_ns(cycle)
+                .map_err(|e| e.to_string())?,
+        ) {
+            (Some(epoch), Some(at)) => {
+                let elapsed = at
+                    .checked_sub(epoch)
+                    .ok_or("шкала времени платы пошла назад")?;
+                u64::try_from(elapsed / QUARTERS_PER_NS).map_err(|_| "время платы вне диапазона")?
+            }
+            (None, None) => cycle_time(from_epoch, self.sim.capabilities().cpu_hz)?.0,
+            _ => return Err("плата изменила способ преобразования времени".into()),
+        };
+        add(self.epoch, offset)
+    }
+
+    fn fault(&self, error: sim_boards::BoardFault) -> String {
+        if let Some(position) = self.sim.esp_boot_position() {
+            format!(
+                "плата «{}», шаг CPU {}, PC {:#010x}: {error}",
+                self.name,
+                u128::from(position.step) + 1,
+                position.pc
+            )
+        } else {
+            format!("плата «{}»: {error}", self.name)
+        }
     }
 }
 
@@ -83,7 +130,9 @@ pub(super) struct Route {
     pub radio: Option<TimedChannel>,
     pub scheduled_rssi: Option<i8>,
     pub packet_bytes: usize,
-    pub slots: Option<Rc<[DeliverySlot]>>,
+    // Используем общий загрузчик файлов маршрутов. Различие между записанным
+    // календарём и расчётным профилем остаётся в PacketPlan.
+    pub slots: Option<Rc<PacketPlan>>,
     pub delay_ns: u64,
     pub capacity: usize,
     pub max_age_ns: u64,
@@ -91,14 +140,81 @@ pub(super) struct Route {
     pub pending: BTreeMap<(Time, u64), PacketEvent>,
 }
 
+#[derive(Clone)]
+pub(super) enum PacketPlan {
+    Calendar(Rc<[DeliverySlot]>),
+    EspNow(Box<EspNowRoute>),
+}
+
+impl PacketPlan {
+    pub(super) fn esp_now(profile: EspNowPacketProfile) -> Self {
+        Self::EspNow(Box::new(EspNowRoute {
+            profile,
+            channel: None,
+            reply_channel: None,
+            ready: BTreeMap::new(),
+            transmitting: BTreeMap::new(),
+            results: Vec::new(),
+        }))
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct EspNowRoute {
+    profile: EspNowPacketProfile,
+    channel: Option<EspNowChannel>,
+    reply_channel: Option<TimedChannel>,
+    ready: BTreeMap<(Time, u64), EspNowSend>,
+    transmitting: BTreeMap<u64, EspNowSend>,
+    results: Vec<(u64, RadioStatus)>,
+}
+
+#[derive(Clone)]
+struct EspNowSend {
+    id: u64,
+    sent_at: Time,
+    bytes: Vec<u8>,
+    guest_cycle: Option<u64>,
+    mac_done: bool,
+    application_confirmed: bool,
+}
+
+impl EspNowSend {
+    fn event(&self, at: Time, attempt: u32, outcome: Outcome) -> PacketEvent {
+        PacketEvent {
+            id: self.id,
+            sent_at: self.sent_at,
+            at,
+            attempt,
+            bytes: self.bytes.clone(),
+            outcome,
+        }
+    }
+}
+
 impl Route {
     pub(super) fn is_radio(&self) -> bool {
-        self.radio.is_some() || self.scheduled_rssi.is_some()
+        self.radio.is_some() || self.packet_bytes != 0
+    }
+
+    fn is_esp_now(&self) -> bool {
+        self.is_radio() && self.radio.is_none() && self.scheduled_rssi.is_none()
+    }
+
+    fn esp_now(&mut self) -> Result<&mut EspNowRoute, String> {
+        match self.slots.as_mut().map(Rc::make_mut) {
+            Some(PacketPlan::EspNow(model)) => Ok(model),
+            _ => Err(format!("«{}»: требуется профиль ESP-NOW", self.name)),
+        }
     }
 
     fn delivery_at(&self, ready: Time) -> Result<Time, String> {
-        let Some(slots) = &self.slots else {
-            return add(ready, self.delay_ns);
+        let slots = match self.slots.as_deref() {
+            None => return add(ready, self.delay_ns),
+            Some(PacketPlan::Calendar(slots)) => slots,
+            Some(PacketPlan::EspNow(_)) => {
+                return Err(format!("«{}»: ожидается календарь доставки", self.name));
+            }
         };
         let index = slots.partition_point(|slot| slot.accepts_through < ready);
         slots
@@ -136,8 +252,7 @@ impl Engine {
             let Some(slot) = self.boards[index].electrical else {
                 continue;
             };
-            let target = self.boards[index].cycle_at(at)?;
-            self.advance_board(at, index, target)?;
+            self.advance_board(at, index, at)?;
             if let Some(boot) = self.boards[index].electrical_restart.take() {
                 circuit.boards[slot].restart(boot);
             }
@@ -303,8 +418,7 @@ impl Engine {
         } else {
             self.boards[index].input_at
         };
-        let target_cycles = self.boards[index].cycle_at(at)?;
-        self.advance_board(at, index, target_cycles)?;
+        self.advance_board(at, index, at)?;
         let fault = self.use_fault(at, &format!("board:{name}"));
         if self.boards[index].electrical.is_none()
             && fault != Some(FaultAction::PowerOff)
@@ -335,13 +449,13 @@ impl Engine {
             }
             self.board_inputs(bus, at, index)?;
         }
+        self.receive_esp_now_results(at, index)?;
         self.boards[index].clock.advance();
         let next = checked_due(&self.boards[index].clock)?;
         if end_sample {
             // Выход вычисляется по выборке конца того же численного интервала.
             if let Some(next) = next.filter(|next| *next <= self.horizon()) {
-                let target = self.boards[index].cycle_at(next)?;
-                self.advance_board(at, index, target)?;
+                self.advance_board(at, index, next)?;
             }
         } else {
             self.receive_packets(at, index)?;
@@ -372,15 +486,48 @@ impl Engine {
         Ok(())
     }
 
-    fn advance_board(&mut self, at: Time, index: usize, target: u64) -> Result<(), String> {
+    fn advance_board(&mut self, at: Time, index: usize, deadline: Time) -> Result<(), String> {
         // Входы текущего момента подаются после исполнения предыдущего интервала.
         self.board_events(at, index)?;
+        let board = &self.boards[index];
+        let epoch = board
+            .sim
+            .cycle_time_quarter_ns(board.epoch_cycle)
+            .map_err(|e| board.fault(e))?;
+        if let Some(epoch) = epoch {
+            let end = epoch
+                .checked_add(u128::from(board.epoch_offset(deadline)?) * QUARTERS_PER_NS)
+                .ok_or("время платы вне диапазона")?;
+            loop {
+                let board = &mut self.boards[index];
+                let previous = board.sim.cycles();
+                let result = board.sim.run_until_quarter_ns(end);
+                self.board_events(at, index)?;
+                let progress = result
+                    .map_err(|e| self.boards[index].fault(e))?
+                    .ok_or("плата не подтвердила шкалу холодной загрузки")?;
+                let reached = self.boards[index]
+                    .sim
+                    .cycle_time_quarter_ns(progress.cycle)
+                    .map_err(|e| self.boards[index].fault(e))?
+                    .ok_or("плата потеряла шкалу холодной загрузки")?;
+                if progress.cycle < previous || reached > end {
+                    return Err("плата вышла за границы интервала холодной загрузки".into());
+                }
+                if !progress.bus_request_pending {
+                    return Ok(());
+                }
+                if progress.cycle <= previous {
+                    return Err("плата не продвинулась до запроса шины".into());
+                }
+            }
+        }
+        let target = board.cycle_at(deadline)?;
         while self.boards[index].sim.cycles() < target {
             let previous = self.boards[index].sim.cycles();
             let result = self.boards[index].sim.run_cycles(target - previous);
             self.board_events(at, index)?;
-            let progress =
-                result.map_err(|e| format!("плата «{}»: {e}", self.boards[index].name))?;
+            let progress = result.map_err(|e| self.boards[index].fault(e))?;
             if progress.cycle <= previous || progress.cycle > target {
                 return Err("плата не продвинулась до допустимого такта".into());
             }
@@ -402,7 +549,7 @@ impl Engine {
                 cycle,
                 input: input.clone(),
             })
-            .map_err(|e| format!("плата «{}»: {e}", board.name))?;
+            .map_err(|e| board.fault(e))?;
         if outcome != InputOutcome::Unchanged {
             let name = board.name.clone();
             self.push(
@@ -495,14 +642,9 @@ impl Engine {
     }
 
     fn board_events(&mut self, at: Time, index: usize) -> Result<(), String> {
-        let hz = self.boards[index].sim.capabilities().cpu_hz;
         let name = self.boards[index].name.clone();
         for event in self.boards[index].sim.take_events() {
-            let cycle = event
-                .cycle
-                .checked_sub(self.boards[index].epoch_cycle)
-                .ok_or("событие платы относится к прошлой эпохе")?;
-            let produced_at = add(self.boards[index].epoch, cycle_time(cycle, hz)?.0)?;
+            let produced_at = self.boards[index].time_at(event.cycle)?;
             if self.boards[index].electrical.is_some()
                 && matches!(
                     event.output,
@@ -585,11 +727,69 @@ impl Engine {
             BoardOutput::Uart { port, byte } => {
                 self.route_output(at, index, port, false, &[byte])?
             }
+            BoardOutput::Radio { port, packet }
+                if self.boards[index].sim.board() == BoardId::Esp32C3 =>
+            {
+                self.route_esp_driver(at, index, port, event.cycle, packet.bytes)?;
+            }
             BoardOutput::Radio { port, packet } => {
                 self.route_output(at, index, port, true, &packet.bytes)?
             }
+            BoardOutput::RadioAck { port, id } => {
+                self.send_esp_now_reply(at, index, port, id)?;
+            }
+            BoardOutput::Reset(_) | BoardOutput::Power { on: false }
+                if self.boards[index].sim.board() == BoardId::Esp32C3 =>
+            {
+                self.cancel_esp_now_from(at, index)?;
+            }
             _ => (),
         }
+        Ok(())
+    }
+
+    fn route_esp_driver(
+        &mut self,
+        at: Time,
+        board: usize,
+        port: u32,
+        cycle: u64,
+        bytes: Vec<u8>,
+    ) -> Result<(), String> {
+        let routes: Vec<_> = self
+            .routes
+            .iter()
+            .enumerate()
+            .filter(|(_, route)| route.from == Some((board, port)) && route.is_radio())
+            .map(|(id, _)| id)
+            .collect();
+        let status = if routes.is_empty() {
+            RadioStatus::NotAnalyzed("нет маршрута пакетного драйвера")
+        } else if port == EspRadioPort::EspNow as u32 {
+            let [id] = routes.as_slice() else {
+                return Err("одному порту ESP-NOW нужен один адресованный маршрут".into());
+            };
+            if !self.routes[*id].is_esp_now() {
+                return Err("для порта ESP-NOW нужен канал kind = esp_now".into());
+            }
+            return self.send_esp_now(at, *id, bytes, Some(cycle));
+        } else {
+            for id in routes {
+                self.send_packet(at, id, bytes.clone())?;
+            }
+            RadioStatus::NotAnalyzed(
+                "канал моделирует доставку, подтверждение Wi-Fi/BLE отсутствует",
+            )
+        };
+        self.apply_board(
+            at,
+            board,
+            BoardInput::RadioResult {
+                port,
+                sent_cycle: cycle,
+                status,
+            },
+        )?;
         Ok(())
     }
 
@@ -615,6 +815,9 @@ impl Engine {
         index: usize,
         bytes: Vec<u8>,
     ) -> Result<(), String> {
+        if self.routes[index].is_esp_now() {
+            return self.send_esp_now(at, index, bytes, None);
+        }
         let path = self.routes[index].name.clone();
         let fault = self.use_fault(at, &format!("channel:{path}"));
         let disconnected = fault == Some(FaultAction::Drop);
@@ -670,6 +873,241 @@ impl Engine {
         Ok(())
     }
 
+    fn send_esp_now(
+        &mut self,
+        at: Time,
+        index: usize,
+        bytes: Vec<u8>,
+        guest_cycle: Option<u64>,
+    ) -> Result<(), String> {
+        let name = self.routes[index].name.clone();
+        let fault = self.use_fault(at, &format!("channel:{name}"));
+        let route = &mut self.routes[index];
+        if bytes.is_empty() || bytes.len() > route.packet_bytes {
+            return Err(format!("пакет превышает границы ESP-NOW «{name}»"));
+        }
+        let port = EspRadioPort::EspNow as u32;
+        for (board, endpoint) in [route.from, route.to].into_iter().flatten() {
+            if self.boards[board].sim.board() != BoardId::Esp32C3 || endpoint != port {
+                return Err(format!("«{name}»: нужен порт ESP-NOW платы C3"));
+            }
+            if self.boards[board].end_sample {
+                return Err(format!(
+                    "«{name}»: ESP-NOW требует причинного тактирования платы"
+                ));
+            }
+        }
+        let id = route.sequence;
+        route.sequence = id.checked_add(1).ok_or("исчерпаны номера ESP-NOW")?;
+        let send = EspNowSend {
+            id,
+            sent_at: at,
+            bytes,
+            guest_cycle,
+            mac_done: false,
+            application_confirmed: false,
+        };
+        let model = route.esp_now()?;
+        let failed = if fault == Some(FaultAction::Drop) {
+            Some(Outcome::Disconnected)
+        } else if model.ready.len() + model.transmitting.len()
+            >= model
+                .profile
+                .sender
+                .queue_capacity
+                .expect("размер очереди из профиля")
+        {
+            Some(Outcome::Overflow)
+        } else {
+            None
+        };
+        if let Some(outcome) = failed {
+            self.push(
+                at,
+                EventKind::Packet {
+                    route: name,
+                    event: send.event(at, 0, outcome),
+                },
+            );
+            return self.esp_now_result(index, send.guest_cycle, RadioStatus::Failed);
+        }
+        let due = if let Some(FaultAction::Delay(ns)) = fault {
+            add(at, ns)?
+        } else {
+            at
+        };
+        model.ready.insert((due, id), send.clone());
+        self.push(
+            at,
+            EventKind::Packet {
+                route: name,
+                event: send.event(at, 0, Outcome::Queued),
+            },
+        );
+        self.schedule_packet(due, index);
+        Ok(())
+    }
+
+    fn schedule_packet(&mut self, due: Time, index: usize) {
+        if !self
+            .queue
+            .iter()
+            .any(|entry| entry.0 == (due, Schedule::Packet, index))
+        {
+            self.schedule(due, Schedule::Packet, index);
+        }
+    }
+
+    fn esp_now_result(
+        &mut self,
+        index: usize,
+        sent_cycle: Option<u64>,
+        status: RadioStatus,
+    ) -> Result<(), String> {
+        if let Some(cycle) = sent_cycle {
+            self.routes[index].esp_now()?.results.push((cycle, status));
+        }
+        Ok(())
+    }
+
+    fn receive_esp_now_results(&mut self, at: Time, board: usize) -> Result<(), String> {
+        if self.boards[board].sim.board() != BoardId::Esp32C3 {
+            return Ok(());
+        }
+        let mut applied = false;
+        for index in 0..self.routes.len() {
+            let route = &mut self.routes[index];
+            let Some((owner, port)) = route.from else {
+                continue;
+            };
+            if owner != board || !route.is_esp_now() {
+                continue;
+            }
+            // Callback поступает на границе платы. Она уже исполнила интервал,
+            // внутри которого транспорт получил ответ.
+            if let Some(PacketPlan::EspNow(model)) = route.slots.as_deref()
+                && model.results.is_empty()
+            {
+                continue;
+            }
+            for (sent_cycle, status) in std::mem::take(&mut route.esp_now()?.results) {
+                if self.boards[board].sim.powered() {
+                    self.apply_board(
+                        at,
+                        board,
+                        BoardInput::RadioResult {
+                            port,
+                            sent_cycle,
+                            status,
+                        },
+                    )?;
+                    applied = true;
+                }
+            }
+        }
+        if applied {
+            self.board_events(at, board)?;
+        }
+        Ok(())
+    }
+
+    fn cancel_esp_now_from(&mut self, at: Time, board: usize) -> Result<(), String> {
+        for index in 0..self.routes.len() {
+            if self.routes[index].is_esp_now()
+                && self.routes[index].from.is_some_and(|(id, _)| id == board)
+            {
+                self.cancel_esp_now(at, index, false)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn cancel_esp_now(&mut self, at: Time, index: usize, send_result: bool) -> Result<(), String> {
+        let name = self.routes[index].name.clone();
+        let model = self.routes[index].esp_now()?;
+        model.channel = None;
+        model.reply_channel = None;
+        if !send_result {
+            model.results.clear();
+        }
+        let sends = std::mem::take(&mut model.transmitting)
+            .into_values()
+            .chain(std::mem::take(&mut model.ready).into_values());
+        for send in sends {
+            self.push(
+                at,
+                EventKind::Packet {
+                    route: name.clone(),
+                    event: send.event(at, 0, Outcome::Disconnected),
+                },
+            );
+            if send_result {
+                self.esp_now_result(index, send.guest_cycle, RadioStatus::Failed)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn send_esp_now_reply(
+        &mut self,
+        at: Time,
+        board: usize,
+        port: u32,
+        id: u64,
+    ) -> Result<(), String> {
+        let Some(index) = self
+            .routes
+            .iter()
+            .position(|route| route.is_esp_now() && route.to == Some((board, port)))
+        else {
+            return Err("нет входного маршрута для ответа приложения ESP-NOW".into());
+        };
+        let name = self.routes[index].name.clone();
+        let sequence = self.routes[index].sequence;
+        let fault = self.use_fault(at, &format!("channel:{name}"));
+        let hold_ns = match fault {
+            Some(FaultAction::Delay(ns)) => ns,
+            Some(FaultAction::Drop) => {
+                self.rejection(at, name, Some(id), Rejection::Disconnected);
+                return Ok(());
+            }
+            _ => 0,
+        };
+        let model = self.routes[index].esp_now()?;
+        let Some(profile) = model.profile.reply else {
+            self.rejection(at, name, Some(id), Rejection::Missing);
+            return Ok(());
+        };
+        if !model
+            .transmitting
+            .values()
+            .any(|send| send.id == id && !send.application_confirmed)
+        {
+            self.rejection(at, name, Some(id), Rejection::Expired);
+            return Ok(());
+        }
+        if model.reply_channel.is_none() {
+            model.reply_channel = Some(TimedChannel::new(
+                profile,
+                Rng::stream(
+                    self.identity.seed,
+                    &format!("esp_now_reply:{name}:{sequence}"),
+                ),
+            )?);
+        }
+        let event = model
+            .reply_channel
+            .as_mut()
+            .expect("обратный канал установлен")
+            .send_after(at, id.to_le_bytes().to_vec(), hold_ns)?;
+        if event.outcome == Outcome::Queued {
+            self.schedule_packet(event.at, index);
+        } else {
+            self.rejection(at, name, Some(id), Rejection::Overflow);
+        }
+        Ok(())
+    }
+
     pub(super) fn route_connection(
         &mut self,
         at: Time,
@@ -678,6 +1116,9 @@ impl Engine {
     ) -> Result<(), String> {
         let target = format!("channel:{}", self.routes[index].name);
         self.use_fault(at, &target);
+        if active && self.routes[index].is_esp_now() {
+            self.cancel_esp_now(at, index, true)?;
+        }
         let route = &mut self.routes[index];
         let name = route.name.clone();
         let packets = if let Some(channel) = &mut route.radio {
@@ -727,30 +1168,13 @@ impl Engine {
         at: Time,
         index: usize,
     ) -> Result<(), String> {
+        if self.routes[index].is_esp_now() {
+            return self.advance_esp_now(runtime, at, index);
+        }
         let route = &mut self.routes[index];
         let name = route.name.clone();
         let events = if let Some(channel) = &mut route.radio {
-            if let Some(path) = runtime.state.work.radio_paths.get(&name) {
-                channel.advance_with_link(at, |_, _, link| {
-                    use sim_process::Analysis;
-                    // Среда удерживается от последней зафиксированной границы физики.
-                    let env = match runtime.state.work.radio.get(&name) {
-                        Some(Analysis::Analyzed { value, .. }) => value,
-                        Some(Analysis::NotAnalyzed { reason }) => {
-                            return Err(format!("радиоканал «{name}»: {reason}"));
-                        }
-                        None => return Err(format!("нет замера среды радиоканала «{name}»")),
-                    };
-                    link.through_layer(
-                        env.medium,
-                        env.depth_m,
-                        path.frequency_hz.nominal,
-                        path.sensitivity_dbm.nominal,
-                    )
-                })?
-            } else {
-                channel.advance(at)?
-            }
+            channel.advance_with_link(at, |_, _, link| link_for(runtime, &name, link))?
         } else {
             let mut events = Vec::new();
             while let Some(entry) = route.pending.first_entry() {
@@ -766,36 +1190,40 @@ impl Engine {
             }
             events
         };
-        let to = route.to;
         let next = route.radio.as_ref().and_then(TimedChannel::next_event);
-        if let Some(due) = next
-            && !self
-                .queue
-                .iter()
-                .any(|entry| entry.0 == (due, Schedule::Packet, index))
-        {
-            self.schedule(due, Schedule::Packet, index);
+        if let Some(due) = next {
+            self.schedule_packet(due, index);
         }
         for packet in events {
-            let delivered = matches!(packet.outcome, Outcome::Delivered { .. });
-            self.push(
-                at,
-                EventKind::Packet {
-                    route: name.clone(),
-                    event: packet.clone(),
-                },
-            );
-            if !delivered {
-                continue;
-            }
-            if let Some((board, _)) = to {
+            self.publish_packet(at, index, &name, packet)?;
+        }
+        Ok(())
+    }
+
+    fn publish_packet(
+        &mut self,
+        at: Time,
+        index: usize,
+        name: &str,
+        packet: PacketEvent,
+    ) -> Result<(), String> {
+        let delivered = matches!(packet.outcome, Outcome::Delivered { .. });
+        self.push(
+            at,
+            EventKind::Packet {
+                route: name.into(),
+                event: packet.clone(),
+            },
+        );
+        if delivered {
+            if let Some((board, _)) = self.routes[index].to {
                 let waiting = self.boards[board]
                     .pending
                     .iter()
                     .filter(|p| p.route == index)
                     .count();
                 if waiting >= self.routes[index].capacity {
-                    self.rejection(at, name.clone(), Some(packet.id), Rejection::Overflow);
+                    self.rejection(at, name.into(), Some(packet.id), Rejection::Overflow);
                 } else {
                     self.boards[board].pending.push(Delivery {
                         route: index,
@@ -806,17 +1234,213 @@ impl Engine {
                 self.push(
                     at,
                     EventKind::PacketDelivered {
-                        route: name.clone(),
+                        route: name.into(),
                         id: packet.id,
                         sent_at: packet.sent_at,
                         bytes: packet.bytes,
                     },
                 );
             } else {
-                self.rejection(at, name.clone(), Some(packet.id), Rejection::Expired);
+                self.rejection(at, name.into(), Some(packet.id), Rejection::Expired);
             }
         }
         Ok(())
+    }
+
+    fn advance_esp_now(&mut self, runtime: &Runtime, at: Time, index: usize) -> Result<(), String> {
+        let route = &self.routes[index];
+        if let Some(PacketPlan::EspNow(model)) = route.slots.as_deref()
+            && (model.channel.as_ref().and_then(EspNowChannel::next_event) == Some(at)
+                || model
+                    .reply_channel
+                    .as_ref()
+                    .and_then(TimedChannel::next_event)
+                    == Some(at))
+        {
+            // MAC принимает решение по состоянию платы на момент попытки,
+            // включая сон и сброс, случившиеся между штатными тактами опроса.
+            // Доставка в гостевой интерфейс по-прежнему на границе платы.
+            for (board, _) in [route.from, route.to].into_iter().flatten() {
+                self.advance_board(at, board, at)?;
+            }
+        }
+        let route = &self.routes[index];
+        let name = route.name.clone();
+        let receiver_open = route
+            .to
+            .is_none_or(|(board, port)| self.radio_endpoint_open(board, port));
+        let sender_open = route
+            .from
+            .is_none_or(|(board, port)| self.radio_endpoint_open(board, port));
+        let sequence = route.sequence;
+        let model = self.routes[index].esp_now()?;
+        let mut updates = Vec::new();
+        if let Some(channel) = &mut model.channel {
+            let mut link = model.profile.link;
+            if !(receiver_open && sender_open) {
+                link.receiver_channel = None;
+            }
+            let events = channel
+                .advance_with_link(at, |_| {
+                    let frame =
+                        link_for(runtime, &name, link.frame).map_err(EspNowError::Timing)?;
+                    Ok(sim_radio::timed::EspNowLink { frame, ..link })
+                })
+                .map_err(|error| format!("«{name}»: {error}"))?;
+            for event in events {
+                let (outcome, status) = match event.kind {
+                    EspNowEventKind::Received { rssi_dbm, .. } => {
+                        (Some(Outcome::Delivered { rssi_dbm }), None)
+                    }
+                    EspNowEventKind::MacRetry | EspNowEventKind::ApplicationRetry => {
+                        (Some(Outcome::Retry), None)
+                    }
+                    EspNowEventKind::MacConfirmed
+                        if model.profile.confirmation == EspNowConfirmation::Driver =>
+                    {
+                        (None, Some(RadioStatus::MacConfirmed))
+                    }
+                    EspNowEventKind::MacFailed
+                        if model.profile.confirmation == EspNowConfirmation::Driver =>
+                    {
+                        (Some(Outcome::Lost), Some(RadioStatus::Failed))
+                    }
+                    EspNowEventKind::MacConfirmed => (None, None),
+                    EspNowEventKind::MacFailed => (Some(Outcome::Lost), None),
+                    EspNowEventKind::BroadcastSent => (None, Some(RadioStatus::BroadcastSent)),
+                    EspNowEventKind::ApplicationTimedOut => {
+                        (Some(Outcome::Lost), Some(RadioStatus::ApplicationTimedOut))
+                    }
+                    EspNowEventKind::ApplicationConfirmed => {
+                        (None, Some(RadioStatus::ApplicationConfirmed))
+                    }
+                };
+                let send = model
+                    .transmitting
+                    .get_mut(&event.id)
+                    .ok_or("ESP-NOW: нет запроса для события")?;
+                match event.kind {
+                    EspNowEventKind::MacConfirmed | EspNowEventKind::MacFailed => {
+                        send.mac_done = true
+                    }
+                    EspNowEventKind::ApplicationRetry => send.mac_done = false,
+                    _ => (),
+                }
+                updates.push((
+                    outcome.map(|outcome| send.event(event.at, event.mac_attempt, outcome)),
+                    send.guest_cycle,
+                    status,
+                ));
+                if status.is_some() || (send.mac_done && send.application_confirmed) {
+                    model.transmitting.remove(&event.id);
+                }
+            }
+        }
+        let mut rejected_replies = Vec::new();
+        if let Some(reply_channel) = &mut model.reply_channel {
+            let replies = reply_channel.advance(at)?;
+            for reply in replies {
+                let id = u64::from_le_bytes(
+                    reply
+                        .bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| "неверный номер ответа ESP-NOW")?,
+                );
+                let Some((&model_id, send)) = model
+                    .transmitting
+                    .iter_mut()
+                    .find(|(_, send)| send.id == id)
+                else {
+                    rejected_replies.push((id, Rejection::Expired));
+                    continue;
+                };
+                if !sender_open || !matches!(reply.outcome, Outcome::Delivered { .. }) {
+                    rejected_replies.push((id, Rejection::Disconnected));
+                    continue;
+                }
+                let channel = model
+                    .channel
+                    .as_mut()
+                    .ok_or("нет отправителя для ответа ESP-NOW")?;
+                match channel.acknowledge(at, model.profile.peer.address, model_id) {
+                    Ok(_) => {
+                        send.application_confirmed = true;
+                        updates.push((
+                            None,
+                            send.guest_cycle,
+                            Some(RadioStatus::ApplicationConfirmed),
+                        ));
+                        if send.mac_done {
+                            model.transmitting.remove(&model_id);
+                        }
+                    }
+                    Err(EspNowError::UnexpectedAck) => {
+                        rejected_replies.push((id, Rejection::Expired))
+                    }
+                    Err(error) => return Err(format!("«{name}»: {error}")),
+                }
+            }
+        }
+        while let Some(entry) = model
+            .ready
+            .first_entry()
+            .filter(|entry| entry.key().0 <= at)
+        {
+            let send = entry.remove();
+            if model.channel.is_none() {
+                let rng = Rng::stream(runtime.seed(), &format!("esp_now:{name}:{sequence}"));
+                let mut channel =
+                    EspNowChannel::new(model.profile.sender, rng).map_err(|e| e.to_string())?;
+                channel
+                    .add_peer(model.profile.peer)
+                    .map_err(|e| e.to_string())?;
+                model.channel = Some(channel);
+            }
+            let id = model
+                .channel
+                .as_mut()
+                .expect("модель создана к моменту отправки")
+                .send(
+                    at,
+                    model.profile.peer.address,
+                    send.bytes.clone(),
+                    model.profile.confirmation,
+                )
+                .map_err(|error| format!("«{name}»: {error}"))?;
+            model.transmitting.insert(id, send);
+        }
+        let next = [
+            model.channel.as_ref().and_then(EspNowChannel::next_event),
+            model
+                .reply_channel
+                .as_ref()
+                .and_then(TimedChannel::next_event),
+        ];
+        for due in next.into_iter().flatten() {
+            self.schedule_packet(due, index);
+        }
+        for (id, reason) in rejected_replies {
+            self.rejection(at, name.clone(), Some(id), reason);
+        }
+        for (packet, guest_cycle, status) in updates {
+            if let Some(packet) = packet {
+                self.publish_packet(at, index, &name, packet)?;
+            }
+            if let Some(status) = status {
+                self.esp_now_result(index, guest_cycle, status)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn radio_endpoint_open(&self, board: usize, port: u32) -> bool {
+        let b = &self.boards[board];
+        b.sim.esp_radio_listening(port)
+            && !self
+                .active
+                .get(&format!("board:{}", b.name))
+                .is_some_and(|&id| self.faults[id].action == FaultAction::PowerOff)
     }
 
     fn receive_packets(&mut self, at: Time, board: usize) -> Result<(), String> {
@@ -851,6 +1475,23 @@ impl Engine {
                 }
             };
             let outcome = self.apply_board(at, board, input)?;
+            if outcome == InputOutcome::Applied
+                && let Some(PacketPlan::EspNow(model)) =
+                    self.routes[delivery.route].slots.as_deref()
+                && matches!(
+                    model.profile.confirmation,
+                    EspNowConfirmation::Application { .. }
+                )
+            {
+                self.apply_board(
+                    at,
+                    board,
+                    BoardInput::RadioReplyId {
+                        port,
+                        id: packet.id,
+                    },
+                )?;
+            }
             let n = match outcome {
                 InputOutcome::Uart { accepted, .. } => accepted,
                 InputOutcome::PacketDropped => 0,
@@ -873,6 +1514,27 @@ impl Engine {
         }
         Ok(())
     }
+}
+
+fn link_for(runtime: &Runtime, name: &str, link: AttemptLink) -> Result<AttemptLink, String> {
+    use sim_process::Analysis;
+    let Some(path) = runtime.state.work.radio_paths.get(name) else {
+        return Ok(link);
+    };
+    // Среда удерживается от последней зафиксированной границы физики.
+    let env = match runtime.state.work.radio.get(name) {
+        Some(Analysis::Analyzed { value, .. }) => value,
+        Some(Analysis::NotAnalyzed { reason }) => {
+            return Err(format!("радиоканал «{name}»: {reason}"));
+        }
+        None => return Err(format!("нет замера среды радиоканала «{name}»")),
+    };
+    link.through_layer(
+        env.medium,
+        env.depth_m,
+        path.frequency_hz.nominal,
+        path.sensitivity_dbm.nominal,
+    )
 }
 
 // 10⁹ нс/с. Коэффициенты считаются на целых, без накопления ошибки.

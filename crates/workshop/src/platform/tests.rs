@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn report_does_not_turn_incomplete_evidence_into_approval() {
-    let json = r#"{"version":1,"status":"completed","assemblies":{
+    let json = r#"{"version":1,"registry_version":3,"status":"completed","assemblies":{
         "блок":{"verdict":"Rejected","worst_run_key":"блок/удар","runs":{"блок/удар":{"findings":[{"reason":"нарушен предел"}]} }},
         "стержень":{"verdict":"NotProven","worst_run_key":null},
         "каретка":{"verdict":"PassedSimulation","readiness":"NeedsWork",
@@ -820,4 +820,37 @@ fn check_fit(
         distances,
         movement * 1000.0
     ))
+}
+
+#[test]
+fn audit_cross_registry_and_coverage_are_required_for_approval() {
+    let json = r#"{"version":1,"registry_version":3,"status":"completed",
+      "historical_open_rows":null,"assemblies":{
+        "блок":{"verdict":"PassedSimulation","readiness":"Passed",
+          "coverage":{"required":1,"executed":1,"omitted":0,"open":0},
+          "depth_coverage":{"status":"completed","open_rows":[]},
+          "runs":{"блок/ход":{"status":"completed","outcome":"pass","required":1,"executed":1}}}}}"#;
+    let report = Report::parse(json.into()).unwrap();
+    assert_eq!(report.verdict(Some("блок")), Verdict::ProvenInSimulation);
+    let old = Report::parse(json.replace("registry_version\":3", "registry_version\":2")).unwrap();
+    assert_eq!(old.verdict(Some("блок")), Verdict::NotProven);
+    assert_eq!(old.readiness("блок"), Some("NeedsWork"));
+    assert!(old.reasons(Some("блок")).iter().any(|r| r.contains("реестр v2")));
+
+    let partial = Report::parse(json.replace(
+        r#""depth_coverage":{"status":"completed","open_rows":[]}"#,
+        r#""depth_coverage":{"status":"incomplete","open_rows":[{"reason":"нет измерения"}]}"#,
+    )).unwrap();
+    assert_eq!(partial.verdict(Some("блок")), Verdict::NotProven);
+    assert!(partial.reasons(Some("блок")).contains(&"нет измерения"));
+
+    let history = json.replace(
+        r#""historical_open_rows":null"#,
+        r#""historical_open_rows":{"rows":[{"key":{"station":"блок/ход"},"outcome":"not_analyzed","reason":"строка не закрыта"}]}"#,
+    );
+    let report = Report::parse(history.clone()).unwrap();
+    assert_eq!(report.verdict(Some("блок")), Verdict::NotProven);
+    assert!(report.reasons(Some("блок")).contains(&"строка не закрыта"));
+    let report = Report::parse(history.replace(r#""station":"блок/ход""#, r#""station":"стержень/ход""#)).unwrap();
+    assert_eq!(report.verdict(Some("блок")), Verdict::ProvenInSimulation);
 }

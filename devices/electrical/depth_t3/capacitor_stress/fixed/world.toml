@@ -1,0 +1,12 @@
+format = 3
+name = "Блок"
+seed = 1 # Фиксированное зерно без разброса в этом стенде.
+physics_hz = 1000 # Сетка носителя схемы, электрические окна заданы отдельно.
+gravity_m_s2 = [0.0, 0.0, 0.0] # Носитель схемы без внешних сил.
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+[[devices]]
+name = "block"
+file = "device.toml"

@@ -7,6 +7,31 @@ pub struct TickAcc {
     acc: u128,
 }
 
+/// Время для дерева частот, в котором длительность такта кратна четверти наносекунды.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct CycleTime {
+    cycles: u64,
+    quarters: u128,
+}
+
+impl CycleTime {
+    pub(crate) fn elapsed(self) -> u128 {
+        self.quarters
+    }
+
+    pub(crate) fn advance(
+        &mut self,
+        cycles: u64,
+        quarters_per_cycle: u32,
+    ) -> Result<(), crate::BoardFault> {
+        self.cycles = self.cycles.checked_add(cycles).ok_or_else(|| {
+            crate::BoardFault::Misconfigured("переполнение счётчика тактов".into())
+        })?;
+        self.quarters += u128::from(cycles) * u128::from(quarters_per_cycle);
+        Ok(())
+    }
+}
+
 impl TickAcc {
     /// Сколько целых тиков частоты `f` прошло за `cycles` тактов частоты `fcpu`.
     #[inline]

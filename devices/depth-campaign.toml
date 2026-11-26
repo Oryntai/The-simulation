@@ -1,0 +1,53 @@
+# Манифест покрытия Т7. Горизонты полных опытов и установки взяты из electrical/acceptance.toml.
+# Сценарии относятся к численным моделям, измеренные огибающие пока открыты.
+version = 1
+open_rows = "stage6/depth-open.toml"
+
+[assemblies."01"]
+scope = "Питание, начальная доставка BLE и привод. Электрические сетки и отдельные связанные инъекции."
+[assemblies."01".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/01.toml"
+installation = "electrical/depth_t7/assemblies/01-install.toml"
+
+[assemblies."02"]
+scope = "Питание и двуполярная команда привода. Область: электрический численный профиль."
+[assemblies."02".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/02.toml"
+installation = "electrical/depth_t7/assemblies/02-install.toml"
+
+[assemblies."03"]
+scope = "Пропадание и возврат питания датчика. Область: электрический численный профиль."
+[assemblies."03".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/03.toml"
+installation = "electrical/depth_t7/assemblies/03-install.toml"
+
+[assemblies."04"]
+scope = "Просадка и восстановление питания платы, отдельная проверка останова."
+[assemblies."04".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/04.toml"
+installation = "electrical/depth_t7/assemblies/04-install.toml"
+
+[assemblies."05"]
+scope = "Привод, переход питания датчика угла и отдельные отказы двух направлений транспорта."
+[assemblies."05".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/05.toml"
+installation = "electrical/depth_t7/assemblies/05-install.toml"
+
+[assemblies."06"]
+scope = "Питание последовательных операций и оснастки. Область: электрический численный профиль."
+[assemblies."06".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/06.toml"
+installation = "electrical/depth_t7/assemblies/06-install.toml"
+
+[assemblies."07"]
+scope = "Два канала питания и привода, перезапуск, реверс и отдельная проверка отказов на живом контуре."
+[assemblies."07".experiments.coverage]
+kind = "scenario"
+campaign = "electrical/depth_t7/assemblies/07.toml"
+installation = "electrical/depth_t7/assemblies/07-install.toml"

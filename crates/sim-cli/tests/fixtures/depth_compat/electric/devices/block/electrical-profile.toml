@@ -1,0 +1,20 @@
+format = 1
+# Сетка измерения 2 кГц из world.toml. Электрический шаг = RC/4,
+# где R = 1 Ом и C = 100 мкФ, см. численные параметры регулятора и накопителя.
+step_ns = 25000
+source = "Диагностический эквивалент R=3.3 В / 685 мкА. Просадка меняет ток в модели. Фактическая ВАХ BMI270 и его VDDIO требуют измерения."
+control = "electrical-control.toml"
+
+[circuits."устройство"]
+diagnostic_connections = { parameters = "../../catalog/electrical/diagnostics/nominal.toml", ohm = 0.1, source = "0,1 Ом на стык из эталонной цепи Э1 для численного опыта. Сопротивления монтажного жгута требуют замера." }
+# Окно отключения 2–4 мс даёт по 4 отсчёта на каждый участок опыта.
+steps = [
+  { branch = "ldo/emf", at_ns = 2000000, value = 0.0 },
+  { branch = "ldo/emf", at_ns = 4000000, value = 3.3 },
+]
+[circuits."устройство".meters."импульсы"]
+rate_hz = 2000
+minimum_v = 1.71
+source = "Bosch BST-BMI270-DS000-07: 685 мкА типового тока при full ODR; рабочий минимум VDD 1.71 В. https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf Индикатор показывает доступность питания. Перезапуск и калибровка ИМУ не моделируются."
+[circuits."устройство".probes]
+"ток датчика" = { kind = "current", branch = "imu/sensor" }

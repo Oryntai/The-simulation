@@ -29,17 +29,19 @@ fn сборочные_листы_и_открытые_обязательства_
     assert_eq!(bytes, run(), "журналы и сборочные листы повторного опыта");
     let report: Value = serde_json::from_slice(&bytes).unwrap();
     let configs = content["assemblies"].as_table().unwrap();
+    let ids = ["01", "02", "03", "04", "05", "06", "07"];
+    assert_eq!(configs.keys().map(String::as_str).collect::<Vec<_>>(), ids);
     assert_eq!(
-        report["assemblies"].as_object().unwrap().len(),
-        configs.len()
+        report["assemblies"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ids
     );
-    let expected: BTreeSet<_> = ElectricalClass::ALL
-        .into_iter()
-        .map(|class| class.code())
-        .collect();
-    let mut linked = 0;
-    let mut unlinked = 0;
     let mut resets = 0;
+    let mut sheets = 0;
     for (id, config) in configs {
         let assembly = &report["assemblies"][id];
         let world_path = manifest
@@ -49,32 +51,21 @@ fn сборочные_листы_и_открытые_обязательства_
         let world = sim_world::load_and_compile_with_schematics(&world_path).unwrap();
         let findings = assembly["findings"].as_array().unwrap();
         assert_eq!(assembly["simulation"], "NotProven", "{id}: {findings:?}");
+        assert!(findings.iter().any(|f| f["outcome"] == "not_analyzed"));
         assert_eq!(
-            world.schematics.is_empty(),
-            config.get("profile").is_none(),
+            world.schematics.len(),
+            if id == "06" { 4 } else { 1 },
             "{id}"
         );
-        if world.schematics.is_empty() {
-            unlinked += 1;
-            assert!(assembly["live"].is_null());
-            assert!(assembly["assemblies"].as_object().unwrap().is_empty());
-            assert_eq!(
-                findings
-                    .iter()
-                    .map(|f| f["code"].as_str().unwrap())
-                    .collect::<BTreeSet<_>>(),
-                expected,
-            );
-            assert!(findings.iter().all(|f| f["outcome"] == "not_analyzed"));
-            continue;
-        }
-        linked += 1;
+        assert!(config["profile"].is_str(), "{id}");
         let live = &assembly["live"];
         assert_eq!(live["complete"], true);
         assert_eq!(
             live["observed_ns"],
             config["horizon_ns"].as_integer().unwrap()
         );
+        assert_eq!(live["required_ns"], live["observed_ns"]);
+        assert!(live["journal"].as_u64().is_some(), "{id}");
         let edges = live["summary"]["reset_edges"].as_array().unwrap();
         if !edges.is_empty() {
             resets += 1;
@@ -99,6 +90,7 @@ fn сборочные_листы_и_открытые_обязательства_
         let published: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(published.as_object().unwrap().len(), world.schematics.len());
         for (instance, path) in world.schematics {
+            sheets += 1;
             let bytes = fs::read(path).unwrap();
             let raw: toml::Value = toml::from_str(std::str::from_utf8(&bytes).unwrap()).unwrap();
             let record = &assembly["assemblies"][&instance];
@@ -124,14 +116,21 @@ fn сборочные_листы_и_открытые_обязательства_
             assert!(source_parts.len() > 1);
             assert_eq!(sheet["parts"].as_array().unwrap().len(), source_parts.len());
             let mut wires = BTreeSet::new();
+            let mut seen_parts = BTreeSet::new();
+            let mut stand_supplies = 0;
             for item in sheet["parts"].as_array().unwrap() {
                 let id = item["component"].as_str().unwrap();
+                assert!(seen_parts.insert(id), "{id}");
                 assert_eq!(item["part"], source_parts[id]["part"].as_str().unwrap());
                 assert_eq!(
                     item["pins"],
                     serde_json::to_value(&source_parts[id]["nets"]).unwrap()
                 );
-                assert_ne!(item["kind"], "BenchSupply");
+                if item["kind"] == "BenchSupply" {
+                    stand_supplies += 1;
+                    assert!(!item["missing_parameters"].as_object().unwrap().is_empty());
+                    assert!(!item["model_gap"].as_str().unwrap().is_empty());
+                }
                 if item["kind"] == "Wire" {
                     wires.extend(
                         item["pins"]
@@ -143,18 +142,19 @@ fn сборочные_листы_и_открытые_обязательства_
                     assert!(!item["missing_parameters"].as_object().unwrap().is_empty());
                 }
             }
+            // Две условные шины живого стенда №05 описаны в каталоге как открытые позиции.
+            assert_eq!(stand_supplies, if id == "05" { 2 } else { 0 });
             assert!(!wires.is_empty());
             let raw_operations = raw["connections"].as_table().unwrap();
             let operations = sheet["operations"].as_array().unwrap();
             assert_eq!(operations.len(), raw_operations.len());
             let inspections = sheet["inspections"].as_array().unwrap();
             let mut performed = BTreeSet::new();
-            let mut methods = BTreeSet::new();
             for op in operations {
                 let id = op["id"].as_str().unwrap();
                 let raw = &raw_operations[id];
                 verify_ends(&op["ends"], &raw["ends"]);
-                let after = raw_ends(&raw["after"]);
+                let after = raw.get("after").map(raw_ends).unwrap_or_default();
                 let published_after = op["after"]
                     .as_array()
                     .unwrap()
@@ -162,21 +162,21 @@ fn сборочные_листы_и_открытые_обязательства_
                     .map(|item| item.as_str().unwrap())
                     .collect::<BTreeSet<_>>();
                 assert_eq!(published_after, after.iter().map(String::as_str).collect());
-                assert!(
-                    raw_ends(&raw["after"])
-                        .iter()
-                        .all(|pred| performed.contains(pred.as_str()))
-                );
+                assert!(after.iter().all(|pred| performed.contains(pred.as_str())));
                 assert!(performed.insert(id));
                 assert_eq!(op["compatible"], true);
-                let kind = op["kind"].as_str().unwrap();
-                methods.insert(kind);
-                if raw
-                    .get("crimp")
-                    .is_some_and(|value| value.as_bool() == Some(true))
-                {
-                    assert_eq!(kind, "Crimp");
-                }
+                let kind = match (
+                    raw.get("crimp").and_then(toml::Value::as_bool),
+                    raw["kind"].as_str().unwrap(),
+                ) {
+                    (Some(true), _) => "Crimp",
+                    (_, "solder") => "Solder",
+                    (_, "terminal") => "Terminal",
+                    (_, "splice") => "Splice",
+                    (_, "plug") => "Plug",
+                    (_, kind) => panic!("неизвестный вид операции: {kind}"),
+                };
+                assert_eq!(op["kind"], kind);
                 for end in ends(&op["ends"]) {
                     wires.remove(&end);
                 }
@@ -194,22 +194,47 @@ fn сборочные_листы_и_открытые_обязательства_
                 }
             }
             assert!(wires.is_empty(), "{wires:?}");
-            assert!(methods.contains("Solder") && methods.contains("Crimp"));
-            assert!(inspections.iter().any(|item| item["test"] == "continuity"));
+            assert!(
+                inspections
+                    .iter()
+                    .all(|item| !item["conditions"].as_str().unwrap().is_empty())
+            );
+            assert!(inspections.is_sorted_by_key(|item| item["stage"] == "current_limited_start"));
+            // В том числе адреса прозвонки, развязки и измерения сигналов.
+            for inspection in inspections {
+                for end in inspection["ends"].as_array().unwrap() {
+                    let component = end["component"].as_str().unwrap();
+                    let pin = end["pin"].as_str().unwrap();
+                    assert!(
+                        source_parts[component]["nets"].get(pin).is_some(),
+                        "{id}/{instance}: {end}"
+                    );
+                }
+            }
             let bindings = raw["bindings"].as_array().unwrap();
             assert_eq!(sheet["bindings"].as_array().unwrap().len(), bindings.len());
             for (binding, raw) in sheet["bindings"].as_array().unwrap().iter().zip(bindings) {
                 verify_ends(&binding["ends"], &raw["ends"]);
             }
-            for rail in raw["rails"].as_table().unwrap().values() {
-                assert!(sheet["inspections"].as_array().unwrap().iter().any(|i| {
-                    i["test"] == "positive_mark" && ends(&i["ends"]) == raw_ends(&rail["ends"])
-                }));
+            for (rail, data) in raw["rails"].as_table().unwrap() {
+                for (test, stage) in [
+                    ("positive_mark", "before_power"),
+                    ("reverse_voltage", "current_limited_start"),
+                ] {
+                    assert!(
+                        inspections.iter().any(|i| {
+                            i["test"] == test
+                                && i["stage"] == stage
+                                && ends(&i["ends"]) == raw_ends(&data["ends"])
+                        }),
+                        "{id}/{instance}/{rail}: {test}"
+                    );
+                }
             }
         }
     }
-    // Три связанных опыта Э3, четыре постановки без схемы, один опыт со сбросом.
-    assert_eq!((linked, unlinked, resets), (3, 4, 1));
+    // Четыре листа одной установки и по одному у остальных. Сброс наблюдается в опыте Э3.
+    assert_eq!((sheets, resets), (10, 1));
 }
 
 #[test]

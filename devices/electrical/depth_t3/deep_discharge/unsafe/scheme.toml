@@ -1,0 +1,121 @@
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["p", "g"]
+
+[components.battery]
+part = "cutoff_stand"
+nets = { p = "p", g = "g" }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Аналитическая постановка синтетического стенда Т3" }
+# Наносекундный фронт токов заканчивается на метке отсечки.
+probes = [
+  { kind = "current", branch = { kind = "element", component = "battery", element = "load" } },
+  { kind = "current", branch = { kind = "element", component = "battery", element = "protection" } },
+]
+window = { step_ns = 250000000, end_ns = 3000000000 }
+sources = [
+  { branch = { kind = "element", component = "battery", element = "load" }, points = [[0, 1.0], [1999999999, 1.0], [2000000000, 0.0]], source = { derived = "Нагрузка падает с 1 А до нуля при отсечке" } },
+  { branch = { kind = "element", component = "battery", element = "protection" }, points = [[0, 0.0], [1999999999, 0.0], [2000000000, 0.01]], source = { derived = "После размыкания остаётся ток защиты 0,01 А" } },
+]
+
+[[depth_checks]]
+id = "deep_discharge"
+mode = { kind = "normal" }
+branch = { kind = "element", component = "battery", element = "emf" }
+window = { start_ns = 0, end_ns = 3000000000 }
+applicability = { derived = "Аналитическая постановка синтетического стенда Т3" }
+reference_only = true
+event = { kind = "mode_entered", at_ns = 2000000000, branch = { kind = "element", component = "battery", element = "emf" }, source = { derived = "Начало интервала нулевого тока нагрузки" } }
+
+[depth_checks.check]
+kind = "deep_discharge"
+# Слабая ячейка: z(t) = 0,5 − 1,02·t/10, U = 2,5 + 2z − 0,1 − 0,2·(1−exp(−t)).
+# Порог 3 В. Отсечка через 1 / 0,25 с после обнаружения в 1 с.
+series_applicability = { derived = "Две последовательные ячейки с общим нагрузочным током и разным начальным зарядом" }
+cutoff = { detected_at_ns = 1000000000, disconnected_at_ns = 2000000000, delay_s = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Таймер отсечки синтетического стенда" } }, source = { derived = "Начало интервала нулевого тока нагрузки" } }
+
+[[depth_checks.check.segments]]
+window = { start_ns = 0, end_ns = 1000000000 }
+load_a = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "До размыкания нагрузка удерживает 1 А, после отключена" } }
+protection_a = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "После отсечки защита потребляет 0,01 А" } }
+
+[[depth_checks.check.segments]]
+window = { start_ns = 1000000000, end_ns = 2000000000 }
+load_a = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "До размыкания нагрузка удерживает 1 А, после отключена" } }
+protection_a = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "После отсечки защита потребляет 0,01 А" } }
+
+[[depth_checks.check.segments]]
+window = { start_ns = 2000000000, end_ns = 3000000000 }
+load_a = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "До размыкания нагрузка удерживает 1 А, после отключена" } }
+protection_a = { min = 0.01, nominal = 0.01, max = 0.01, source = { derived = "После отсечки защита потребляет 0,01 А" } }
+
+[[depth_checks.check.cells]]
+id = "weak"
+capacity_ah = { min = 0.002777777777777778, nominal = 0.002777777777777778, max = 0.002777777777777778, source = { derived = "Условная ёмкость 10 Кл у слабой, 20 Кл у второй ячейки" } }
+initial_soc = { min = 0.5, nominal = 0.5, max = 0.5, source = { derived = "Начальный заряд по постановке разбаланса" } }
+temperature_c = { min = 25.0, nominal = 25.0, max = 25.0, source = { derived = "Опорная температура 25 °C" } }
+initial_polarization_v = [{ min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "В начальный момент ячейка в покое" } }]
+self_discharge_a = { min = 0.02, nominal = 0.02, max = 0.02, source = { derived = "Заданный параллельный сток в ячейке" } }
+min_voltage_v = { min = 3.0, nominal = 3.0, max = 3.0, source = { derived = "Условный порог 3 В" } }
+
+[depth_checks.check.cells.model]
+applicability = { derived = "Линейная OCV, постоянные R0 и R1, τ = 1 с при 25 °C" }
+voltage_error_v = { min = 1e-10, nominal = 1e-10, max = 1e-10, source = { derived = "Численный допуск сверки точной RC-ступени" } }
+
+# Изотермическая модель. Неиспользуемые тепловые метаданные условно заданы как 10 г и 10 Дж/К.
+[depth_checks.check.cells.model.params]
+name = "Блок"
+capacity_ah = 0.002777777777777778
+nominal_v = 3.5
+v_min = 3.0
+v_max = 4.5
+ocv = [[0.0, 2.5], [1.0, 4.5]]
+entropic = [[0.0, 0.0], [1.0, 0.0]]
+r0 = [[0.0, 0.1], [1.0, 0.1]]
+rc = [{ r = [[0.0, 0.2], [1.0, 0.2]], c = 5.0 }]
+ea_r0 = 0.0
+ea_rc = 0.0
+capacity_factor = [[25.0, 1.0]]
+charge_temp_c = [25.0, 25.0]
+discharge_temp_c = [25.0, 25.0]
+max_charge_a = [[25.0, 0.0]]
+max_discharge_a = [[25.0, 1.0]]
+mass_kg = 0.01
+heat_capacity_j_k = 10.0
+
+[[depth_checks.check.cells]]
+id = "strong"
+capacity_ah = { min = 0.005555555555555556, nominal = 0.005555555555555556, max = 0.005555555555555556, source = { derived = "Условная ёмкость 10 Кл у слабой, 20 Кл у второй ячейки" } }
+initial_soc = { min = 0.8, nominal = 0.8, max = 0.8, source = { derived = "Начальный заряд по постановке разбаланса" } }
+temperature_c = { min = 25.0, nominal = 25.0, max = 25.0, source = { derived = "Опорная температура 25 °C" } }
+initial_polarization_v = [{ min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "В начальный момент ячейка в покое" } }]
+self_discharge_a = { min = 0.01, nominal = 0.01, max = 0.01, source = { derived = "Заданный параллельный сток в ячейке" } }
+min_voltage_v = { min = 3.0, nominal = 3.0, max = 3.0, source = { derived = "Условный порог 3 В" } }
+
+[depth_checks.check.cells.model]
+applicability = { derived = "Линейная OCV, постоянные R0 и R1, τ = 1 с при 25 °C" }
+voltage_error_v = { min = 1e-10, nominal = 1e-10, max = 1e-10, source = { derived = "Численный допуск сверки точной RC-ступени" } }
+
+# Изотермическая модель. Неиспользуемые тепловые метаданные условно заданы как 10 г и 10 Дж/К.
+[depth_checks.check.cells.model.params]
+name = "Блок"
+capacity_ah = 0.005555555555555556
+nominal_v = 3.5
+v_min = 3.0
+v_max = 4.5
+ocv = [[0.0, 2.5], [1.0, 4.5]]
+entropic = [[0.0, 0.0], [1.0, 0.0]]
+r0 = [[0.0, 0.1], [1.0, 0.1]]
+rc = [{ r = [[0.0, 0.2], [1.0, 0.2]], c = 5.0 }]
+ea_r0 = 0.0
+ea_rc = 0.0
+capacity_factor = [[25.0, 1.0]]
+charge_temp_c = [25.0, 25.0]
+discharge_temp_c = [25.0, 25.0]
+max_charge_a = [[25.0, 0.0]]
+max_discharge_a = [[25.0, 1.0]]
+mass_kg = 0.01
+heat_capacity_j_k = 10.0

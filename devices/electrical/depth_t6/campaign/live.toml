@@ -1,0 +1,17 @@
+format = 1
+step_ns = 10000 # Сетка цепи стенда Т6.7.
+source = "Стенд Т6.7: идеальная шина и внешний дифференциальный вход сброса"
+parts = "parts.toml"
+control = "control.toml"
+
+[circuits.block.boards.fixture]
+rail = "io"
+branch = "board/demand"
+currents_a = [0.0, 0.0, 0.0, 0.0] # Модель платы на идеальной шине стенда Т6.7.
+boot_ns = 0 # В этой постановке моделируется состояние сброса без задержки загрузки.
+initially_in_reset = false
+reference_reset = { falling_v = 2.0, rising_v = 2.5, assert_ns = 8000, release_ns = 3000, source = "Пороги и выдержки детектора стенда Т6.7 из acceptance.toml" }
+
+[circuits.block.voltage_observations.rail]
+ends = ["board/p", "board/g"]
+meter = { rate_hz = 100000, minimum_v = 0.0, source = "Отсчёт шины на каждом шаге цепи. Нулевой порог задаёт неотрицательную полярность питания." }

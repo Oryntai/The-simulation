@@ -6,11 +6,17 @@ use std::{
 use sim_boards::GpioMode;
 use sim_process::{
     Analysis, SourcedRange,
-    schematic::{PinPhase, PinProfile, PinState, Pull, ResetProfile, Scope},
+    schematic::{
+        PinPhase, PinProfile, PinState, Pull, ResetProfile, Scope,
+        emi_reset::{
+            EmiEvidence, EmiPacketProbe, EmiPacketWitness, EmiResetObservation, EmiTrial,
+            assess_emi_reset,
+        },
+    },
 };
-use sim_signal::{ChannelId, Clock, Command, Phase, SignalId, Time, fnv1a};
+use sim_signal::{ChannelId, Command, Phase, SignalId, Time, fnv1a};
 
-use crate::{LogKind, Output, Runtime, Status, TruthId, checked_due};
+use crate::{LogEntry, LogKind, Output, Runtime, Status, TruthId, control};
 
 use super::rail::{Rail, after, duration, exact};
 
@@ -145,6 +151,15 @@ struct Pin {
 }
 
 #[derive(Clone)]
+struct EmiPortState {
+    trial: Rc<EmiTrial>,
+    coupled: bool,
+    voltage: TruthId,
+    detector: Rail,
+    caused_reset: Option<Time>,
+}
+
+#[derive(Clone)]
 pub(crate) struct BoardPower {
     pub name: String,
     plus: String,
@@ -153,6 +168,9 @@ pub(crate) struct BoardPower {
     currents: [f64; 4],
     pub initial_reset: bool,
     rail: Rail,
+    emi: Option<EmiPortState>,
+    reset: bool,
+    boot: Time,
     boot_ns: u64,
     pins: Vec<Pin>,
     pub phase: PowerPhase,
@@ -218,6 +236,9 @@ impl BoardPower {
             ],
             initial_reset: input.initially_in_reset,
             rail: Rail::new(&input.reset, input.initially_in_reset, scope)?,
+            emi: None,
+            reset: input.initially_in_reset,
+            boot: Time::ZERO,
             boot_ns,
             pins,
             phase: PowerPhase::Reset,
@@ -231,33 +252,60 @@ impl BoardPower {
     }
 
     fn observe(&mut self, at: Time, voltage: f64) -> Result<Option<bool>, String> {
-        let edge = self.rail.observe(at, voltage)?;
-        self.phase = if self.rail.reset() {
+        self.rail.observe(at, voltage, true)?;
+        let was_reset = self.reset;
+        self.reset = self.rail.reset();
+        if let Some(emi) = &mut self.emi {
+            // Контроль повторяет сетку детектора. Дополнительная граница не
+            // должна менять выборки шины только в опыте с воздействием.
+            let edge = emi
+                .detector
+                .observe(at, emi.trial.voltage_at(at, true), false)?;
+            if emi.coupled {
+                if !was_reset && !self.reset && edge == Some(true) {
+                    emi.caused_reset.get_or_insert(at);
+                }
+                self.reset |= emi.detector.reset();
+            }
+        }
+        if was_reset && !self.reset {
+            self.boot = at;
+        }
+        self.phase = if self.reset {
             // Нулевая или обратная разность клемм не питает цифровую логику.
             if voltage <= 0.0 {
                 PowerPhase::Unpowered
             } else {
                 PowerPhase::Reset
             }
-        } else if at.0 - self.rail.boot().0 < self.boot_ns {
+        } else if at.0 - self.boot.0 < self.boot_ns {
             PowerPhase::Boot
         } else {
             PowerPhase::Working
         };
-        Ok(edge)
+        Ok((was_reset != self.reset).then_some(self.reset))
     }
 
     pub fn restart(&mut self, at: Time) {
-        self.rail.restart(at);
-        if !self.rail.reset() && self.boot_ns > 0 {
-            self.phase = PowerPhase::Boot;
+        if !self.reset {
+            self.boot = self.boot.max(at);
+            if self.boot_ns > 0 {
+                self.phase = PowerPhase::Boot;
+            }
         }
     }
 
     fn next(&self, at: Time) -> Result<Option<Time>, String> {
         let mut next = self.rail.deadline();
+        if let Some(emi) = &self.emi {
+            next = next
+                .into_iter()
+                .chain(emi.detector.deadline())
+                .chain(emi.trial.next_boundary(at))
+                .min();
+        }
         if self.phase == PowerPhase::Boot {
-            let boot = self.rail.boot();
+            let boot = self.boot;
             let elapsed = at.0 - boot.0;
             let boundary = self
                 .pins
@@ -290,10 +338,10 @@ pub(crate) struct Electrical {
     cursor: usize,
     last: Option<Time>,
     step: Time,
+    scope: Scope,
     pub identity: u64,
     pub due: Option<Time>,
     pub probes: Vec<(crate::TruthId, ElectricalProbe)>,
-    load_clock: Option<Clock>,
     loads: Vec<LoadConnection>,
 }
 
@@ -389,10 +437,10 @@ impl Electrical {
             cursor: 0,
             last: None,
             step: max_step,
+            scope,
             identity,
             due: Some(Time::ZERO),
             probes: Vec::new(),
-            load_clock: None,
             loads: Vec::new(),
         })
     }
@@ -407,14 +455,6 @@ impl Electrical {
         }
         for board in &self.boards {
             if let Some(time) = board.next(at)? {
-                next = next.min(time);
-            }
-        }
-        if let Some(mut clock) = self.load_clock {
-            if checked_due(&clock)? == Some(at) {
-                clock.advance();
-            }
-            if let Some(time) = checked_due(&clock)? {
                 next = next.min(time);
             }
         }
@@ -434,6 +474,7 @@ impl Electrical {
         // До 2^52 нс после пересчёта в секунды сохраняется разрешение в 1 нс (§8, опыт Э2).
         if end.0 > (1u64 << (f64::MANTISSA_DIGITS - 1))
             || self.steps.last().is_some_and(|step| step.at > end)
+            || self.emi().is_some_and(|emi| emi.trial.input().end > end)
         {
             return Err("электрические события или горизонт вне сетки прогона".into());
         }
@@ -441,18 +482,14 @@ impl Electrical {
     }
 
     pub fn close(&mut self, at: Time) -> Result<(), String> {
-        if let Some(clock) = &self.load_clock
-            && checked_due(clock)?.is_some_and(|due| due < at)
-        {
-            return Err("пропущен ток нагрузки: нужен run_electrical_until".into());
-        }
         self.circuit.advance_to(at)?;
         self.last = Some(at);
         Ok(())
     }
 
     pub fn samples(&self) -> Result<Vec<(crate::TruthId, f64)>, String> {
-        self.probes
+        let mut samples = self
+            .probes
             .iter()
             .map(|(id, probe)| {
                 let value = match probe {
@@ -463,7 +500,15 @@ impl Electrical {
                 };
                 Ok((*id, finite(value)?))
             })
-            .collect()
+            .collect::<Result<Vec<_>, String>>()?;
+        if let (Some(emi), Some(at)) = (self.emi(), self.last) {
+            samples.push((emi.voltage, emi.trial.voltage_at(at, emi.coupled)));
+        }
+        Ok(samples)
+    }
+
+    fn emi(&self) -> Option<&EmiPortState> {
+        self.boards.iter().find_map(|board| board.emi.as_ref())
     }
 
     pub fn read_board(
@@ -497,7 +542,7 @@ impl Electrical {
                 PowerPhase::Unpowered => pin.unpowered,
                 PowerPhase::Reset => pin.reset,
                 PowerPhase::Boot => {
-                    let elapsed = at.0 - board.rail.boot().0;
+                    let elapsed = at.0 - board.boot.0;
                     pin.boot
                         .iter()
                         .find(|&&(end, _)| elapsed < end)
@@ -531,6 +576,45 @@ impl Electrical {
         }
         Ok(())
     }
+
+    pub fn has_loads(&self) -> bool {
+        !self.loads.is_empty()
+    }
+
+    pub fn check_load_inputs(&self, control: &control::Engine) -> Result<(), String> {
+        if self
+            .loads
+            .iter()
+            .any(|load| control.owns(load.voltage_input))
+        {
+            return Err("вход напряжения нагрузки уже занят контуром".into());
+        }
+        Ok(())
+    }
+
+    pub fn latch_loads(&mut self, at: Time, entries: &[LogEntry]) -> Result<(), String> {
+        for load in &self.loads {
+            let current = entries
+                .iter()
+                .rev()
+                .find(|entry| {
+                    entry.at == at
+                        && entry.kind == LogKind::Truth
+                        && entry.id == load.next_current.0
+                })
+                .filter(|entry| entry.valid)
+                .map(|entry| entry.value)
+                .ok_or_else(|| {
+                    format!(
+                        "«{}»: нагрузка не опубликовала ток шины на такте {} нс",
+                        load.current_source, at.0
+                    )
+                })?;
+            self.circuit
+                .set_source_step(&load.current_source, finite(current)?)?;
+        }
+        Ok(())
+    }
 }
 
 impl Runtime {
@@ -548,7 +632,7 @@ impl Runtime {
             .electrical
             .as_ref()
             .ok_or("цепь не установлена")?;
-        if electrical.load_clock.is_some() {
+        if electrical.has_loads() {
             return Err("нагрузки цепи уже подключены".into());
         }
         let mut branches: BTreeSet<_> = electrical
@@ -623,7 +707,6 @@ impl Runtime {
                     .chain(format!("{loads:?}").bytes()),
             );
             electrical.loads = loads;
-            electrical.load_clock = Some(Clock::new(rate));
             Ok(())
         })();
         if result.is_err() {
@@ -632,84 +715,9 @@ impl Runtime {
         result
     }
 
-    /// Стыкует удержанные токи с физическими тактами. Между ними обычный
-    /// планировщик закрывает электрические фронты, шаги платы и выдержки сброса.
+    /// Дойти до абсолютного момента по общему расписанию, включая обмен со схемой.
     pub fn run_electrical_until(&mut self, until: Time) -> Result<Status, String> {
-        if self
-            .state
-            .electrical
-            .as_ref()
-            .is_none_or(|circuit| circuit.load_clock.is_none())
-        {
-            return self.run_until(until);
-        }
-        let electrical = self
-            .state
-            .electrical
-            .as_ref()
-            .expect("нагрузки установлены");
-        if electrical.loads.iter().any(|load| {
-            self.state
-                .control
-                .as_ref()
-                .is_some_and(|control| control.owns(load.voltage_input))
-        }) {
-            return Err("вход напряжения нагрузки уже занят контуром".into());
-        }
-        while let Some(electrical) = &self.state.electrical {
-            let Some(clock) = &electrical.load_clock else {
-                break;
-            };
-            let Some(at) = checked_due(clock)?.filter(|&at| at <= until) else {
-                break;
-            };
-            let start = self.state.log.entries().len();
-            if self.run_until(at)? != Status::Running {
-                return Ok(self.status());
-            }
-            if let Err(reason) = self.latch_electrical_loads(at, start) {
-                self.stop(Status::ComponentFailure, reason);
-                return Ok(self.status());
-            }
-        }
-        if self.time() == until && self.state.log.end().started {
-            return Ok(self.status());
-        }
         self.run_until(until)
-    }
-
-    fn latch_electrical_loads(&mut self, at: Time, start: usize) -> Result<(), String> {
-        let electrical = self
-            .state
-            .electrical
-            .as_mut()
-            .expect("нагрузки установлены");
-        let entries = &self.state.log.entries()[start..];
-        for load in &electrical.loads {
-            let current = entries
-                .iter()
-                .rev()
-                .take_while(|entry| entry.at == at)
-                .find(|entry| {
-                    entry.kind == LogKind::Truth && entry.id == load.next_current.0 && entry.valid
-                })
-                .map(|entry| entry.value)
-                .ok_or_else(|| {
-                    format!(
-                        "«{}»: привод не опубликовал ток шины на такте {} нс",
-                        load.current_source, at.0
-                    )
-                })?;
-            electrical
-                .circuit
-                .set_source_step(&load.current_source, finite(current)?)?;
-        }
-        electrical
-            .load_clock
-            .as_mut()
-            .expect("часы нагрузки установлены")
-            .advance();
-        Ok(())
     }
 }
 
@@ -723,4 +731,201 @@ fn finite(value: f64) -> Result<f64, String> {
     } else {
         Err("решатель цепи вернул неконечное значение".into())
     }
+}
+
+impl Runtime {
+    /// Подключить адресованную низкоактивную линию сброса до установки контура.
+    /// В обоих опытах одинаковое расписание. Меняется только возбуждение.
+    pub fn bind_emi_reset(&mut self, trial: EmiTrial, coupled: bool) -> Result<(), String> {
+        self.ensure_configurable()?;
+        if self.state.control.is_some() {
+            return Err("вход сброса подключается до установки управления".into());
+        }
+        let electrical = self
+            .state
+            .electrical
+            .as_ref()
+            .ok_or("цепь не установлена")?;
+        if electrical.emi().is_some() || electrical.scope != trial.input().scope {
+            return Err("повтор входа сброса или несовпадающая область цепи и опыта".into());
+        }
+        let slot = electrical
+            .boards
+            .iter()
+            .position(|board| board.name == trial.input().board)
+            .ok_or("плата адресованного входа сброса не установлена в схеме")?;
+        let detector = Rail::from_detector(trial.detector(), false);
+        let mode = if coupled {
+            "с воздействием"
+        } else {
+            "контроль"
+        };
+        let input = trial.input();
+        let voltage = self.register_truth(
+            &format!(
+                "ЭМС {mode} {:?}: {:?} относительно {:?}",
+                input.source, input.input, input.reference
+            ),
+            "V",
+        )?;
+        let electrical = self.state.electrical.as_mut().expect("цепь проверена");
+        // Обе стороны пары имеют одну идентичность установки. Режим различается
+        // в таблице каналов SIMLOG, которую также проверяет загрузка повтора.
+        electrical.identity = fnv1a(
+            electrical
+                .identity
+                .to_le_bytes()
+                .into_iter()
+                .chain(format!("{input:?}").bytes()),
+        );
+        electrical.boards[slot].emi = Some(EmiPortState {
+            trial: Rc::new(trial),
+            coupled,
+            voltage,
+            detector,
+            caused_reset: None,
+        });
+        Ok(())
+    }
+
+    /// Сопоставить живой опыт и его контроль по свидетельству штатного контура.
+    /// Наблюдение пакета относится к доставке конкретного сообщения на стенде.
+    pub fn compare_emi_reset(
+        &self,
+        baseline: &Runtime,
+        packet: Option<&EmiPacketProbe>,
+    ) -> Result<EmiEvidence, String> {
+        let attached = |rt: &Runtime| -> Result<_, String> {
+            let Some(state) = rt.state.electrical.as_ref().and_then(Electrical::emi) else {
+                return Err("нет установленного входа помехи".into());
+            };
+            Ok((state.trial.clone(), state.coupled, state.caused_reset))
+        };
+        let (trial, coupled, caused_reset) = attached(self)?;
+        let (quiet_trial, quiet_coupled, _) = attached(baseline)?;
+        let active = control::run(self).ok_or("нет журнала опыта с помехой")?;
+        let quiet = control::run(baseline).ok_or("нет журнала контроля")?;
+        let valid_origin = |run: &control::ControlRun<'_>| {
+            matches!(
+                run.origin(),
+                control::RunOrigin::Live | control::RunOrigin::Replay
+            ) && !run.has_external_processes()
+        };
+        if !coupled
+            || quiet_coupled
+            || trial != quiet_trial
+            || active.identity() != quiet.identity()
+            || !valid_origin(&active)
+            || !valid_origin(&quiet)
+        {
+            return Err(
+                "для сравнения нужны связанный опыт и контроль той же установки и конфигурации"
+                    .into(),
+            );
+        }
+        let board = &trial.input().board;
+        let reset_at = |run: &control::ControlRun<'_>| {
+            run.events().iter().find_map(|event| match &event.kind {
+                control::EventKind::ElectricalReset {
+                    board: name,
+                    asserted: true,
+                } if name == board => Some(event.at),
+                _ => None,
+            })
+        };
+        let quiet_end = quiet.end();
+        let active_end = active.end();
+        let common = active_end.time.min(quiet_end.time);
+        let before_effect = |event: &&control::Event| {
+            event.at <= common && caused_reset.is_none_or(|effect| event.at < effect)
+        };
+        if !active
+            .events()
+            .iter()
+            .take_while(before_effect)
+            .eq(quiet.events().iter().take_while(before_effect))
+        {
+            return Err("журналы расходятся до действия связанного сброса".into());
+        }
+        let confirmed_reset = caused_reset.filter(|at| active.events().iter().any(|event| {
+            matches!(&event.kind, control::EventKind::BoardOutput { board: name, event: output, produced_at }
+                if name == board && produced_at == at
+                    && output.output == sim_boards::BoardOutput::Reset(sim_boards::ResetCause::Brownout))
+        }));
+        let observed = (active_end.started && quiet_end.started).then(|| EmiResetObservation {
+            observed_until: common,
+            complete: active.reached_horizon() && quiet.reached_horizon(),
+            reset_at: reset_at(&active),
+            external_asserted_at: confirmed_reset,
+            baseline_reset_at: reset_at(&quiet),
+        });
+        let mut evidence = assess_emi_reset(&trial, observed);
+        if let Some(packet) = packet {
+            let sourced = packet
+                .validate(trial.input().scope)
+                .map_err(|e| e.to_string())?;
+            if sourced
+                && active_end.started
+                && quiet_end.started
+                && common >= packet.deadline
+                && (active_end.status == Status::Running || active_end.time > packet.deadline)
+                && (quiet_end.status == Status::Running || quiet_end.time > packet.deadline)
+            {
+                evidence.packet = packet_witness(&active, &quiet, packet);
+            }
+            if evidence.packet.is_none() {
+                evidence.packet_open = Some("нужны подтверждённый срок и полные журналы отправки и доставки того же пакета в паре опытов".into());
+            }
+        }
+        Ok(evidence)
+    }
+}
+
+fn packet_witness(
+    active: &control::ControlRun<'_>,
+    baseline: &control::ControlRun<'_>,
+    probe: &EmiPacketProbe,
+) -> Option<EmiPacketWitness> {
+    use control::EventKind::{PacketDelivered, PacketSent};
+
+    let sent = |run: &control::ControlRun<'_>| {
+        let mut rows = run.events().iter().filter_map(|event| match &event.kind {
+            PacketSent {
+                route, id, bytes, ..
+            } if route == &probe.route && event.at == probe.sent_at => Some((*id, bytes.clone())),
+            _ => None,
+        });
+        let row = rows.next()?;
+        rows.next().is_none().then_some(row)
+    };
+    let (id, bytes) = sent(baseline)?;
+    if sent(active)? != (id, bytes.clone()) || bytes.is_empty() {
+        return None;
+    }
+    let received = |run: &control::ControlRun<'_>| {
+        run.events().iter().find_map(|event| match &event.kind {
+            PacketDelivered {
+                route,
+                id: got_id,
+                sent_at,
+                bytes: got_bytes,
+            } if route == &probe.route
+                && *got_id == id
+                && *sent_at == probe.sent_at
+                && got_bytes == &bytes
+                && event.at <= probe.deadline =>
+            {
+                Some(event.at)
+            }
+            _ => None,
+        })
+    };
+    Some(EmiPacketWitness {
+        route: probe.route.clone(),
+        id,
+        sent_at: probe.sent_at,
+        deadline: probe.deadline,
+        baseline_received_at: received(baseline)?,
+        disturbed_received_at: received(active),
+    })
 }

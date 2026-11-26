@@ -1,0 +1,51 @@
+format = 1
+
+[parts.ov2640_arducam_u3359]
+kind = "other"
+source = "Arducam U3359 с OV2640, плата UC-265 Rev. A, паспорт §1, §5 и §6; номинал на VCC 3,3 В https://cdn.arducam.com/downloads/modules/OV2640/U3359-1Inch4_2_Megapixel_OV2640_CMOS_Camera_Module_REVA_DS.pdf"
+model_gap = "Сверить на экземпляре маркировку UC-265 Rev. A, распиновку и ориентацию ответной части. Измерить диапазон VCC, уровни и подтяжки SCCB, фронты DVP, состояние выводов при RST/PWDN и снятом питании. Распиновка относится к этой плате Arducam."
+
+# §5 и §6: 20 контактов стандарта Arducam, шаг 2,54 мм. Ключ — номер контакта для
+# сверки монтажа; расположение контакта 1 проверить по маркировке платы (§1, §6).
+# §5: RST активен низким уровнем, PWDN — высоким. SDATA двунаправленный.
+# В режиме DVP на 8 бит используются DOUT9…DOUT2; DOUT1/DOUT0 относятся к режиму 10 бит.
+[parts.ov2640_arducam_u3359.pins]
+vcc   = { contact = "plug", family = "arducam_dvp_20", key = "1", role = "power" }
+gnd   = { contact = "plug", family = "arducam_dvp_20", key = "2", role = "return" }
+scl   = { contact = "plug", family = "arducam_dvp_20", key = "3", role = { signal_in = "gnd" } }
+sdata = { contact = "plug", family = "arducam_dvp_20", key = "4", role = { signal_io = "gnd" } }
+vsync = { contact = "plug", family = "arducam_dvp_20", key = "5", role = { signal_out = "gnd" } }
+href  = { contact = "plug", family = "arducam_dvp_20", key = "6", role = { signal_out = "gnd" } }
+pclk  = { contact = "plug", family = "arducam_dvp_20", key = "7", role = { signal_out = "gnd" } }
+xclk  = { contact = "plug", family = "arducam_dvp_20", key = "8", role = { signal_in = "gnd" } }
+dout9 = { contact = "plug", family = "arducam_dvp_20", key = "9", role = { signal_out = "gnd" } }
+dout8 = { contact = "plug", family = "arducam_dvp_20", key = "10", role = { signal_out = "gnd" } }
+dout7 = { contact = "plug", family = "arducam_dvp_20", key = "11", role = { signal_out = "gnd" } }
+dout6 = { contact = "plug", family = "arducam_dvp_20", key = "12", role = { signal_out = "gnd" } }
+dout5 = { contact = "plug", family = "arducam_dvp_20", key = "13", role = { signal_out = "gnd" } }
+dout4 = { contact = "plug", family = "arducam_dvp_20", key = "14", role = { signal_out = "gnd" } }
+dout3 = { contact = "plug", family = "arducam_dvp_20", key = "15", role = { signal_out = "gnd" } }
+dout2 = { contact = "plug", family = "arducam_dvp_20", key = "16", role = { signal_out = "gnd" } }
+dout1 = { contact = "plug", family = "arducam_dvp_20", key = "17", role = { signal_out = "gnd" } }
+dout0 = { contact = "plug", family = "arducam_dvp_20", key = "18", role = { signal_out = "gnd" } }
+rst   = { contact = "plug", family = "arducam_dvp_20", key = "19", role = { signal_in = "gnd" } }
+pwdn  = { contact = "plug", family = "arducam_dvp_20", key = "20", role = { signal_in = "gnd" } }
+
+# §3 приводит напряжения доменов и типовые значения потребления сенсора.
+# Для входа VCC модуля §5 задаёт только номинал, пределы и ток остаются открытыми.
+[parts.ov2640_arducam_u3359.elements.supply_load]
+kind = "current"
+nodes = ["vcc", "gnd"]
+parameters.ampere.measurement = "Измерить ток модуля по VCC при включении, RST/PWDN, выбранном XCLK, формате, разрешении и частоте кадров."
+
+[parts.ov2640_arducam_u3359.ratings.minimum_supply_voltage]
+quantity = "voltage_v"
+nodes = ["vcc", "gnd"]
+conditions = "Вход питания платы Rev. A при заданном режиме SCCB/DVP и температуре."
+limit.measurement = "Уточнить у изготовителя нижнюю границу VCC и проверить устойчивость работы и сброса на стенде."
+
+[parts.ov2640_arducam_u3359.ratings.maximum_supply_voltage]
+quantity = "voltage_v"
+nodes = ["vcc", "gnd"]
+conditions = "Вход питания платы Rev. A, включая переходные процессы."
+limit.measurement = "Уточнить у изготовителя верхнюю границу VCC и измерить пики напряжения на разъёме."

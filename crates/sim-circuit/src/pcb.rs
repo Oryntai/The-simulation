@@ -7,6 +7,13 @@
 
 use std::fmt;
 
+pub mod clearance;
+pub mod impedance;
+pub mod kicad;
+pub mod layout;
+pub mod ratings;
+pub mod return_path;
+
 /// 1 mil = 0.001 дюйма, м.
 pub const MIL: f64 = 25.4e-6;
 

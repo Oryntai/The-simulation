@@ -1,0 +1,20 @@
+format = 1
+scope = "reference"
+name = "Блок с дифференциальным входом сброса"
+nets = ["rail", "input", "adc", "return", "switch_return"]
+
+[components.board]
+part = "bench_board"
+nets = { p = "rail", io = "input", adc = "adc", g = "return" }
+
+[components.sender]
+part = "bench_switch"
+nets = { g = "switch_return" }
+
+[[bindings]]
+ends = ["board/p", "board/g"]
+target = { kind = "board_power", board = "fixture", rail = "io" }
+
+[[bindings]]
+ends = ["board/adc"]
+target = { kind = "board_pin", board = "fixture", pin = "adc:0", function = "adc" }

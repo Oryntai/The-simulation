@@ -1,0 +1,17 @@
+Т6.5: последовательная цепь идеальной петли
+* Внешняя L по численной квадратуре Неймана, 10 000 серединных интервалов
+* на сторону: mu0/pi * [K(a,r)+K(b,r)-K(a,b)-K(b,a)].
+* K(l,d) = integral_0^l (l-s)/hypot(s,d) ds; a=24 мм, b=16 мм, r=1 мм.
+* Знаки: V(ret) — локальный возврат относительно узла 0,
+* ток индуктивности течёт от feed к ret.
+Vdrive source 0 DC 0 AC 1
+Rsource source feed 25
+Lloop feed ret 35.738699160314n
+Rreturn ret 0 25
+.control
+set numdgt=12
+ac lin 5 100meg 300meg
+print v(ret)
+quit
+.endc
+.end

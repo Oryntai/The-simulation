@@ -1,0 +1,159 @@
+# Синтетический блок. Источники описывают условия этого теста.
+# Ручной реестр: 5 двоичных факторов и одна одноуровневая сетка.
+# Пар до ограничений: C(5, 2) · 4 + 5 · 2 = 50.
+# Вычитаются две пары: покой/резерв и резерв/порыв. Остаётся 48.
+# Троек для 4 факторов безопасности: C(4, 3) · 8 = 32.
+# Вычитается движение/обрыв/тяжёлый блок. Остаётся 31.
+# Для остальных троек можно выбрать основной путь. У всех трёх пар
+# исключённой тройки остаётся допустимое продолжение.
+
+[[pairs]]
+factors = ["cut", "grid"]
+levels = [["intact", "base"], ["open", "base"]]
+
+[[pairs]]
+factors = ["cut", "mass"]
+levels = [["intact", "light"], ["intact", "heavy"], ["open", "light"], ["open", "heavy"]]
+
+[[pairs]]
+factors = ["cut", "mode"]
+levels = [["intact", "idle"], ["intact", "motion"], ["open", "idle"], ["open", "motion"]]
+
+[[pairs]]
+factors = ["cut", "path"]
+levels = [["intact", "main"], ["intact", "reserve"], ["open", "main"], ["open", "reserve"]]
+
+[[pairs]]
+factors = ["cut", "wind"]
+levels = [["intact", "still"], ["intact", "gust"], ["open", "still"], ["open", "gust"]]
+
+[[pairs]]
+factors = ["grid", "mass"]
+levels = [["base", "light"], ["base", "heavy"]]
+
+[[pairs]]
+factors = ["grid", "mode"]
+levels = [["base", "idle"], ["base", "motion"]]
+
+[[pairs]]
+factors = ["grid", "path"]
+levels = [["base", "main"], ["base", "reserve"]]
+
+[[pairs]]
+factors = ["grid", "wind"]
+levels = [["base", "still"], ["base", "gust"]]
+
+[[pairs]]
+factors = ["mass", "mode"]
+levels = [["light", "idle"], ["light", "motion"], ["heavy", "idle"], ["heavy", "motion"]]
+
+[[pairs]]
+factors = ["mass", "path"]
+levels = [["light", "main"], ["light", "reserve"], ["heavy", "main"], ["heavy", "reserve"]]
+
+[[pairs]]
+factors = ["mass", "wind"]
+levels = [["light", "still"], ["light", "gust"], ["heavy", "still"], ["heavy", "gust"]]
+
+[[pairs]]
+factors = ["mode", "path"]
+levels = [["idle", "main"], ["motion", "main"], ["motion", "reserve"]]
+
+[[pairs]]
+factors = ["mode", "wind"]
+levels = [["idle", "still"], ["idle", "gust"], ["motion", "still"], ["motion", "gust"]]
+
+[[pairs]]
+factors = ["path", "wind"]
+levels = [["main", "still"], ["main", "gust"], ["reserve", "still"]]
+
+[[triples]]
+factors = ["cut", "mass", "mode"]
+levels = [
+    ["intact", "light", "idle"], ["intact", "light", "motion"],
+    ["intact", "heavy", "idle"], ["intact", "heavy", "motion"],
+    ["open", "light", "idle"], ["open", "light", "motion"],
+    ["open", "heavy", "idle"],
+]
+
+[[triples]]
+factors = ["cut", "mass", "wind"]
+levels = [
+    ["intact", "light", "still"], ["intact", "light", "gust"],
+    ["intact", "heavy", "still"], ["intact", "heavy", "gust"],
+    ["open", "light", "still"], ["open", "light", "gust"],
+    ["open", "heavy", "still"], ["open", "heavy", "gust"],
+]
+
+[[triples]]
+factors = ["cut", "mode", "wind"]
+levels = [
+    ["intact", "idle", "still"], ["intact", "idle", "gust"],
+    ["intact", "motion", "still"], ["intact", "motion", "gust"],
+    ["open", "idle", "still"], ["open", "idle", "gust"],
+    ["open", "motion", "still"], ["open", "motion", "gust"],
+]
+
+[[triples]]
+factors = ["mass", "mode", "wind"]
+levels = [
+    ["light", "idle", "still"], ["light", "idle", "gust"],
+    ["light", "motion", "still"], ["light", "motion", "gust"],
+    ["heavy", "idle", "still"], ["heavy", "idle", "gust"],
+    ["heavy", "motion", "still"], ["heavy", "motion", "gust"],
+]
+
+[description.factors.cut]
+safety = true
+source = { kind = "derived", reference = "два состояния цепи синтетического блока" }
+levels = { kind = "faults", values = { intact = [], open = [{ node = "line", kind = "wire_open" }] } }
+
+[description.factors.grid]
+safety = false
+source = { kind = "derived", reference = "единственная сетка синтетического блока" }
+levels = { kind = "grid", values = { base = "base" } }
+
+[description.factors.mass]
+safety = true
+source = { kind = "derived", reference = "два заданных значения массы блока: 1 и 2 кг" }
+levels = { kind = "axis", parameter = { kind = "mass", body = "block/rod" }, unit = "kg", nominal = 1.0, values = { light = 1.0, heavy = 2.0 } }
+
+[description.factors.mode]
+safety = true
+source = { kind = "derived", reference = "покой и движение синтетического блока" }
+levels = { kind = "mode", values = { idle = { station = "block", mode = "idle" }, motion = { station = "block", mode = "motion" } } }
+
+[description.factors.path]
+safety = false
+source = { kind = "derived", reference = "два пути синтетического блока" }
+levels = { kind = "path", values = { main = "main", reserve = "reserve" } }
+
+[description.factors.wind]
+safety = true
+source = { kind = "derived", reference = "два заданных значения скорости среды: 0 и 1 м/с" }
+levels = { kind = "axis", parameter = { kind = "wind", axis = 0 }, unit = "m/s", nominal = 0.0, values = { still = 0.0, gust = 1.0 } }
+
+[description.constraints.reserve_idle]
+when = { mode = "idle", path = "reserve" }
+reason = "в покое резервный путь заблокирован"
+source = { kind = "derived", reference = "таблица условий синтетического блока" }
+
+[description.constraints.reserve_gust_light]
+when = { path = "reserve", wind = "gust", mass = "light" }
+reason = "при порыве резервный путь заблокирован для лёгкого блока"
+source = { kind = "derived", reference = "таблица условий синтетического блока" }
+
+[description.constraints.reserve_gust_heavy]
+when = { path = "reserve", wind = "gust", mass = "heavy" }
+reason = "при порыве резервный путь заблокирован для тяжёлого блока"
+source = { kind = "derived", reference = "таблица условий синтетического блока" }
+
+[description.constraints.motion_open_heavy_still]
+when = { mode = "motion", cut = "open", mass = "heavy", wind = "still" }
+reason = "при обрыве тяжёлый блок в неподвижной среде удерживается упором"
+source = { kind = "derived", reference = "таблица условий синтетического блока" }
+
+[description.constraints.motion_open_heavy_gust]
+when = { mode = "motion", cut = "open", mass = "heavy", wind = "gust" }
+reason = "при обрыве тяжёлый блок на ветру удерживается упором"
+source = { kind = "derived", reference = "таблица условий синтетического блока" }

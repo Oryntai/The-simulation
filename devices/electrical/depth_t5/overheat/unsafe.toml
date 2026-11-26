@@ -1,0 +1,40 @@
+format = 1
+connection = "стык-т5-эталон"
+revision = "bench-t5-r1"
+alloy = "indalloy-256"
+tool = "bench-t5-r1"
+
+[geometry]
+pad_capacity_j_k = { min = 0.015, nominal = 0.015, max = 0.015, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+lead_capacity_j_k = { min = 0.01, nominal = 0.01, max = 0.01, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+copper_capacity_j_k = { min = 0.02, nominal = 0.02, max = 0.02, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+pad_lead_w_k = { min = 0.03, nominal = 0.03, max = 0.03, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+pad_copper_w_k = { min = 0.18, nominal = 0.18, max = 0.18, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+copper_polygon_w_k = { min = 0.2, nominal = 0.2, max = 0.2, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+polygon_k = { min = 300.0, nominal = 300.0, max = 300.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: тепловая постановка" }
+pitch_m = { min = 0.001, nominal = 0.001, max = 0.001, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: шаг площадок мерного стенда" }
+
+[mode]
+tip_initial_k = { min = 603.0, nominal = 603.0, max = 603.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: начальный вектор температур" }
+pad_initial_k = { min = 458.0, nominal = 458.0, max = 458.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: начальный вектор температур" }
+lead_initial_k = { min = 423.0, nominal = 423.0, max = 423.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: начальный вектор температур" }
+copper_initial_k = { min = 373.0, nominal = 373.0, max = 373.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: начальный вектор температур" }
+requested_thermal_power_w = { min = 27.0, nominal = 27.0, max = 27.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: запрос 5/4 лимита" }
+force_n = { min = 1.0, nominal = 1.0, max = 1.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: условие контакта" }
+duration_s = { min = 1.77, nominal = 1.77, max = 1.77, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: выдержки контакта" }
+solder_volume_m3 = { min = 3.75e-10, nominal = 3.75e-10, max = 3.75e-10, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: доза мерной заготовки" }
+
+[mode.contact]
+state = "touching"
+source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: условие контакта"
+conductance_w_k = { min = 0.12, nominal = 0.12, max = 0.12, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: проводимость жало–площадка при 1 Н" }
+
+[limits]
+wetting_k = { min = 500.0, nominal = 500.0, max = 500.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: пределы процесса" }
+max_time_to_wet_s = { min = 1.0, nominal = 1.0, max = 1.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: пределы процесса" }
+min_above_liquidus_s = { min = 0.5, nominal = 0.5, max = 0.5, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: пределы процесса" }
+max_above_liquidus_s = { min = 1.2, nominal = 1.2, max = 1.2, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: пределы процесса" }
+max_pad_k = { min = 515.0, nominal = 515.0, max = 515.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: пределы процесса" }
+max_component_k = { min = 520.0, nominal = 520.0, max = 520.0, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: пределы процесса" }
+min_volume_m3 = { min = 2.5e-10, nominal = 2.5e-10, max = 2.5e-10, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: нижний предел дозы для шага 1 мм" }
+bridge_volume_m3 = { min = 5.0e-10, nominal = 5.0e-10, max = 5.0e-10, source.datasheet = "Расчётный стенд bench-t5-r1, expected.md: верхний предел дозы для шага 1 мм" }

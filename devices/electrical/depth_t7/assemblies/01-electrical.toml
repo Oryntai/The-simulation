@@ -1,0 +1,14 @@
+version = 1
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 30000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 01 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 2.2, source = { kind = "estimate", reference = "Модельный ход из tasks/stage6.toml: 0–2,2 рад" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 30000000
+max_gap_ns = 25000 # Один такт physics_hz штатного мира.

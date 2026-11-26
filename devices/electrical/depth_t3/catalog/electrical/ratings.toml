@@ -1,0 +1,150 @@
+format = 1
+[parts]
+
+[depth_ratings.capacitor_bench_8]
+scope = "reference"
+part = "cap_8"
+
+[depth_ratings.capacitor_bench_8.data]
+kind = "capacitor_stress"
+rated_voltage_v = { min = 12.0, nominal = 12.0, max = 12.0, source = { derived = "Условные 12 В до снижения номинала" } }
+max_hotspot_k = { min = 303.0, nominal = 303.0, max = 303.0, source = { derived = "Изотермический стенд: условный предел 303 К" } }
+
+[depth_ratings.capacitor_bench_8.data.voltage_derating]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+cells = [{ range = { min = 0.75, nominal = 0.75, max = 0.75, source = { derived = "Стендовый коэффициент 75% при 300 К" } } }]
+
+[depth_ratings.capacitor_bench_8.data.ripple_rms_a]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+frequencies_hz = [1000.0]
+cells = [{ range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условный RMS 1 А при 1 кГц и 300 К" } } }]
+
+[depth_ratings.capacitor_bench_8.data.esr_ohm]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+frequencies_hz = [1000.0]
+cells = [{ range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условный ESR 1 Ом при 1 кГц и 300 К, в DC на ток не влияет" } } }]
+
+[depth_ratings.capacitor_bench_10]
+scope = "reference"
+part = "cap_10"
+
+[depth_ratings.capacitor_bench_10.data]
+kind = "capacitor_stress"
+rated_voltage_v = { min = 12.0, nominal = 12.0, max = 12.0, source = { derived = "Условные 12 В до снижения номинала" } }
+max_hotspot_k = { min = 303.0, nominal = 303.0, max = 303.0, source = { derived = "Изотермический стенд: условный предел 303 К" } }
+
+[depth_ratings.capacitor_bench_10.data.voltage_derating]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+cells = [{ range = { min = 0.75, nominal = 0.75, max = 0.75, source = { derived = "Стендовый коэффициент 75% при 300 К" } } }]
+
+[depth_ratings.capacitor_bench_10.data.ripple_rms_a]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+frequencies_hz = [1000.0]
+cells = [{ range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условный RMS 1 А при 1 кГц и 300 К" } } }]
+
+[depth_ratings.capacitor_bench_10.data.esr_ohm]
+temperature_basis = "ambient"
+temperatures_k = [300.0]
+frequencies_hz = [1000.0]
+cells = [{ range = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Условный ESR 1 Ом при 1 кГц и 300 К, в DC на ток не влияет" } } }]
+
+[depth_ratings.switch_bench]
+scope = "reference"
+part = "thermal_step"
+
+[depth_ratings.switch_bench.data]
+kind = "switch_thermal"
+max_junction_k = { min = 310.0, nominal = 310.0, max = 310.0, source = { derived = "Условный предел перехода 310 К" } }
+theta_ja_k_per_w = { min = 3.0, nominal = 3.0, max = 3.0, source = { derived = "Суммарное тепловое сопротивление двух полюсов 1 + 2 К/Вт" } }
+agreement_tolerance_k = { min = 1e-06, nominal = 1e-06, max = 1e-06, source = { derived = "Допуск сравнения с точным стационарным пределом" } }
+fully_on_vgs_v = { min = 5.0, nominal = 5.0, max = 5.0, source = { derived = "Полное открытие задано при 5 В: 2 В относится к линейной области" } }
+
+[depth_ratings.switch_bench.data.foster]
+fit_error_k = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Параметры RC задают сам стенд" } }
+poles = [
+  { resistance_k_per_w = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Первый полюс 1 К/Вт" } }, time_constant_s = { min = 1.0, nominal = 1.0, max = 1.0, source = { derived = "Первый полюс 1 с" } } },
+  { resistance_k_per_w = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Второй полюс 2 К/Вт" } }, time_constant_s = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Второй полюс 2 с" } } },
+]
+
+[depth_ratings.switch_bench.data.soa]
+duty = "single_pulse"
+vds_edges_v = [4.0]
+id_edges_a = [2.0]
+case_edges_k = [300.0]
+limits = [{ kind = "continuous", source = { derived = "Стендовое окно 4 В / 2 А при 300 К ограничено только тепловой проверкой" } }]
+applicability = { derived = "Один линейный импульс и неизменная температура корпуса" }
+
+[depth_ratings.cable_bench]
+scope = "reference"
+
+[depth_ratings.cable_bench.data]
+kind = "cable_flex"
+usable_length_m = { min = 0.197, nominal = 0.197, max = 0.197, source = { derived = "Шаблон: свободная длина 197 мм" } }
+min_bend_radius_m = { min = 0.01, nominal = 0.01, max = 0.01, source = { derived = "Шаблон: минимальный статический радиус 10 мм" } }
+
+[depth_ratings.cable_bench.data.curve]
+source = { derived = "Условная ресурсная огибающая при 300 К для плоского полного хода" }
+bands = [{ cycles = [10000, 10000], orientation = "plane", profile = "stroke", temperature_k = [300.0, 300.0], min_bend_radius_m = { min = 0.01, nominal = 0.01, max = 0.01, source = { derived = "Условный радиус 10 мм на 10000 циклов стенда" } } }]
+
+[depth_ratings.fuse_slow]
+scope = "reference"
+part = "series_fault"
+
+[depth_ratings.fuse_slow.data]
+kind = "fuse_coordination"
+
+[depth_ratings.fuse_slow.data.interrupt]
+conditions = { temperature_k = [300.0, 300.0], time_constant_s = [0.0, 0.0], waveform = { kind = "dc_step" } }
+max_prospective_current_a = { min = 30.0, nominal = 30.0, max = 30.0, source = { derived = "Условная отключающая способность 30 А" } }
+max_recovery_voltage_v = { min = 24.0, nominal = 24.0, max = 24.0, source = { derived = "Условное допустимое восстанавливающееся напряжение 24 В" } }
+
+[depth_ratings.fuse_slow.data.tcc]
+stage = "total_clearing"
+conditions = { temperature_k = [300.0, 300.0], time_constant_s = [0.0, 0.0], waveform = { kind = "dc_step" } }
+recovery_voltage_v = [12.0, 12.0]
+bands = [{ prospective_current_a = [20.0, 20.0], time_s = { min = 0.028, nominal = 0.028, max = 0.03, source = { derived = "Условная вилка полного отключения при 20 А на имитаторе предохранителя" } } }]
+
+[depth_ratings.fuse_slow.data.wire]
+start_temperature_k = [300.0, 300.0]
+damage_i2t_a2s = { min = 8.0, nominal = 8.0, max = 9.2, source = { derived = "Условная вилка импульсной дозы провода 8–9,2 А²·с" } }
+
+[depth_ratings.fuse_slow.data.switch]
+start_temperature_k = [300.0, 300.0]
+current_a = [20.0, 20.0]
+voltage_v = [2.0, 2.0]
+waveform = { kind = "dc_step" }
+damage_time_s = { min = 0.025, nominal = 0.025, max = 0.027, source = { derived = "Условная SOA ключа 25–27 мс при 2 В / 20 А" } }
+
+[depth_ratings.fuse_fast]
+scope = "reference"
+part = "series_fault"
+
+[depth_ratings.fuse_fast.data]
+kind = "fuse_coordination"
+
+[depth_ratings.fuse_fast.data.interrupt]
+conditions = { temperature_k = [300.0, 300.0], time_constant_s = [0.0, 0.0], waveform = { kind = "dc_step" } }
+max_prospective_current_a = { min = 30.0, nominal = 30.0, max = 30.0, source = { derived = "Условная отключающая способность 30 А" } }
+max_recovery_voltage_v = { min = 24.0, nominal = 24.0, max = 24.0, source = { derived = "Условное допустимое восстанавливающееся напряжение 24 В" } }
+
+[depth_ratings.fuse_fast.data.tcc]
+stage = "total_clearing"
+conditions = { temperature_k = [300.0, 300.0], time_constant_s = [0.0, 0.0], waveform = { kind = "dc_step" } }
+recovery_voltage_v = [12.0, 12.0]
+bands = [{ prospective_current_a = [20.0, 20.0], time_s = { min = 0.015, nominal = 0.015, max = 0.017, source = { derived = "Условная вилка полного отключения при 20 А на имитаторе предохранителя" } } }]
+
+[depth_ratings.fuse_fast.data.wire]
+start_temperature_k = [300.0, 300.0]
+damage_i2t_a2s = { min = 8.0, nominal = 8.0, max = 9.2, source = { derived = "Условная вилка импульсной дозы провода 8–9,2 А²·с" } }
+
+[depth_ratings.fuse_fast.data.switch]
+start_temperature_k = [300.0, 300.0]
+current_a = [20.0, 20.0]
+voltage_v = [2.0, 2.0]
+waveform = { kind = "dc_step" }
+damage_time_s = { min = 0.025, nominal = 0.025, max = 0.027, source = { derived = "Условная SOA ключа 25–27 мс при 2 В / 20 А" } }

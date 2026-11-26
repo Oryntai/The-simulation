@@ -455,6 +455,195 @@ fn переход_rlc_и_ошибки_ориентации() {
 }
 
 #[test]
+fn адресованный_эквивалент_снимает_шину_на_фактической_ветви() {
+    struct Stand(PathBuf);
+    impl Drop for Stand {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let dir = std::env::temp_dir().join(format!("electrical-load-{}", std::process::id()));
+    fs::create_dir(&dir).unwrap();
+    let stand = Stand(dir);
+    let write = |name, text: &str| fs::write(stand.0.join(name), text).unwrap();
+    write(
+        "body.toml",
+        r#"
+format = 3
+name = "Блок"
+schematic = "scheme.toml"
+[[links]]
+name = "корпус"
+joint = { kind = "slide", axis = [1.0, 0.0, 0.0] }
+# Единичный куб массой 6 кг имеет I = m·a²/6 = 1 кг·м².
+mass = { kind = "explicit", mass_kg = 6.0, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [1.0, 1.0, 1.0, 0.0, 0.0, 0.0], provenance = { derived = "синтетический куб" } }
+"#,
+    );
+    write(
+        "world.toml",
+        r#"
+format = 3
+name = "Блок"
+seed = 1
+# Один такт в миллисекунду для проверки установившегося делителя.
+physics_hz = 1000
+gravity_m_s2 = [0.0, 0.0, 0.0]
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+[[devices]]
+name = "блок"
+file = "body.toml"
+"#,
+    );
+    write("control.toml", "version = 1\n");
+    write(
+        "scheme.toml",
+        r#"
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["вход", "выход", "общий"]
+[components.part]
+part = "divider"
+nets = { input = "вход", output = "выход", common = "общий" }
+# Одноимённая шина служит проверкой ошибочного замера на входе.
+[rails.resistor]
+ends = ["part/input", "part/common"]
+reverse_limit_v = { measurement = "Снять обратное напряжение" }
+"#,
+    );
+    let local = r#"
+format = 1
+[parts.divider]
+kind = "other"
+source = "Синтетический стенд. Источник Тевенина и сопротивление из корпуса Э1. Добавлена испытательная ступень тока 10 мА."
+reference_only = true
+[parts.divider.pins]
+input = { contact = "bare", role = "power" }
+output = { contact = "bare", role = "power" }
+common = { contact = "bare", role = "return" }
+[parts.divider.elements]
+emf = { kind = "voltage", nodes = ["input", "common"], parameters.volt = { measurement = "Замерить ЭДС", range = { min = 5, nominal = 5, max = 5, source = { derived = "ЭДС корпуса Э1" } } } }
+feed = { kind = "resistor", nodes = ["input", "output"], parameters.ohm = { measurement = "Замерить сопротивление источника", range = { min = 1, nominal = 1, max = 1, source = { derived = "Тевенин корпуса Э1" } } } }
+load = { kind = "resistor", nodes = ["output", "common"], parameters.ohm = { measurement = "Замерить сопротивление нагрузки", range = { min = 100, nominal = 100, max = 100, source = { derived = "нагрузка корпуса Э1" } } } }
+sink = { kind = "current", nodes = ["output", "common"], parameters.ampere = { measurement = "Замерить знаковый ток", range = { min = 0.01, nominal = 0.01, max = 0.01, source = { derived = "постоянная испытательная нагрузка 10 мА" } } } }
+"#;
+    write("local.toml", local);
+    let profile = r#"
+format = 1
+# Период физической сетки стенда.
+step_ns = 1000000
+source = "Закон Ома и баланс токов блока"
+control = "control.toml"
+parts = "local.toml"
+[circuits."блок".loads]
+resistor = { branch = "part/load", role = "resistive" }
+sink = { branch = "part/sink", role = "current" }
+"#;
+    write("profile.toml", profile);
+    let world = stand.0.join("world.toml");
+    let profile_path = stand.0.join("profile.toml");
+    let catalog = root().join("catalog");
+    let horizon = Time(1_000_000); // Один такт из world.toml.
+    let load = || {
+        LiveExperiment::load(
+            &world,
+            &profile_path,
+            &catalog,
+            None,
+            horizon,
+            LivePath::Full,
+        )
+    };
+    let cli = || {
+        Command::new(env!("CARGO_BIN_EXE_sim-run"))
+            .arg(&world)
+            .args(["--duration", &horizon.as_secs().to_string(), "--electrical"])
+            .arg(&profile_path)
+            .arg("--catalog")
+            .arg(&catalog)
+            .arg("--json")
+            .output()
+            .unwrap()
+    };
+
+    let mut run = load().unwrap();
+    finish(&mut run, horizon.0);
+    let output = cli();
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(output.status.success(), "{json}");
+    let verdict = &json["electrical_verdict"];
+    assert_eq!(verdict["simulation"], "NotProven");
+    let loads = &verdict["live"]["loads"]["блок"];
+    for (name, branch, ampere) in [
+        ("resistor", "part/load", (5.0 - 0.01) / 101.0),
+        ("sink", "part/sink", 0.01),
+    ] {
+        let load = &loads[name];
+        assert_eq!(load["branch"], branch);
+        assert_eq!(load["physical_outcome"], "not_analyzed");
+        assert_eq!(
+            load["voltage_ends"],
+            serde_json::json!(["part/output", "part/common"])
+        );
+        let measure = |key: &str| {
+            let row = trace(
+                run.runtime.log(),
+                load[key].as_str().unwrap(),
+                LogKind::Truth,
+            );
+            value(&row, horizon.0)
+        };
+        // (5 В − U)/1 Ом = U/100 Ом + 10 мА.
+        // 1 нВ / 1 нА на округление линейного расчёта, как в electrical_static.
+        approx(
+            measure("voltage_channel"),
+            (5.0 - 0.01) * 100.0 / 101.0,
+            1e-9,
+        );
+        approx(measure("current_channel"), ampere, 1e-9);
+    }
+    let invalid = |variant: &str, reason: &str| {
+        write("profile.toml", variant);
+        let error = load().err().expect("некорректный профиль принят");
+        assert!(error.contains(reason), "{error}");
+        let output = cli();
+        assert_eq!(output.status.code(), Some(2));
+        let error = String::from_utf8_lossy(&output.stdout);
+        assert!(error.contains(reason), "{error}");
+    };
+    invalid(
+        &profile.replace("part/sink", "part/load"),
+        "два владельца питания",
+    );
+    invalid(
+        &profile.replace(
+            r#"[circuits."блок".loads]"#,
+            r#"[circuits."блок"]
+steps = [{ branch = "part/sink", at_ns = 1000000, value = 0 }]
+[circuits."блок".loads]"#,
+        ),
+        "два владельца питания",
+    );
+    invalid(&profile.replace(r#"branch = "part/load", "#, ""), "branch");
+    invalid(
+        &profile.replace("part/load", "part/unknown"),
+        "не найдена ветвь",
+    );
+    invalid(
+        &profile.replace("part/load", "part/emf"),
+        "не соответствует роли",
+    );
+    invalid(&profile.replace("part/load", "part/feed"), "к возврату");
+    invalid(
+        &profile.replace("step_ns = 1000000", "step_ns = nan"),
+        "конечные числа",
+    );
+}
+
+#[test]
 #[ignore = "Внешнее измерение времени на реальных входах. Запускается отдельно в release."]
 fn compare_electrical_runtime_cost() {
     const TRIALS: usize = 3; // Нечётная выборка из плана сравнения живых прогонов.

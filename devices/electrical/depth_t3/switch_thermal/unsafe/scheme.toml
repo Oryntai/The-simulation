@@ -1,0 +1,53 @@
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["p", "d", "s", "g"]
+
+[components.switch]
+part = "thermal_step"
+nets = { p = "p", d = "d", s = "s", g = "g" }
+
+[[modes.cases]]
+mode = { kind = "normal" }
+source = { derived = "Аналитическая постановка синтетического стенда Т3" }
+probes = [{ kind = "current", branch = { kind = "element", component = "switch", element = "channel" } }]
+# Наносекундный фронт отключения разрешён электрическим опытом. Тепловая
+# постановка использует идеальную ступень на правой границе фронта.
+window = { step_ns = 100000000, end_ns = 10000000000 }
+sources = [
+  { branch = { kind = "element", component = "switch", element = "emf" }, points = [[0, 6.0], [1999999999, 6.0], [2000000000, 0.0]], source = { derived = "Отключение источника 6 В в конце импульса" } },
+  { branch = { kind = "element", component = "switch", element = "gate" }, points = [[0, 2.0], [1999999999, 2.0], [2000000000, 0.0]], source = { derived = "Отключение управляющего напряжения в конце импульса" } },
+]
+
+[[depth_checks]]
+id = "switch_thermal"
+mode = { kind = "normal" }
+branch = { kind = "element", component = "switch", element = "channel" }
+window = { start_ns = 0, end_ns = 10000000000 }
+applicability = { derived = "Аналитическая постановка синтетического стенда Т3" }
+reference_only = true
+event = { kind = "mode_entered", at_ns = 2000000000, branch = { kind = "element", component = "switch", element = "channel" }, source = { derived = "Начало интервала с нулевым током и напряжением" } }
+
+[depth_checks.check]
+kind = "switch_thermal"
+# 6 В / (1 + 2) Ом = 2 А; на канале 4 В, значит P = 8 Вт.
+# Tj(t) = 300 + 8·[(1−exp(−t)) + 2·(1−exp(−t/2))].
+# Ключ выключен через 2 / 0,5 с, максимум достигается в конце импульса.
+terminals = ["switch/d", "switch/s", "switch/g"]
+rating = "switch_bench"
+ambient_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "Окружение стенда 300 К" } }
+case_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "Корпус при 300 К" } }
+initial_rises_k = [{ min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Первый полюс исходно в равновесии" } }, { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Второй полюс исходно в равновесии" } }]
+thermal_applicability = { derived = "Два тепловых полюса стенда и постоянная опорная температура" }
+
+[[depth_checks.check.segments]]
+window = { start_ns = 0, end_ns = 2000000000 }
+vds_v = { min = 4.0, nominal = 4.0, max = 4.0, source = { derived = "Заданный рабочий участок резистивного эквивалента, 4 В / 2 А при Vgs = 2 В" } }
+id_a = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Заданный рабочий участок резистивного эквивалента, 4 В / 2 А при Vgs = 2 В" } }
+vgs_v = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "Заданный рабочий участок резистивного эквивалента, 4 В / 2 А при Vgs = 2 В" } }
+
+[[depth_checks.check.segments]]
+window = { start_ns = 2000000000, end_ns = 10000000000 }
+vds_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "После снятия питания ток и напряжения нулевые" } }
+id_a = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "После снятия питания ток и напряжения нулевые" } }
+vgs_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "После снятия питания ток и напряжения нулевые" } }

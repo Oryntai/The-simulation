@@ -1,0 +1,146 @@
+# Проверка останова и каждого входа отдельно, пока регулятор ещё наблюдает входы.
+# Режим, стимулы, окна и стендовые пределы взяты из stage6.toml.
+# Только перечисленные инъекции. Штатный опыт этого режима служит контролем.
+# 300 мс = 75 периодов по 4 мс. До этой отметки контроллер читает оба тахометра и ИМУ.
+# Для отказов взят диагностический диапазон угла ±1,7 рад из режима «разомкнутый».
+version = 1
+control = "../stage6-control.toml"
+profile = "profile.toml"
+
+[[modes]]
+id = "удержание"
+horizon_ns = 700000000
+before_ns = 60000000
+after_ns = 150000000
+max_gap_ns = 1000000
+source = { kind = "derived", reference = "Горизонт покрывает несколько времён 1/√(g/h) для h=0.09 м. Здесь проверяется отдельный отказ на живом пути. Исходная строка: devices/stage6/depth-open.toml." }
+excitation = "момент"
+stimuli = [{ id = "момент", signal = { name = "тележка/возмущение", unit = "N*m" }, at_ns = 100000000, value = 0.015, comparison_value = 0.0, source = { kind = "derived", reference = "Известная нагрузка 1 Н на плече 15 мм в расчётном опыте." } }]
+
+[[modes.faults]]
+fault = { node = "controller:регулятор", kind = "controller_halted" }
+at_ns = 300000000
+source = { kind = "derived", reference = "300 мс из fault_sweep в stage6.toml. Регулятор работает на 250 Гц по stage6-control.toml до инъекции." }
+
+[[modes.faults]]
+fault = { node = "sensor:тележка/иму/x", kind = "sensor_unavailable" }
+at_ns = 300000000
+source = { kind = "derived", reference = "300 мс из fault_sweep в stage6.toml. Регулятор работает на 250 Гц по stage6-control.toml до инъекции." }
+
+[[modes.faults]]
+fault = { node = "sensor:тележка/иму/z", kind = "sensor_unavailable" }
+at_ns = 300000000
+source = { kind = "derived", reference = "300 мс из fault_sweep в stage6.toml. Регулятор работает на 250 Гц по stage6-control.toml до инъекции." }
+
+[[modes.faults]]
+fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }
+at_ns = 300000000
+source = { kind = "derived", reference = "300 мс из fault_sweep в stage6.toml. Регулятор работает на 250 Гц по stage6-control.toml до инъекции." }
+
+[[modes.faults]]
+fault = { node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" }
+at_ns = 300000000
+source = { kind = "derived", reference = "300 мс из fault_sweep в stage6.toml. Регулятор работает на 250 Гц по stage6-control.toml до инъекции." }
+
+[[modes.faults]]
+fault = { node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" }
+at_ns = 300000000
+source = { kind = "derived", reference = "300 мс из fault_sweep в stage6.toml. Регулятор работает на 250 Гц по stage6-control.toml до инъекции." }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание" }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -0.26, max = 0.26, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "controller:регулятор", kind = "controller_halted" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "sensor:тележка/иму/x", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "sensor:тележка/иму/z", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост левое", mode = "удержание", fault = { node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание" }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -0.26, max = 0.26, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание", fault = { node = "controller:регулятор", kind = "controller_halted" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание", fault = { node = "sensor:тележка/иму/x", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание", fault = { node = "sensor:тележка/иму/z", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание", fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание", fault = { node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }
+
+[[criteria]]
+case = { path = "мост правое", mode = "удержание", fault = { node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" } }
+limits = [
+  { kind = "range", signal = { name = "наклон основания", unit = "rad" }, min = -1.7, max = 1.7, source = { kind = "estimate", reference = "15° стендового удержания или 97° наблюдения падения. Рабочий предел конструкции не измерен." } },
+]
+response = { signal = { name = "наклон основания", unit = "rad" }, min_change = 0.005, within_ns = 150000000, source = { kind = "derived", reference = "0.005 рад меньше начального наклона 3° из world.toml." } }

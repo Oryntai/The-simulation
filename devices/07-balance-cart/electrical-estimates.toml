@@ -1,0 +1,95 @@
+format = 1
+# Точечные диапазоны задают только численный опыт. Монтажный лист и вердикт чисел отсюда не получают.
+
+[parts.cart_bus_supply.emf]
+volt = { min = 5.36, nominal = 5.36, max = 5.36, source = { estimate = "Полка 5,36 В из 02-cable-assist/electrical-diagnostics.toml для той же модели N20. Оставляет 0,64 В до границы 6 В модели при обратном токе. Снять прямую и обратную ВАХ фактического источника." } }
+
+[parts.cart_bus_supply.series]
+ohm = { min = 0.25, nominal = 0.25, max = 0.25, source = { estimate = "Оценка: 0,25 Ом из численного эквивалента servo_buck_boost.series в catalog/electrical/diagnostics/nominal.toml. Замерить фактический источник." } }
+
+[parts.cart_bus_supply.filter]
+farad = { min = 0.0001, nominal = 0.0001, max = 0.0001, source = { estimate = "Оценка: 100 мкФ из эталона imu_decoupling.cap в catalog/electrical/diagnostics/nominal.toml. Замерить C и ESR." } }
+
+[parts.cart_series_fuse.closed]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Оценка для опыта Э1: 0,1 Ом. Четырёхпроводно замерить участок выбранной сборки." } }
+
+[parts.cart_harness_core.copper]
+ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Оценка для опыта Э1: 0,1 Ом. Четырёхпроводно замерить участок выбранной сборки." } }
+
+[parts.cart_high_side_cut.gate]
+volt = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "Нулевое начальное разрешение из резерва stage6-control.toml. Замерить уровни и фронты." } }
+
+[parts.cart_high_side_cut.switch]
+on_ohm = { min = 0.1, nominal = 0.1, max = 0.1, source = { estimate = "Оценка из high_side_key_pwm.key в catalog/electrical/diagnostics/nominal.toml. Замерить фактический ключ." } }
+off_ohm = { min = 1000000000.0, nominal = 1000000000.0, max = 1000000000.0, source = { estimate = "Оценка из high_side_key_pwm.key в catalog/electrical/diagnostics/nominal.toml. Замерить фактический ключ." } }
+threshold_v = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "Оценка из high_side_key_pwm.key в catalog/electrical/diagnostics/nominal.toml. Замерить фактический ключ." } }
+hysteresis_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "Оценка из high_side_key_pwm.key в catalog/electrical/diagnostics/nominal.toml. Замерить фактический ключ." } }
+
+[parts.cart_dc_bridge.dc_load]
+ampere = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "Нулевой начальный ток до разрешения модели; далее ток приходит из электромеханики. Замерить ток шины и обмотки." } }
+
+[parts.cart_high_side_cut.reference]
+volt = { min = 3.3, nominal = 3.3, max = 3.3, source = { estimate = "Полка 3,3 В из численного опыта 03. Снять реальные уровни взаимной блокировки." } }
+
+[parts.cart_high_side_cut.discharge]
+on_ohm = { min = 20.0, nominal = 20.0, max = 20.0, source = { estimate = "Сопротивление цепи гашения 20 Ом из стенда inductive_spike Э2, ARCHITECTURE.md §8.3. Измерить разряд, утечку и нагрев кандидата." } }
+off_ohm = { min = 1000000000.0, nominal = 1000000000.0, max = 1000000000.0, source = { estimate = "Оценка высокоомного состояния ключа Э2. Замерить утечку в заряженном канале." } }
+threshold_v = { min = 1.0, nominal = 1.0, max = 1.0, source = { estimate = "Порог численного ключа Э3. Снять реальный порог включения пути разряда." } }
+hysteresis_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { estimate = "Эталонный ключ Э2 без гистерезиса. Снять реальный гистерезис." } }
+
+[parts.cart_dc_bridge.bleed]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_dc_bridge.term_a]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_dc_bridge.term_b]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_dc_bridge.term_pwm]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_dc_bridge.term_dir]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_dc_bridge.term_enable]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_motor_2214.winding]
+ohm = { min = 3.75, nominal = 3.75, max = 3.75, source = { estimate = "Оценка из catalog/drives/n20-100-6v-hp.toml: 6 В / 1,60 А = 3,75 Ом. Стоповый ток экстраполирован. Замерить R(T)." } }
+
+[parts.cart_logic_supply.drop]
+volt = { min = 2.7, nominal = 2.7, max = 2.7, source = { estimate = "Оценка сдвига: 6 В из каталога Pololu минус логическая полка 3,3 В из опыта 03. Замерить dropout и нагрузочную ВАХ." } }
+
+[parts.cart_logic_supply.input]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_control_unit.load]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_control_unit.enca_l]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_control_unit.encb_l]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_control_unit.enca_r]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_control_unit.encb_r]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_imu_bmi270.core]
+ohm = { min = 4817.518248175183, nominal = 4817.518248175183, max = 4817.518248175183, source = { estimate = "Оценка 3,3 В / 685 мкА по стенду 03 и типовому току полной ODR BST-BMI270-DS000-07. Замерить реальный VDD." } }
+
+[parts.cart_imu_bmi270.io]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_imu_bmi270.scl]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_imu_bmi270.sda]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }
+
+[parts.cart_encoder_candidate.load]
+ohm = { min = 1000000.0, nominal = 1000000.0, max = 1000000.0, source = { estimate = "Оценка для опыта Э3: 1 МОм как пассивное завершение. Замерить реальные утечки и входную ВАХ." } }

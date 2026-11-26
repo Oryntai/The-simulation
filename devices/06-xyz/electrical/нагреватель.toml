@@ -1,0 +1,24 @@
+# Электрический вариант той же механической постановки. Численные данные совпадают с одноимённым файлом на уровень выше.
+format = 3
+name = "нагреватель"
+schematic = "../нагреватель-electrical.toml"
+
+[[links]]
+name = "основание"
+joint = { kind = "free", name = "основание", damping = 0.0, friction_loss = 0.0, armature = 0.0 }
+mass = { kind = "explicit", mass_kg = 0.02, com_m = [0.0,0.0,0.0], inertia_kg_m2 = [3e-06, 3e-06, 3e-06, 0, 0, 0], provenance = { estimate = "Численная масса стендовой компоновки с типовыми габаритами. Требуется взвешивание." } }
+
+[[links.mounts]]
+name = "фланец"
+kind = "mechanical"
+interface = "эскизный фланец стенда"
+
+[[links.mounts]]
+name = "силовой-вход"
+kind = "power"
+interface = "xyz_tool_proposal"
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.002, length_m = 0.004 }
+pose = { position_m = [0, 0, -0.02] }
+contact_mask = [16, 32]

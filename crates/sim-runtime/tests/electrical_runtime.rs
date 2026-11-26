@@ -9,15 +9,15 @@ use sim_process::{
     },
 };
 use sim_runtime::{
-    Runtime, Status,
+    Forces, LogKind, Object, Runtime, Status, Truth, TruthId,
     control::{self, ControlAssets, ControlConfig, ControlRecording, EventKind, RunSpec},
     electrical::{
         BoardConnection, BoardCurrents, CircuitModel, ElectricalProbe, ElectricalSetup,
-        GpioConnection, SourceStep,
+        GpioConnection, LoadConnection, SourceStep,
     },
 };
-use sim_signal::{Rate, Time};
-use sim_world::{CompiledWorld, Provenance};
+use sim_signal::{ChannelId, Command, Rate, Rng, Time};
+use sim_world::{CompiledJoint, CompiledJointKind, CompiledWorld, EffortChannel, Provenance};
 
 // Преобразование единиц SI. Все электрические числа ниже задают синтетический стенд.
 const US: u64 = 1_000;
@@ -141,6 +141,8 @@ struct OhmStand {
     vdd: f64,
     branch_a: f64,
     board_a: f64,
+    next_load_a: f64,
+    load_a: f64,
 }
 
 impl Default for OhmStand {
@@ -152,6 +154,8 @@ impl Default for OhmStand {
             pin: PinState::HighZ,
             branch_a: 0.0,
             board_a: 0.0,
+            next_load_a: 0.0,
+            load_a: 0.0,
         }
     }
 }
@@ -162,6 +166,13 @@ impl CircuitModel for OhmStand {
             || board.pins.iter().any(|pin| pin.contact != "затвор")
         {
             return Err("разрыв привязки стенда".into());
+        }
+        Ok(())
+    }
+
+    fn validate_current_source(&self, plus: &str, minus: &str, branch: &str) -> Result<(), String> {
+        if (plus, minus, branch) != ("vdd", "vss", "i_load") {
+            return Err("неверная ориентация нагрузки стенда".into());
         }
         Ok(())
     }
@@ -184,9 +195,10 @@ impl CircuitModel for OhmStand {
         } else {
             0.0
         };
-        self.vdd = (self.source - self.load) / (1.0 + gate_g + load_g);
+        self.vdd = (self.source - self.load - self.next_load_a) / (1.0 + gate_g + load_g);
         self.branch_a = self.vdd * load_g;
         self.board_a = self.load;
+        self.load_a = self.next_load_a;
         Ok(())
     }
 
@@ -202,6 +214,7 @@ impl CircuitModel for OhmStand {
     fn current(&self, branch: &str) -> Result<f64, String> {
         match branch {
             "i_board" => Ok(self.board_a),
+            "i_load" => Ok(self.load_a),
             "ключ" => Ok(self.branch_a),
             _ => Err("ветвь стенда не найдена".into()),
         }
@@ -211,6 +224,7 @@ impl CircuitModel for OhmStand {
         match name {
             "v_source" => self.source = value,
             "i_board" => self.load = value,
+            "i_load" => self.next_load_a = value,
             _ => return Err("источник стенда не найден".into()),
         }
         Ok(())
@@ -242,9 +256,9 @@ impl ControlAssets for Assets {
     }
 }
 
-fn unloaded() -> Runtime {
+fn stand_world() -> CompiledWorld {
     // Пустая механическая сцена и шаг 10 мкс. Электрические события находятся и между тактами физики.
-    let mut rt = Runtime::load(CompiledWorld {
+    CompiledWorld {
         name: BOARD.into(),
         seed: 0,
         physics: Rate::hz(100_000).unwrap(),
@@ -255,8 +269,11 @@ fn unloaded() -> Runtime {
         drives: vec![],
         sensors: vec![],
         simplifications: vec![],
-    })
-    .unwrap();
+    }
+}
+
+fn unloaded() -> Runtime {
+    let mut rt = Runtime::load(stand_world()).unwrap();
     rt.register_observation("напряжение стенда", "V").unwrap();
     rt
 }
@@ -642,4 +659,227 @@ fn нулевая_начальная_шина_не_даёт_прошивке_п�
             EventKind::ElectricalReset { asserted: true, .. }
         )));
     assert!(!events.iter().any(|event| matches!(event.kind, EventKind::BoardOutput { ref event, .. } if matches!(event.output, BoardOutput::Uart { .. }))));
+}
+
+#[derive(Clone)]
+struct Load {
+    input: ChannelId,
+    voltage: TruthId,
+    current: TruthId,
+    missing_at: Option<Time>,
+    tick: usize,
+}
+
+impl Object for Load {
+    fn update(
+        &mut self,
+        truth: &Truth<'_>,
+        command: &Command,
+        _: &mut Rng,
+        out: &mut Forces,
+    ) -> Result<(), String> {
+        let voltage = command
+            .targets
+            .iter()
+            .find_map(|&(channel, value)| (channel == self.input).then_some(value))
+            .ok_or("нет напряжения нагрузки")?;
+        out.publish(self.voltage, voltage);
+        // Профиль стенда: потребление 0,5 А, возврат 0,25 А, затем разрыв.
+        let profile = [0.5, -0.25, 0.0];
+        if self.missing_at != Some(truth.time()) {
+            out.publish(self.current, profile[self.tick % profile.len()]);
+        }
+        self.tick += 1;
+        Ok(())
+    }
+}
+
+fn load_stand(missing_at: Option<Time>, replay: Option<ControlRecording>) -> Runtime {
+    // Шаг каретки 10 мкс, обмен со схемой каждые 7 мкс. Механическое усилие
+    // не подаётся: вход нагрузки используется только для напряжения шины.
+    let mut rt = Runtime::load(CompiledWorld {
+        name: "каретка".into(),
+        mjcf: r#"<mujoco><option timestep="0.00001" gravity="0 0 0"/>
+            <worldbody><body name="блок">
+                <joint name="ход" type="slide" axis="1 0 0"/>
+                <geom type="sphere" size="0.1" mass="1"/>
+            </body></worldbody></mujoco>"#
+            .into(),
+        joints: vec![CompiledJoint {
+            name: "ход".into(),
+            owner: "каретка".into(),
+            kind: CompiledJointKind::Slide,
+        }],
+        efforts: vec![EffortChannel {
+            name: "питание".into(),
+            joint: "ход".into(),
+            dof: 0,
+        }],
+        ..stand_world()
+    })
+    .unwrap();
+    let input = rt.channel("питание").unwrap();
+    let voltage = rt.register_truth("напряжение нагрузки", "V").unwrap();
+    let current = rt.register_truth("следующий ток нагрузки", "A").unwrap();
+    rt.register_object(
+        "нагрузка",
+        rt.physics_rate(),
+        &[input],
+        Load {
+            input,
+            voltage,
+            current,
+            missing_at,
+            tick: 0,
+        },
+    )
+    .unwrap();
+    rt.install_electrical(
+        ElectricalSetup {
+            max_step: Time(7 * US),
+            scope: Scope::Reference,
+            boards: vec![],
+            sources: vec![],
+            probes: BTreeMap::from([(
+                "ток цепи".into(),
+                ElectricalProbe::Current {
+                    branch: "i_load".into(),
+                },
+            )]),
+        },
+        b"stand-load",
+        OhmStand::default(),
+    )
+    .unwrap();
+    rt.bind_electrical_loads(vec![LoadConnection {
+        plus: "vdd".into(),
+        minus: "vss".into(),
+        current_source: "i_load".into(),
+        voltage_input: input,
+        next_current: current,
+    }])
+    .unwrap();
+    let config = ControlConfig::parse("version=1").unwrap();
+    match replay {
+        Some(recording) => control::install_replay(&mut rt, &config, &Assets, spec(), recording),
+        None => control::install(&mut rt, &config, &Assets, spec()),
+    }
+    .unwrap();
+    rt
+}
+
+fn load_reading(rt: &Runtime, name: &str, us: u64) -> f64 {
+    let id = rt
+        .log()
+        .header()
+        .truth
+        .iter()
+        .position(|spec| spec.name == name)
+        .unwrap() as u32;
+    let mut rows = rt
+        .log()
+        .entries()
+        .iter()
+        .filter(|row| row.kind == LogKind::Truth && row.id == id && row.at == Time(us * US));
+    let row = rows
+        .next()
+        .unwrap_or_else(|| panic!("нет «{name}» на {us} мкс"));
+    assert!(row.valid && rows.next().is_none());
+    row.value
+}
+
+#[test]
+fn общий_такт_удерживает_знаковый_ток_во_всех_путях() {
+    let mut whole = load_stand(None, None);
+    go(&mut whole, END);
+    assert_eq!(whole.time(), END);
+
+    let mut electrical = load_stand(None, None);
+    assert_eq!(
+        electrical.run_electrical_until(END).unwrap(),
+        Status::Running
+    );
+    let mut stepped = load_stand(None, None);
+    for index in 1..=whole.steps() {
+        assert_eq!(stepped.step().unwrap(), Status::Running);
+        assert_eq!(stepped.time(), stepped.physics_rate().tick(index));
+    }
+    for run in [&whole, &electrical, &stepped] {
+        // Ток на границе относится к закрытому интервалу. Фронты удержания
+        // появляются и на внефизических отсчётах сетки 7 мкс.
+        for (us, expected) in [
+            (0, 0.0),
+            (7, 0.5),
+            (10, 0.5),
+            (14, -0.25),
+            (20, -0.25),
+            (21, 0.0),
+        ] {
+            assert_eq!(load_reading(run, "ток цепи", us), expected, "{us} мкс");
+        }
+        // Независимый баланс стенда: V = 3,5 В − I × 1 Ом.
+        // Четыре epsilon учитывают сдвиг опоры на 1,2 В и обратное вычитание.
+        for (us, expected) in [(0, 3.5_f64), (10, 3.0), (20, 3.75), (30, 3.5)] {
+            let voltage = load_reading(run, "напряжение нагрузки", us);
+            assert!((voltage - expected).abs() <= 4.0 * f64::EPSILON * expected);
+        }
+    }
+    assert_eq!(journal(&stepped), journal(&whole));
+    assert_eq!(journal(&electrical), journal(&whole));
+}
+
+#[test]
+fn отсутствующий_ток_останавливает_опыт_на_первом_пропуске() {
+    for missing_at in [Time::ZERO, Time(10 * US)] {
+        let mut whole = load_stand(Some(missing_at), None);
+        let mut electrical = load_stand(Some(missing_at), None);
+        let mut stepped = load_stand(Some(missing_at), None);
+        assert_eq!(whole.run_until(END).unwrap(), Status::ComponentFailure);
+        assert_eq!(
+            electrical.run_electrical_until(END).unwrap(),
+            Status::ComponentFailure
+        );
+        assert_eq!(stepped.step().unwrap(), Status::ComponentFailure);
+        for run in [&whole, &electrical, &stepped] {
+            assert_eq!(run.time(), missing_at);
+            assert_eq!(
+                run.failure().unwrap(),
+                format!(
+                    "«i_load»: нагрузка не опубликовала ток шины на такте {} нс",
+                    missing_at.0
+                )
+            );
+            assert!(run.log().entries().iter().all(|row| row.at <= missing_at));
+            if missing_at != Time::ZERO {
+                assert_eq!(load_reading(run, "ток цепи", 10), 0.5);
+            }
+        }
+        assert_eq!(journal(&stepped), journal(&whole));
+        assert_eq!(journal(&electrical), journal(&whole));
+    }
+}
+
+#[test]
+fn связанная_нагрузка_сохраняет_журнал_после_снимка_и_при_повторе() {
+    let mut original = load_stand(None, None);
+    // На 17 мкс в схеме удерживается обратный ток с такта 10 мкс.
+    go(&mut original, Time(17 * US));
+    let snapshot = original.try_snapshot().unwrap();
+    let mut fork = original.fork().unwrap();
+    go(&mut original, END);
+    let bytes = journal(&original);
+    let recording = control::run(&original).unwrap().recording();
+    let mut replay = load_stand(None, Some(recording));
+
+    original.restore(&snapshot).unwrap();
+    for run in [&mut original, &mut fork, &mut replay] {
+        assert_eq!(run.step().unwrap(), Status::Running);
+        assert_eq!(run.run_electrical_until(END).unwrap(), Status::Running);
+        assert_eq!(journal(run), bytes);
+    }
+    control::verify_replay(&replay).unwrap();
+
+    let mut audit = load_stand(None, None);
+    audit.audit_snapshot(Time(17 * US), END).unwrap();
+    assert_eq!(journal(&audit), bytes);
 }

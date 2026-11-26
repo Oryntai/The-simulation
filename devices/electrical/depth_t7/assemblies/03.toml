@@ -1,0 +1,32 @@
+version = 1
+world = "../../../03-wearable-sensors/world.toml"
+catalog = "../../../../catalog"
+seed = 1 # Зерно из world.toml.
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 6000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 03 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qpos[2]", unit = "m" }, min = 0, source = { kind = "estimate", reference = "Диагностический контроль высоты относительно нулевой плоскости координат world.toml. Старт на 1,643406482372448 м, за 6 мс при 9,80665 м/с² свободное падение меньше 0,2 мм" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 6000000
+max_gap_ns = 500000 # Один такт physics_hz штатного мира.
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический профиль из electrical/acceptance.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Схема и живой путь из electrical-profile.toml" }
+levels = { kind = "path", values = { electric = "electric" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }

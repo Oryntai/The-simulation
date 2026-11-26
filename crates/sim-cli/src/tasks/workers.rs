@@ -1,7 +1,14 @@
 use std::num::NonZeroUsize;
+use std::process::{Command, ExitStatus};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
+
+#[allow(dead_code, reason = "подключение драйвера покрытия относится к Т7.6")]
+#[path = "campaign/depth_budget.rs"]
+pub(super) mod depth_budget;
+
+use depth_budget::{BudgetError, DepthBudget};
 
 /// Один бюджет для сборок, опытов и их строк. Вызвавший поток сам исполняет
 /// строки и может занимать свободные места общего бюджета для помощников.
@@ -44,15 +51,49 @@ impl Workers {
         local: Option<NonZeroUsize>,
         run: impl Fn(T) -> Result<R, String> + Sync,
     ) -> Result<Vec<R>, String> {
+        self.map_admitted(items, local, |item| item, run)
+    }
+
+    /// Команды подаются в каноническом порядке, по одной на каждый фактический опыт.
+    /// Отказ остаётся результатом своей строки. Общий результат ждёт всех исполнителей.
+    #[allow(dead_code, reason = "подключение драйвера покрытия относится к Т7.6")]
+    pub(super) fn map_budgeted(
+        &self,
+        budget: &DepthBudget,
+        commands: Vec<(Command, u32)>,
+        local: Option<NonZeroUsize>,
+        keep_runs: u32,
+        keep_time: std::time::Duration,
+    ) -> Result<Vec<Result<ExitStatus, BudgetError>>, String> {
+        self.map_admitted(
+            commands,
+            local,
+            |(command, runs)| (budget.reserve_for(runs, keep_runs, keep_time), command),
+            |(permit, command)| Ok(permit.and_then(|permit| permit.run(command))),
+        )
+    }
+
+    fn map_admitted<T: Send, A: Send, R: Send>(
+        &self,
+        items: Vec<T>,
+        local: Option<NonZeroUsize>,
+        admit: impl Fn(T) -> A + Sync,
+        run: impl Fn(A) -> Result<R, String> + Sync,
+    ) -> Result<Vec<R>, String> {
         let limit = self
             .limit
             .min(local.map_or(self.limit, NonZeroUsize::get))
             .min(items.len());
         if limit <= 1 {
-            return items.into_iter().map(run).collect();
+            return items.into_iter().map(admit).map(run).collect();
         }
         let pending = Mutex::new(items.into_iter().enumerate());
-        let next = || pending.lock().expect("очередь исполнителей").next();
+        let next = || {
+            let mut pending = pending.lock().expect("очередь исполнителей");
+            let (index, item) = pending.next()?;
+            // Изъятие строки и резерв идут под одним замком в порядке очереди.
+            Some((index, admit(item)))
+        };
         let run = &run;
         thread::scope(|scope| {
             let mut helpers = Vec::new();

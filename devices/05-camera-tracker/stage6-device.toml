@@ -1,5 +1,6 @@
 format = 3
 name = "Одноосный подвес RGB-камеры"
+schematic = "electrical-scheme.toml"
 
 [[links]]
 name = "головка"
@@ -13,7 +14,11 @@ limits_deg = [-45.0, 45.0]
 armature = 0.0
 damping = 0.0
 friction_loss = 0.0
-efforts = [{ name = "скважность", dof = 0 }, { name = "скважность-power", dof = 0 }]
+efforts = [
+    { name = "скважность", dof = 0 },
+    { name = "скважность-power", dof = 0 },
+    { name = "скважность-bus-v", dof = 0 },
+]
 
 [links.mass]
 kind = "explicit"
@@ -39,6 +44,11 @@ effort = "скважность"
 # ω0=310 об/мин, I0=0.10 A, Istall=1.60 A, Tstall=0.16671305 Н·м, N=100.37.
 # Предел стенда равен экстраполированному Istall, аппаратная защита неизвестна.
 current_limit_a = 1.6
+# Границы численного входа, не рабочий диапазон моста. Нижняя — обесточенная
+# шина, верхняя — 6 В + 1,60 А × (1 Ом источника + 8 × 0,1 Ом силовой петли
+# из electrical-scheme.toml и electrical-estimates.toml) при обратном токе.
+voltage_min_v = 0.0
+voltage_max_v = 8.88
 # Аналог maxon DCX 6 M, обмотка 4.5 В: L=R·0.0711 мГн/20.8 Ом, Jрот=0.0179 г·см².
 # https://www.maxongroup.com/medias/sys_master/root/8881015652382/EN-21-085.pdf
 inductance_h = 1.2818509615384614e-5

@@ -1,0 +1,32 @@
+{
+  "chip": "esp32c3",
+  "esp_idf": "ESP-IDF v6.1.1",
+  "qemu": "QEMU emulator version 9.2.2 (esp_develop_9.2.2_20260417)",
+  "esptool": "esptool v5.7.0",
+  "flash_settings": {
+    "flash_mode": "dio",
+    "flash_size": "2MB",
+    "flash_freq": "80m"
+  },
+  "flash_capacity_bytes": 2097152,
+  "regions": [
+    {
+      "name": "bootloader",
+      "offset": "0x0",
+      "size": 20560,
+      "sha256": "8c9eafd95658422ef55c989d0c2b9e7205a6cdb8705cfae51c5b17184e45a8cf"
+    },
+    {
+      "name": "partition-table",
+      "offset": "0x8000",
+      "size": 3072,
+      "sha256": "7f00b6c042a89b15b0cac534f82ed988caf29278ff5700b0c511eb1b5bb7c820"
+    },
+    {
+      "name": "app",
+      "offset": "0x10000",
+      "size": 200064,
+      "sha256": "44b47d915b82b9ee036c2aefde109e8384642085162e2832cb91b922da779128"
+    }
+  ]
+}

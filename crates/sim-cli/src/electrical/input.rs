@@ -2,13 +2,19 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sim_process::{SourcedRange, schematic::*};
 use sim_runtime::electrical::BoardElectricalProfile;
 use sim_signal::Time;
+use sim_task::verdict::ElectricalEvidence;
 use sim_world::{Provenance, WorldWithSchematics};
+
+use crate::tasks::processes::Inputs;
+
+pub(super) use depth::Ratings as DepthRatings;
 
 // Версия первого дискового формата схемы и каталога, независимая от формата мира.
 const FORMAT: u32 = 1;
@@ -20,12 +26,211 @@ pub struct SchematicInput {
     pub compiled: CompiledSchematic,
     pub modes: ModePlan,
     pub(super) crimps: BTreeSet<String>,
+    depth: Arc<[depth::CheckData]>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CatalogInput {
     pub sources: BTreeMap<PathBuf, Vec<u8>>,
     pub catalog: Catalog,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Profile {
+    pub(super) format: u32,
+    pub(super) step_ns: u64,
+    pub(super) source: String,
+    pub(super) control: PathBuf,
+    pub(super) stimuli: Option<PathBuf>,
+    pub(super) measurements: Option<PathBuf>,
+    pub(super) legacy_measurements: Option<PathBuf>,
+    pub(super) parts: Option<PathBuf>,
+    #[serde(default)]
+    pub(super) sampled: BTreeMap<String, PathBuf>,
+    pub(super) circuits: BTreeMap<String, CircuitProfile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CircuitProfile {
+    #[serde(default)]
+    pub(super) loads: BTreeMap<String, LoadEquivalent>,
+    #[serde(default)]
+    pub(super) drives: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(super) reference_drive_min_v: BTreeMap<String, f64>,
+    pub(super) diagnostic_connections: Option<DiagnosticConnections>,
+    #[serde(default)]
+    pub(super) boards: BTreeMap<String, BoardSupply>,
+    #[serde(default)]
+    pub(super) observed_boards: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(super) steps: Vec<Step>,
+    #[serde(default)]
+    pub(super) probes: BTreeMap<String, ProfileProbe>,
+    #[serde(default)]
+    pub(super) meters: BTreeMap<String, Meter>,
+    #[serde(default)]
+    pub(super) voltage_observations: BTreeMap<String, VoltageObservation>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct DiagnosticConnections {
+    pub(super) ohm: f64,
+    pub(super) source: String,
+    pub(super) parameters: Option<PathBuf>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Step {
+    pub(super) branch: String,
+    pub(super) at_ns: u64,
+    pub(super) value: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum ProfileProbe {
+    Voltage { ends: [String; 2] },
+    Current { branch: String },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Meter {
+    pub(super) rate_hz: u64,
+    pub(super) minimum_v: f64,
+    pub(super) source: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct VoltageObservation {
+    pub(super) ends: [String; 2],
+    pub(super) meter: Meter,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BoardSupply {
+    pub(super) rail: String,
+    pub(super) branch: String,
+    pub(super) currents_a: [f64; 4],
+    pub(super) boot_ns: u64,
+    pub(super) initially_in_reset: bool,
+    pub(super) reference_reset: Option<ReferenceReset>,
+    pub(super) phase_source: Option<ConfirmedSource>,
+    #[serde(default)]
+    pub(super) live_pins: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ConfirmedSource {
+    Datasheet(String),
+    Measured(String),
+}
+
+impl From<ConfirmedSource> for Provenance {
+    fn from(source: ConfirmedSource) -> Self {
+        match source {
+            ConfirmedSource::Datasheet(value) => Self::Datasheet(value),
+            ConfirmedSource::Measured(value) => Self::Measured(value),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ReferenceReset {
+    pub(super) falling_v: f64,
+    pub(super) rising_v: f64,
+    pub(super) assert_ns: u64,
+    pub(super) release_ns: u64,
+    pub(super) source: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct LoadEquivalent {
+    pub(super) branch: String,
+    pub(super) role: LoadRole,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum LoadRole {
+    Resistive,
+    Current,
+}
+
+pub(super) struct ProfileInput {
+    pub(super) data: Profile,
+    pub(super) bytes: Vec<u8>,
+    pub(super) dir: PathBuf,
+}
+
+impl ProfileInput {
+    pub(super) fn load<'a>(
+        path: &Path,
+        files: &mut Inputs,
+        instances: impl Iterator<Item = &'a String>,
+    ) -> Result<Self, String> {
+        let bytes = files.capture(path)?.to_vec();
+        let data: Profile = parse(path, &bytes)?;
+        check_version(path, data.format)?;
+        if data.step_ns == 0 || data.source.trim().is_empty() {
+            return Err(located(path, "нужны ненулевой шаг и источник постановки"));
+        }
+        if data.circuits.is_empty() || data.circuits.keys().ne(instances) {
+            return Err(located(
+                path,
+                "профиль должен покрывать все подключённые схемы мира",
+            ));
+        }
+        Ok(Self {
+            data,
+            bytes,
+            dir: path.parent().unwrap_or_else(|| Path::new(".")).into(),
+        })
+    }
+
+    pub(super) fn control(&self, files: &mut Inputs) -> Result<(PathBuf, Vec<u8>), String> {
+        let path = self.dir.join(&self.data.control);
+        let mut bytes = files.capture(&path)?.to_vec();
+        if let Some(stimuli) = &self.data.stimuli {
+            bytes.push(b'\n');
+            bytes.extend(files.capture(&self.dir.join(stimuli))?);
+        }
+        Ok((path, bytes))
+    }
+}
+
+impl CatalogInput {
+    pub(super) fn for_profile(
+        root: &Path,
+        profile: Option<&ProfileInput>,
+        files: &mut Inputs,
+    ) -> Result<Self, String> {
+        // Поле parts в формате 1 указывает самостоятельный каталог старого профиля.
+        if let Some(path) = profile.and_then(|p| p.data.parts.as_ref().map(|f| p.dir.join(f))) {
+            let bytes = files.capture(&path)?.to_vec();
+            return Ok(Self {
+                catalog: parse_catalog(&path, &bytes)?,
+                sources: BTreeMap::from([(path, bytes)]),
+            });
+        }
+        let input = load_catalog(&root.join("electrical"))?;
+        for (path, bytes) in &input.sources {
+            if files.capture(path)? != bytes {
+                return Err(located(path, "изменился каталог"));
+            }
+        }
+        Ok(input)
+    }
 }
 
 pub fn parse_catalog(path: &Path, bytes: &[u8]) -> Result<Catalog, String> {
@@ -70,14 +275,22 @@ pub fn parse_schematic(
     bytes: &[u8],
     catalog: &Catalog,
 ) -> Result<CompiledSchematic, String> {
-    parse_schematic_and_modes(path, bytes, catalog).map(|(compiled, _, _)| compiled)
+    parse_schematic_and_modes(path, bytes, catalog).map(|(compiled, _, _, _)| compiled)
 }
 
 fn parse_schematic_and_modes(
     path: &Path,
     bytes: &[u8],
     catalog: &Catalog,
-) -> Result<(CompiledSchematic, ModePlan, BTreeSet<String>), String> {
+) -> Result<
+    (
+        CompiledSchematic,
+        ModePlan,
+        BTreeSet<String>,
+        Vec<depth::CheckData>,
+    ),
+    String,
+> {
     let mut data: SchematicData = parse(path, bytes)?;
     check_version(path, data.format)?;
     let modes = std::mem::take(&mut data.modes)
@@ -89,24 +302,63 @@ fn parse_schematic_and_modes(
         .filter(|(_, connection)| connection.crimp)
         .map(|(id, _)| id.clone())
         .collect();
+    let depth = std::mem::take(&mut data.depth_checks);
+    unique(
+        depth.iter().map(|check| check.id.clone()).collect(),
+        "depth_checks",
+    )
+    .map_err(|error| located(path, error))?;
     let schematic = data.convert().map_err(|error| located(path, error))?;
     let compiled = compile(schematic, catalog).map_err(|error| located(path, error))?;
     compiled
         .validate_mode_plan(&modes)
         .map_err(|error| located(path, error))?;
-    Ok((compiled, modes, crimps))
+    Ok((compiled, modes, crimps, depth))
 }
 
 impl SchematicInput {
     pub fn parse(path: &Path, bytes: Vec<u8>, catalog: &Catalog) -> Result<Self, String> {
-        let (compiled, modes, crimps) = parse_schematic_and_modes(path, &bytes, catalog)?;
+        let (compiled, modes, crimps, depth) = parse_schematic_and_modes(path, &bytes, catalog)?;
         Ok(Self {
             path: path.into(),
             bytes,
             compiled,
             modes,
             crimps,
+            depth: depth.into(),
         })
+    }
+
+    pub(super) fn definition(&self) -> Result<Schematic, String> {
+        let data: SchematicData = parse(&self.path, &self.bytes)?;
+        data.convert().map_err(|error| located(&self.path, error))
+    }
+
+    pub(super) fn live_netlist(
+        &self,
+        catalog: &Catalog,
+        diagnostic: Option<&DiagnosticConnections>,
+        dir: &Path,
+        files: &mut Inputs,
+    ) -> Result<ExpandedNetlist, String> {
+        if let Some(assumption) = diagnostic {
+            let file = assumption.parameters.as_ref().map(|path| dir.join(path));
+            let bytes = file
+                .as_deref()
+                .map(|path| files.capture(path))
+                .transpose()?;
+            self.diagnostic_netlist(
+                catalog,
+                assumption.ohm,
+                &assumption.source,
+                file.as_deref().zip(bytes),
+            )
+        } else {
+            match self.compiled.netlist() {
+                sim_process::Analysis::Analyzed { value, .. } => Ok(value),
+                sim_process::Analysis::NotAnalyzed { reason } => Err(reason),
+            }
+        }
     }
 
     /// Подставляет сопротивление численного опыта только в ветви без замера.
@@ -121,11 +373,10 @@ impl SchematicInput {
         if !ohm.is_finite() || ohm <= 0.0 || source.trim().is_empty() {
             return Err("нужны конечное положительное сопротивление и источник опыта".into());
         }
-        let data: SchematicData = parse(&self.path, &self.bytes)?;
-        if data.scope != Scope::Assembly {
+        let mut schematic = self.definition()?;
+        if schematic.scope != Scope::Assembly {
             return Err("подстановка предназначена для монтажной схемы".into());
         }
-        let mut schematic = data.convert()?;
         let mut applied = false;
         for joint in schematic.connections.values_mut() {
             if joint.resistance_ohm.range.is_none() {
@@ -244,9 +495,32 @@ fn located(path: &Path, error: impl std::fmt::Display) -> String {
     format!("{}: {error}", path.display())
 }
 
-fn parse<T: DeserializeOwned>(path: &Path, bytes: &[u8]) -> Result<T, String> {
+pub(super) fn parse<T: DeserializeOwned>(path: &Path, bytes: &[u8]) -> Result<T, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| located(path, e))?;
-    toml::from_str(text).map_err(|e| located(path, e))
+    let table: toml::Table = toml::from_str(text).map_err(|e| located(path, e))?;
+    fn nonfinite(value: &toml::Value) -> Option<String> {
+        match value {
+            toml::Value::Float(value) if !value.is_finite() => Some(String::new()),
+            toml::Value::Array(values) => values
+                .iter()
+                .enumerate()
+                .find_map(|(i, value)| nonfinite(value).map(|suffix| format!("[{i}]{suffix}"))),
+            toml::Value::Table(values) => values
+                .iter()
+                .find_map(|(key, value)| nonfinite(value).map(|suffix| format!(".{key}{suffix}"))),
+            _ => None,
+        }
+    }
+    if let Some(field) = table
+        .iter()
+        .find_map(|(key, value)| nonfinite(value).map(|suffix| format!("{key}{suffix}")))
+    {
+        return Err(located(
+            path,
+            format!("{field}: допустимы только конечные числа"),
+        ));
+    }
+    table.try_into().map_err(|e| located(path, e))
 }
 
 fn check_version(path: &Path, format: u32) -> Result<(), String> {
@@ -272,6 +546,7 @@ fn unique(values: Vec<String>, context: &str) -> Result<BTreeSet<String>, String
 fn read_parts(path: &Path, bytes: &[u8]) -> Result<BTreeMap<String, Part>, String> {
     let data: CatalogData = parse(path, bytes)?;
     check_version(path, data.format)?;
+    let ratings_only = data.parts.is_empty() && !data.depth_ratings.is_empty();
     let parts = data
         .parts
         .into_iter()
@@ -283,7 +558,9 @@ fn read_parts(path: &Path, bytes: &[u8]) -> Result<BTreeMap<String, Part>, Strin
         })
         .collect::<Result<BTreeMap<_, _>, String>>()?;
     // Проверка здесь сохраняет адрес именно того файла, в котором определена позиция.
-    Catalog::new(parts.clone()).map_err(|e| located(path, e))?;
+    if !ratings_only {
+        Catalog::new(parts.clone()).map_err(|e| located(path, e))?;
+    }
     Ok(parts)
 }
 
@@ -292,6 +569,8 @@ fn read_parts(path: &Path, bytes: &[u8]) -> Result<BTreeMap<String, Part>, Strin
 struct CatalogData {
     format: u32,
     parts: BTreeMap<String, PartData>,
+    #[serde(default)]
+    depth_ratings: BTreeMap<String, depth::RatingRecord>,
 }
 
 #[derive(Deserialize)]
@@ -544,6 +823,8 @@ struct SchematicData {
     bindings: Vec<BindingData>,
     #[serde(default)]
     modes: ModePlanData,
+    #[serde(default)]
+    depth_checks: Vec<depth::CheckData>,
 }
 
 impl SchematicData {
@@ -775,6 +1056,13 @@ impl CatalogInput {
         for path in files
             .into_iter()
             .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+            // Суффикс обозначает отдельную схему каталога с точками потребления.
+            .filter(|path| {
+                !path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with("-power.toml"))
+            })
         {
             let bytes = fs::read(&path).map_err(|e| located(&path, e))?;
             let profile = Self::parse_board_profile(&path, &bytes)?;
@@ -916,7 +1204,7 @@ impl CaseData {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum ModeData {
     AllOff {},
@@ -989,7 +1277,7 @@ impl WindowData {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum SectionData {
     Connection { id: String },
@@ -1929,5 +2217,1469 @@ current_limit_a = { measurement = "предел стенда" }
             CatalogInput::parse_board_profile(path, text.replace("0, 1,", "0, 0,").as_bytes())
                 .is_err()
         );
+    }
+}
+
+impl SchematicInput {
+    /// Оценивает дополнительные проверки и индексирует их по именам из схемы.
+    pub fn assess_depth(
+        &self,
+        catalog: &CatalogInput,
+    ) -> Result<BTreeMap<String, DepthFinding>, String> {
+        if self.depth.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        self.evaluate_depth(&catalog.depth_ratings()?, |_, mark, check| {
+            self.compiled
+                .assess_depth(&self.modes, mark, check)
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    pub(super) fn record_depth(
+        &self,
+        ratings: &DepthRatings,
+        evidence: &mut ElectricalEvidence,
+    ) -> Result<BTreeMap<String, DepthFinding>, String> {
+        for rating in ratings.values() {
+            if let Some(part) = &rating.part {
+                let (code, basis) = rating.depth_obligation();
+                for component in self.compiled.instances_of_part(part) {
+                    evidence
+                        .expect_depth(code, component, basis)
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        self.evaluate_depth(ratings, |id, mark, check| {
+            evidence
+                .record_depth(&self.compiled, &self.modes, id, mark, check)
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    fn evaluate_depth(
+        &self,
+        ratings: &DepthRatings,
+        mut evaluate: impl FnMut(&str, DepthModeMark<'_>, DepthCheck<'_>) -> Result<DepthFinding, String>,
+    ) -> Result<BTreeMap<String, DepthFinding>, String> {
+        self.depth
+            .iter()
+            .map(|check| {
+                check
+                    .assess(&self.compiled, ratings, &mut evaluate)
+                    .map(|finding| (check.id.clone(), finding))
+                    .map_err(|error| {
+                        located(&self.path, format!("depth_checks.{}: {error}", check.id))
+                    })
+            })
+            .collect()
+    }
+}
+
+impl CatalogInput {
+    pub(super) fn depth_ratings(&self) -> Result<DepthRatings, String> {
+        let mut ratings = BTreeMap::new();
+        for (path, bytes) in &self.sources {
+            let data: CatalogData = parse(path, bytes)?;
+            for (id, rating) in data.depth_ratings {
+                if id.trim().is_empty() || id.chars().any(char::is_control) {
+                    return Err(located(path, "нужно имя углублённого паспорта"));
+                }
+                if let Some(part) = &rating.part
+                    && self.catalog.part(part).is_none()
+                {
+                    return Err(located(
+                        path,
+                        format!("паспорт «{id}»: неизвестная позиция «{part}»"),
+                    ));
+                }
+                if ratings.insert(id.clone(), rating).is_some() {
+                    return Err(located(path, format!("паспорт «{id}» уже определён")));
+                }
+            }
+        }
+        Ok(ratings)
+    }
+}
+
+mod depth {
+    use super::*;
+    use sim_process::{
+        Interval,
+        schematic::{
+            capacitor_stress::*,
+            deep_discharge::*,
+            fuse_coordination::*,
+            sim_circuit::battery::{CellParams, RcParams, Table},
+            sleep_drain::*,
+            switch_thermal::*,
+        },
+        work::cable_flex::*,
+    };
+
+    pub(in crate::electrical) type Ratings = BTreeMap<String, RatingRecord>;
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(in crate::electrical) struct RatingRecord {
+        #[serde(with = "ScopeData")]
+        scope: Scope,
+        pub(super) part: Option<String>,
+        data: RatingData,
+    }
+
+    impl RatingRecord {
+        pub(super) fn depth_obligation(&self) -> (&'static str, &'static str) {
+            match self.data {
+                RatingData::CapacitorStress(_) => (CAPACITOR_STRESS_CODE, "паспорт конденсатора"),
+                RatingData::FuseCoordination(_) => {
+                    (FUSE_COORDINATION_CODE, "паспорт предохранителя")
+                }
+                RatingData::SwitchThermal(_) => {
+                    (SWITCH_THERMAL_CODE, "тепловой паспорт силового ключа")
+                }
+                RatingData::CableFlex(_) => (
+                    CABLE_FLEX_CODE,
+                    "паспорт кабеля на устройстве с подвижным сочленением",
+                ),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum RatingData {
+        CapacitorStress(CapacitorPassport),
+        FuseCoordination(FusePassport),
+        SwitchThermal(SwitchPassport),
+        CableFlex(CablePassport),
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(untagged)]
+    enum RatingRef<T> {
+        Named(String),
+        Inline(T),
+    }
+
+    fn rating_name<T>(rating: &Option<RatingRef<T>>) -> Option<&str> {
+        match rating {
+            Some(RatingRef::Named(id)) => Some(id),
+            _ => None,
+        }
+    }
+
+    fn rating<'a, T>(
+        input: &'a Option<RatingRef<T>>,
+        ratings: &'a Ratings,
+        part: Option<&str>,
+        reference_only: &mut bool,
+        select: impl FnOnce(&RatingData) -> Option<&T>,
+    ) -> Result<Option<&'a T>, String> {
+        match input {
+            None => Ok(None),
+            Some(RatingRef::Inline(data)) => Ok(Some(data)),
+            Some(RatingRef::Named(id)) => {
+                let record = ratings
+                    .get(id)
+                    .ok_or_else(|| format!("неизвестный паспорт «{id}»"))?;
+                if record.part.as_deref() != part {
+                    return Err(format!(
+                        "паспорт «{id}» относится к другой каталожной позиции либо типу ветви"
+                    ));
+                }
+                let data = select(&record.data)
+                    .ok_or_else(|| format!("паспорт «{id}» относится к другому классу проверки"))?;
+                *reference_only |= record.scope == Scope::Reference;
+                Ok(Some(data))
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(from = "DepthRangeData")]
+    struct DepthRange(SourcedRange);
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct DepthRangeData {
+        min: f64,
+        nominal: f64,
+        max: f64,
+        source: Option<Source>,
+    }
+
+    impl From<DepthRangeData> for DepthRange {
+        fn from(data: DepthRangeData) -> Self {
+            Self(SourcedRange {
+                min: data.min,
+                nominal: data.nominal,
+                max: data.max,
+                provenance: data
+                    .source
+                    .map(|value| value.0)
+                    .unwrap_or_else(|| Provenance::Estimate("источник диапазона не указан".into())),
+            })
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct Source(#[serde(with = "ProvenanceData")] Provenance);
+
+    #[derive(Debug, Deserialize)]
+    #[serde(from = "SectionData")]
+    struct Branch(Section);
+
+    impl From<SectionData> for Branch {
+        fn from(data: SectionData) -> Self {
+            Self(data.into())
+        }
+    }
+
+    fn range(data: &Option<DepthRange>) -> Option<&SourcedRange> {
+        data.as_ref().map(|value| &value.0)
+    }
+
+    fn ranges(data: &Option<Vec<DepthRange>>) -> Option<Vec<SourcedRange>> {
+        data.as_ref()
+            .map(|values| values.iter().map(|value| value.0.clone()).collect())
+    }
+
+    fn source(data: &Option<Source>) -> Option<&Provenance> {
+        data.as_ref().map(|value| &value.0)
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct WindowMark {
+        start_ns: u64,
+        end_ns: u64,
+    }
+
+    impl WindowMark {
+        fn interval(&self) -> Interval {
+            Interval {
+                start: Time(self.start_ns),
+                end: Time(self.end_ns),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct EventData {
+        #[serde(with = "EventKindData")]
+        kind: DepthEventKind,
+        at_ns: u64,
+        branch: Branch,
+        source: Source,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(remote = "DepthEventKind", rename_all = "snake_case")]
+    enum EventKindData {
+        WireOpened,
+        FaultApplied,
+        ModeEntered,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct CheckData {
+        pub(super) id: String,
+        mode: ModeData,
+        branch: Branch,
+        window: Option<WindowMark>,
+        applicability: Option<Source>,
+        event: Option<EventData>,
+        #[serde(default)]
+        reference_only: bool,
+        check: KindData,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum KindData {
+        CapacitorStress(CapacitorData),
+        FuseCoordination(FuseData),
+        SwitchThermal(SwitchData),
+        DeepDischarge(DischargeData),
+        SleepDrain(SleepData),
+        CableFlex(CableData),
+    }
+
+    impl CheckData {
+        pub(super) fn assess(
+            &self,
+            compiled: &CompiledSchematic,
+            ratings: &Ratings,
+            evaluate: impl FnOnce(&str, DepthModeMark<'_>, DepthCheck<'_>) -> Result<DepthFinding, String>,
+        ) -> Result<DepthFinding, String> {
+            if self.id.trim().is_empty() || self.id.chars().any(char::is_control) {
+                return Err("нужно имя проверки".into());
+            }
+            let mode = self.mode.clone().into();
+            let branch = &self.branch.0;
+            let part = compiled.depth_part(branch).map_err(|e| e.to_string())?;
+            let scope = compiled.depth_scope();
+            let window = || {
+                self.window
+                    .as_ref()
+                    .map(WindowMark::interval)
+                    .ok_or_else(|| "нужно окно проверки в наносекундах".to_string())
+            };
+            let event = self.event.as_ref().map(|event| DepthEvent {
+                kind: event.kind,
+                at: Time(event.at_ns),
+                branch: event.branch.0.clone(),
+                source: event.source.0.clone(),
+            });
+            let mut mark = DepthModeMark {
+                applicability: source(&self.applicability),
+                event: event.as_ref(),
+                passport: match &self.check {
+                    KindData::CapacitorStress(data) => rating_name(&data.rating),
+                    KindData::FuseCoordination(data) => rating_name(&data.rating),
+                    KindData::SwitchThermal(data) => rating_name(&data.rating),
+                    KindData::CableFlex(data) => rating_name(&data.rating),
+                    _ => None,
+                },
+                reference_only: self.reference_only,
+            };
+            let assess = |mark, check| evaluate(&self.id, mark, check);
+            match &self.check {
+                KindData::CapacitorStress(data) => {
+                    let passport = rating(
+                        &data.rating,
+                        ratings,
+                        part,
+                        &mut mark.reference_only,
+                        |data| match data {
+                            RatingData::CapacitorStress(value) => Some(value),
+                            _ => None,
+                        },
+                    )?;
+                    let terminals = endpoints(data.terminals.clone())?;
+                    let series = data
+                        .series
+                        .as_ref()
+                        .map(|data| data.series(branch, &terminals));
+                    let curve = |curve: &Option<CurveData>| curve.as_ref().map(CurveData::cells);
+                    let derating = passport.and_then(|p| curve(&p.voltage_derating));
+                    let ripple = passport.and_then(|p| curve(&p.ripple_rms_a));
+                    let esr = passport.and_then(|p| curve(&p.esr_ohm));
+                    let ratings =
+                        passport.map_or_else(CapacitorRatings::default, |p| CapacitorRatings {
+                            rated_voltage_v: range(&p.rated_voltage_v),
+                            voltage_derating: curve_with(&p.voltage_derating, derating.as_deref()),
+                            ripple_rms_a: curve_with(&p.ripple_rms_a, ripple.as_deref()),
+                            esr_ohm: curve_with(&p.esr_ohm, esr.as_deref()),
+                            max_hotspot_k: range(&p.max_hotspot_k),
+                        });
+                    assess(
+                        mark,
+                        DepthCheck::CapacitorStress(
+                            CapacitorStressInput {
+                                scope,
+                                mode: &mode,
+                                branch,
+                                terminals: &terminals,
+                                window: window()?,
+                                voltage_sense: data.voltage_sense,
+                                series: series.as_ref(),
+                                voltage_error_v: range(&data.voltage_error_v),
+                                current_error_a: range(&data.current_error_a),
+                                frequency_hz: range(&data.frequency_hz),
+                                temperatures: data.temperatures.model(),
+                                thermal: data.thermal.as_ref().map(CapacitorThermalData::model),
+                            },
+                            ratings,
+                        ),
+                    )
+                }
+                KindData::FuseCoordination(data) => {
+                    let passport = rating(
+                        &data.rating,
+                        ratings,
+                        part,
+                        &mut mark.reference_only,
+                        |data| match data {
+                            RatingData::FuseCoordination(value) => Some(value),
+                            _ => None,
+                        },
+                    )?;
+                    let bands = passport.and_then(|p| p.tcc.as_ref()).map(TccData::bands);
+                    let ratings = passport.map_or_else(FuseCoordinationRatings::default, |p| {
+                        p.model(bands.as_deref())
+                    });
+                    let trace: Vec<_> = data.trace.iter().map(FuseStepData::model).collect();
+                    assess(
+                        mark,
+                        DepthCheck::FuseCoordination(
+                            FuseCoordinationInput {
+                                scope,
+                                mode: &mode,
+                                fuse: branch,
+                                wire: &data.wire.0,
+                                switch: &data.switch.0,
+                                window: window()?,
+                                trace: &trace,
+                                protection_path: source(&data.protection_path),
+                                prospective_current_a: range(&data.prospective_current_a),
+                                recovery_voltage_v: range(&data.recovery_voltage_v),
+                                dc_time_constant_s: range(&data.dc_time_constant_s),
+                                fuse_temperature_k: range(&data.fuse_temperature_k),
+                                wire_start_temperature_k: range(&data.wire_start_temperature_k),
+                                switch_start_temperature_k: range(&data.switch_start_temperature_k),
+                                prospective_waveform: data
+                                    .prospective_waveform
+                                    .as_ref()
+                                    .map(WaveformData::model),
+                                switch_waveform: data
+                                    .switch_waveform
+                                    .as_ref()
+                                    .map(WaveformData::model),
+                            },
+                            ratings,
+                        ),
+                    )
+                }
+                KindData::SwitchThermal(data) => {
+                    let passport = rating(
+                        &data.rating,
+                        ratings,
+                        part,
+                        &mut mark.reference_only,
+                        |data| match data {
+                            RatingData::SwitchThermal(value) => Some(value),
+                            _ => None,
+                        },
+                    )?;
+                    let poles = passport
+                        .and_then(|p| p.foster.as_ref())
+                        .map(FosterData::poles);
+                    let soa = passport.and_then(|p| p.soa.as_ref()).map(SoaData::limits);
+                    let ratings = passport.map_or_else(SwitchThermalRatings::default, |p| {
+                        p.model(poles.as_deref(), soa.as_deref())
+                    });
+                    let [drain, source_pin, gate] = data.terminals.clone();
+                    let terminals = [endpoint(drain)?, endpoint(source_pin)?, endpoint(gate)?];
+                    let segments: Option<Vec<_>> = data
+                        .segments
+                        .as_ref()
+                        .map(|segments| segments.iter().map(SwitchStepData::model).collect());
+                    let rises = ranges(&data.initial_rises_k);
+                    assess(
+                        mark,
+                        DepthCheck::SwitchThermal(
+                            SwitchThermalInput {
+                                scope,
+                                mode: &mode,
+                                branch,
+                                terminals: &terminals,
+                                window: window()?,
+                                segments: segments.as_deref(),
+                                ambient_k: range(&data.ambient_k),
+                                case_k: range(&data.case_k),
+                                initial_rises_k: rises.as_deref(),
+                                thermal_applicability: source(&data.thermal_applicability),
+                                exposure: source(&data.sustained)
+                                    .map_or(SwitchExposure::Window, SwitchExposure::Sustained),
+                            },
+                            ratings,
+                        ),
+                    )
+                }
+                KindData::DeepDischarge(data) => {
+                    let polarization: Vec<_> = data
+                        .cells
+                        .iter()
+                        .flatten()
+                        .map(|cell| ranges(&cell.initial_polarization_v))
+                        .collect();
+                    let cells: Option<Vec<_>> = data.cells.as_ref().map(|cells| {
+                        cells
+                            .iter()
+                            .zip(&polarization)
+                            .map(|(cell, polarization)| cell.model(polarization.as_deref()))
+                            .collect()
+                    });
+                    let segments: Option<Vec<_>> = data
+                        .segments
+                        .as_ref()
+                        .map(|segments| segments.iter().map(DischargeStepData::model).collect());
+                    assess(
+                        mark,
+                        DepthCheck::DeepDischarge(DeepDischargeInput {
+                            scope,
+                            mode: &mode,
+                            branch,
+                            window: window()?,
+                            cells: cells.as_deref(),
+                            series_applicability: source(&data.series_applicability),
+                            segments: segments.as_deref(),
+                            cutoff: data.cutoff.as_ref().map(CutoffData::model),
+                        }),
+                    )
+                }
+                KindData::SleepDrain(data) => {
+                    if self.window.is_some() {
+                        return Err(
+                            "для автономности окно задаётся только в required.duration_ns".into(),
+                        );
+                    }
+                    let loads: Vec<Option<Vec<_>>> = data
+                        .profile
+                        .iter()
+                        .flat_map(|p| &p.states)
+                        .map(|state| {
+                            state.loads.as_ref().map(|loads| {
+                                loads
+                                    .iter()
+                                    .map(|load| SleepDrainLoad {
+                                        branch: &load.branch.0,
+                                        battery_current_a: range(&load.battery_current_a),
+                                    })
+                                    .collect()
+                            })
+                        })
+                        .collect();
+                    let states: Vec<_> = data
+                        .profile
+                        .iter()
+                        .flat_map(|p| &p.states)
+                        .zip(&loads)
+                        .map(|(state, loads)| SleepDrainState {
+                            id: &state.id,
+                            duration: Time(state.duration_ns),
+                            controller_a: range(&state.controller_a),
+                            loads: loads.as_deref(),
+                        })
+                        .collect();
+                    let polarization = data
+                        .battery
+                        .as_ref()
+                        .and_then(|cell| ranges(&cell.initial_polarization_v));
+                    assess(
+                        mark,
+                        DepthCheck::SleepDrain(SleepDrainInput {
+                            scope,
+                            mode: &mode,
+                            branch,
+                            required: data.required.as_ref().map(|r| SleepDrainRequirement {
+                                duration: Time(r.duration_ns),
+                                source: &r.source.0,
+                            }),
+                            profile: data.profile.as_ref().map(|p| SleepDrainProfile {
+                                states: &states,
+                                repeat: p.repeat,
+                                source: &p.source.0,
+                            }),
+                            battery: data
+                                .battery
+                                .as_ref()
+                                .map(|b| b.model(polarization.as_deref())),
+                        }),
+                    )
+                }
+                KindData::CableFlex(data) => {
+                    let passport = rating(
+                        &data.rating,
+                        ratings,
+                        part,
+                        &mut mark.reference_only,
+                        |data| match data {
+                            RatingData::CableFlex(value) => Some(value),
+                            _ => None,
+                        },
+                    )?;
+                    let guides: Vec<_> = data
+                        .mount
+                        .iter()
+                        .flat_map(|mount| &mount.guides)
+                        .map(|guide| CableGuide {
+                            site: &guide.site,
+                            setback_m: guide.setback_m,
+                        })
+                        .collect();
+                    let steps: Vec<_> = data
+                        .motion
+                        .iter()
+                        .flat_map(|motion| &motion.steps)
+                        .map(CableStepData::model)
+                        .collect();
+                    let bands: Vec<_> = passport
+                        .iter()
+                        .filter_map(|p| p.curve.as_ref())
+                        .flat_map(|curve| &curve.bands)
+                        .map(CableBandData::model)
+                        .collect();
+                    assess(
+                        mark,
+                        DepthCheck::CableFlex(
+                            CableFlexInput {
+                                scope,
+                                mode: &mode,
+                                branch,
+                                window: window()?,
+                                mount: data.mount.as_ref().map(|m| m.model(&guides)),
+                                motion: data.motion.as_ref().map(|motion| CableMotion {
+                                    start: motion.start.model(),
+                                    steps: &steps,
+                                }),
+                                duty: data.duty.as_ref().map(CableDutyData::model),
+                            },
+                            passport.map_or_else(CableFlexRatings::default, |p| p.model(&bands)),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CapacitorData {
+        terminals: [String; 2],
+        #[serde(with = "VoltageSenseData")]
+        voltage_sense: CapacitorVoltageSense,
+        series: Option<SeriesData>,
+        voltage_error_v: Option<DepthRange>,
+        current_error_a: Option<DepthRange>,
+        frequency_hz: Option<DepthRange>,
+        #[serde(default)]
+        temperatures: TemperatureData,
+        thermal: Option<CapacitorThermalData>,
+        rating: Option<RatingRef<CapacitorPassport>>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(remote = "CapacitorVoltageSense", rename_all = "snake_case")]
+    enum VoltageSenseData {
+        Forward,
+        Absolute,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SeriesData {
+        time_ns: Vec<u64>,
+        voltage_v: Option<Vec<f64>>,
+        current_a: Option<Vec<f64>>,
+    }
+
+    impl SeriesData {
+        fn series(&self, branch: &Section, terminals: &[Endpoint; 2]) -> ElectricalSeries {
+            let [a, b] = terminals;
+            let voltage = self
+                .voltage_v
+                .as_ref()
+                .map(|values| (Probe::Voltage(a.clone(), b.clone()), values.clone()));
+            let current = self
+                .current_a
+                .as_ref()
+                .map(|values| (Probe::Current(branch.clone()), values.clone()));
+            ElectricalSeries {
+                time: self.time_ns.iter().copied().map(Time).collect(),
+                values: voltage.into_iter().chain(current).collect(),
+            }
+        }
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct TemperatureData {
+        ambient_k: Option<DepthRange>,
+        case_k: Option<DepthRange>,
+        hotspot_k: Option<DepthRange>,
+    }
+
+    impl TemperatureData {
+        fn model(&self) -> CapacitorTemperatures<'_> {
+            CapacitorTemperatures {
+                ambient_k: range(&self.ambient_k),
+                case_k: range(&self.case_k),
+                hotspot_k: range(&self.hotspot_k),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum CapacitorThermalData {
+        MeasuredPeak {
+            peak_k: DepthRange,
+        },
+        SteadyState {
+            thermal_resistance_k_per_w: DepthRange,
+            peak_above_mean_k: DepthRange,
+        },
+    }
+
+    impl CapacitorThermalData {
+        fn model(&self) -> CapacitorThermal<'_> {
+            match self {
+                Self::MeasuredPeak { peak_k } => CapacitorThermal::MeasuredPeak(&peak_k.0),
+                Self::SteadyState {
+                    thermal_resistance_k_per_w,
+                    peak_above_mean_k,
+                } => CapacitorThermal::SteadyState {
+                    thermal_resistance_k_per_w: &thermal_resistance_k_per_w.0,
+                    peak_above_mean_k: &peak_above_mean_k.0,
+                },
+            }
+        }
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CapacitorPassport {
+        rated_voltage_v: Option<DepthRange>,
+        voltage_derating: Option<CurveData>,
+        ripple_rms_a: Option<CurveData>,
+        esr_ohm: Option<CurveData>,
+        max_hotspot_k: Option<DepthRange>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CurveData {
+        frequencies_hz: Option<Vec<f64>>,
+        temperatures_k: Vec<f64>,
+        #[serde(with = "TemperatureBasisData")]
+        temperature_basis: CapacitorTemperatureBasis,
+        cells: Vec<CurveCell>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CurveCell {
+        range: Option<DepthRange>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(remote = "CapacitorTemperatureBasis", rename_all = "snake_case")]
+    enum TemperatureBasisData {
+        Ambient,
+        Case,
+        Hotspot,
+    }
+
+    impl CurveData {
+        fn cells(&self) -> Vec<Option<SourcedRange>> {
+            self.cells
+                .iter()
+                .map(|cell| range(&cell.range).cloned())
+                .collect()
+        }
+    }
+
+    fn curve_with<'a>(
+        data: &'a Option<CurveData>,
+        cells: Option<&'a [Option<SourcedRange>]>,
+    ) -> Option<CapacitorCurve<'a>> {
+        data.as_ref()
+            .zip(cells)
+            .map(|(data, cells)| CapacitorCurve {
+                frequencies_hz: data.frequencies_hz.as_deref(),
+                temperatures_k: &data.temperatures_k,
+                temperature_basis: data.temperature_basis,
+                cells,
+            })
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FuseData {
+        wire: Branch,
+        switch: Branch,
+        protection_path: Option<Source>,
+        #[serde(default)]
+        trace: Vec<FuseStepData>,
+        prospective_current_a: Option<DepthRange>,
+        recovery_voltage_v: Option<DepthRange>,
+        dc_time_constant_s: Option<DepthRange>,
+        fuse_temperature_k: Option<DepthRange>,
+        wire_start_temperature_k: Option<DepthRange>,
+        switch_start_temperature_k: Option<DepthRange>,
+        prospective_waveform: Option<WaveformData>,
+        switch_waveform: Option<WaveformData>,
+        rating: Option<RatingRef<FusePassport>>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum WaveformData {
+        DcStep {},
+        Characterized { id: String },
+    }
+
+    impl WaveformData {
+        fn model(&self) -> FuseWaveform<'_> {
+            match self {
+                Self::DcStep {} => FuseWaveform::DcStep,
+                Self::Characterized { id } => FuseWaveform::Characterized(id),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FuseStepData {
+        window: WindowMark,
+        wire_current_a: Option<DepthRange>,
+        switch_current_a: Option<DepthRange>,
+        switch_voltage_v: Option<DepthRange>,
+    }
+
+    impl FuseStepData {
+        fn model(&self) -> FuseFaultStep<'_> {
+            FuseFaultStep {
+                interval: self.window.interval(),
+                wire_current_a: range(&self.wire_current_a),
+                switch_current_a: range(&self.switch_current_a),
+                switch_voltage_v: range(&self.switch_voltage_v),
+            }
+        }
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FusePassport {
+        interrupt: Option<InterruptData>,
+        tcc: Option<TccData>,
+        wire: Option<FuseWireData>,
+        switch: Option<FuseSwitchData>,
+    }
+
+    fn fuse_bounds([min, max]: [f64; 2]) -> FuseBounds {
+        FuseBounds { min, max }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FuseConditionsData {
+        temperature_k: [f64; 2],
+        time_constant_s: [f64; 2],
+        waveform: WaveformData,
+    }
+
+    impl FuseConditionsData {
+        fn model(&self) -> FuseDcConditions<'_> {
+            FuseDcConditions {
+                temperature_k: fuse_bounds(self.temperature_k),
+                time_constant_s: fuse_bounds(self.time_constant_s),
+                waveform: self.waveform.model(),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct InterruptData {
+        conditions: FuseConditionsData,
+        max_prospective_current_a: DepthRange,
+        max_recovery_voltage_v: DepthRange,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct TccData {
+        conditions: FuseConditionsData,
+        recovery_voltage_v: [f64; 2],
+        #[serde(with = "TimeStageData")]
+        stage: FuseTimeStage,
+        bands: Vec<TccBandData>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(remote = "FuseTimeStage", rename_all = "snake_case")]
+    enum TimeStageData {
+        TotalClearing,
+        PreArcing,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct TccBandData {
+        prospective_current_a: [f64; 2],
+        time_s: Option<DepthRange>,
+    }
+
+    impl TccData {
+        fn bands(&self) -> Vec<FuseTccBand<'_>> {
+            self.bands
+                .iter()
+                .map(|b| FuseTccBand {
+                    prospective_current_a: fuse_bounds(b.prospective_current_a),
+                    time_s: range(&b.time_s),
+                })
+                .collect()
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FuseWireData {
+        start_temperature_k: [f64; 2],
+        damage_i2t_a2s: DepthRange,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FuseSwitchData {
+        start_temperature_k: [f64; 2],
+        current_a: [f64; 2],
+        voltage_v: [f64; 2],
+        waveform: WaveformData,
+        damage_time_s: DepthRange,
+    }
+
+    impl FusePassport {
+        fn model<'a>(
+            &'a self,
+            bands: Option<&'a [FuseTccBand<'a>]>,
+        ) -> FuseCoordinationRatings<'a> {
+            FuseCoordinationRatings {
+                interrupt: self.interrupt.as_ref().map(|r| FuseInterruptRating {
+                    conditions: r.conditions.model(),
+                    max_prospective_current_a: &r.max_prospective_current_a.0,
+                    max_recovery_voltage_v: &r.max_recovery_voltage_v.0,
+                }),
+                tcc: self.tcc.as_ref().zip(bands).map(|(r, bands)| FuseTcc {
+                    conditions: r.conditions.model(),
+                    recovery_voltage_v: fuse_bounds(r.recovery_voltage_v),
+                    stage: r.stage,
+                    bands,
+                }),
+                wire: self.wire.as_ref().map(|r| FuseWireLimit {
+                    start_temperature_k: fuse_bounds(r.start_temperature_k),
+                    damage_i2t_a2s: &r.damage_i2t_a2s.0,
+                }),
+                switch: self.switch.as_ref().map(|r| FuseSwitchSoa {
+                    start_temperature_k: fuse_bounds(r.start_temperature_k),
+                    current_a: fuse_bounds(r.current_a),
+                    voltage_v: fuse_bounds(r.voltage_v),
+                    waveform: r.waveform.model(),
+                    damage_time_s: &r.damage_time_s.0,
+                }),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SwitchData {
+        terminals: [String; 3],
+        segments: Option<Vec<SwitchStepData>>,
+        ambient_k: Option<DepthRange>,
+        case_k: Option<DepthRange>,
+        initial_rises_k: Option<Vec<DepthRange>>,
+        thermal_applicability: Option<Source>,
+        sustained: Option<Source>,
+        rating: Option<RatingRef<SwitchPassport>>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SwitchStepData {
+        window: WindowMark,
+        vds_v: Option<DepthRange>,
+        id_a: Option<DepthRange>,
+        vgs_v: Option<DepthRange>,
+    }
+
+    impl SwitchStepData {
+        fn model(&self) -> SwitchSegment<'_> {
+            SwitchSegment {
+                window: self.window.interval(),
+                vds_v: range(&self.vds_v),
+                id_a: range(&self.id_a),
+                vgs_v: range(&self.vgs_v),
+            }
+        }
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SwitchPassport {
+        max_junction_k: Option<DepthRange>,
+        theta_ja_k_per_w: Option<DepthRange>,
+        foster: Option<FosterData>,
+        agreement_tolerance_k: Option<DepthRange>,
+        fully_on_vgs_v: Option<DepthRange>,
+        soa: Option<SoaData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FosterData {
+        poles: Vec<FosterPoleData>,
+        fit_error_k: DepthRange,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FosterPoleData {
+        resistance_k_per_w: DepthRange,
+        time_constant_s: DepthRange,
+    }
+
+    impl FosterData {
+        fn poles(&self) -> Vec<SwitchFosterPole<'_>> {
+            self.poles
+                .iter()
+                .map(|p| SwitchFosterPole {
+                    resistance_k_per_w: &p.resistance_k_per_w.0,
+                    time_constant_s: &p.time_constant_s.0,
+                })
+                .collect()
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SoaData {
+        vds_edges_v: Vec<f64>,
+        id_edges_a: Vec<f64>,
+        case_edges_k: Vec<f64>,
+        limits: Vec<SoaCellData>,
+        applicability: Option<Source>,
+        #[serde(with = "SoaDutyData")]
+        duty: SwitchSoaDuty,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(remote = "SwitchSoaDuty", rename_all = "snake_case")]
+    enum SoaDutyData {
+        SinglePulse,
+        PulseTrain,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum SoaCellData {
+        Unspecified {},
+        Pulse { duration_s: DepthRange },
+        Continuous { source: Source },
+    }
+
+    impl SoaData {
+        fn limits(&self) -> Vec<Option<SwitchSoaLimit<'_>>> {
+            self.limits
+                .iter()
+                .map(|cell| match cell {
+                    SoaCellData::Unspecified {} => None,
+                    SoaCellData::Pulse { duration_s } => Some(SwitchSoaLimit::Pulse(&duration_s.0)),
+                    SoaCellData::Continuous { source } => {
+                        Some(SwitchSoaLimit::Continuous(&source.0))
+                    }
+                })
+                .collect()
+        }
+    }
+
+    impl SwitchPassport {
+        fn model<'a>(
+            &'a self,
+            poles: Option<&'a [SwitchFosterPole<'a>]>,
+            limits: Option<&'a [Option<SwitchSoaLimit<'a>>]>,
+        ) -> SwitchThermalRatings<'a> {
+            SwitchThermalRatings {
+                max_junction_k: range(&self.max_junction_k),
+                theta_ja_k_per_w: range(&self.theta_ja_k_per_w),
+                foster: self
+                    .foster
+                    .as_ref()
+                    .zip(poles)
+                    .map(|(f, poles)| SwitchFoster {
+                        poles,
+                        fit_error_k: &f.fit_error_k.0,
+                    }),
+                agreement_tolerance_k: range(&self.agreement_tolerance_k),
+                fully_on_vgs_v: range(&self.fully_on_vgs_v),
+                soa: self.soa.as_ref().zip(limits).map(|(s, limits)| SwitchSoa {
+                    vds_edges_v: &s.vds_edges_v,
+                    id_edges_a: &s.id_edges_a,
+                    case_edges_k: &s.case_edges_k,
+                    limits,
+                    applicability: source(&s.applicability),
+                    duty: s.duty,
+                }),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct DischargeData {
+        cells: Option<Vec<CellData>>,
+        series_applicability: Option<Source>,
+        segments: Option<Vec<DischargeStepData>>,
+        cutoff: Option<CutoffData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CellData {
+        id: String,
+        model: Option<DischargeModelData>,
+        capacity_ah: Option<DepthRange>,
+        initial_soc: Option<DepthRange>,
+        temperature_c: Option<DepthRange>,
+        initial_polarization_v: Option<Vec<DepthRange>>,
+        self_discharge_a: Option<DepthRange>,
+        min_voltage_v: Option<DepthRange>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct DischargeModelData {
+        params: CellModel,
+        applicability: Source,
+        voltage_error_v: Option<DepthRange>,
+    }
+
+    impl CellData {
+        fn model<'a>(&'a self, polarization: Option<&'a [SourcedRange]>) -> DeepDischargeCell<'a> {
+            DeepDischargeCell {
+                id: &self.id,
+                model: self.model.as_ref().map(|m| DeepDischargeModel {
+                    params: &m.params.0,
+                    applicability: &m.applicability.0,
+                    voltage_error_v: range(&m.voltage_error_v),
+                }),
+                capacity_ah: range(&self.capacity_ah),
+                initial_soc: range(&self.initial_soc),
+                temperature_c: range(&self.temperature_c),
+                initial_polarization_v: polarization,
+                self_discharge_a: range(&self.self_discharge_a),
+                min_voltage_v: range(&self.min_voltage_v),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct DischargeStepData {
+        window: WindowMark,
+        load_a: Option<DepthRange>,
+        protection_a: Option<DepthRange>,
+    }
+
+    impl DischargeStepData {
+        fn model(&self) -> DeepDischargeSegment<'_> {
+            DeepDischargeSegment {
+                window: self.window.interval(),
+                load_a: range(&self.load_a),
+                protection_a: range(&self.protection_a),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CutoffData {
+        detected_at_ns: u64,
+        disconnected_at_ns: u64,
+        delay_s: Option<DepthRange>,
+        source: Source,
+    }
+
+    impl CutoffData {
+        fn model(&self) -> DeepDischargeCutoff<'_> {
+            DeepDischargeCutoff {
+                detected_at: Time(self.detected_at_ns),
+                disconnected_at: Time(self.disconnected_at_ns),
+                delay_s: range(&self.delay_s),
+                source: &self.source.0,
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SleepData {
+        required: Option<SleepRequirementData>,
+        profile: Option<SleepProfileData>,
+        battery: Option<SleepBatteryData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SleepRequirementData {
+        duration_ns: u64,
+        source: Source,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SleepProfileData {
+        states: Vec<SleepStateData>,
+        repeat: bool,
+        source: Source,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SleepStateData {
+        id: String,
+        duration_ns: u64,
+        controller_a: Option<DepthRange>,
+        loads: Option<Vec<SleepLoadData>>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SleepLoadData {
+        branch: Branch,
+        battery_current_a: Option<DepthRange>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SleepBatteryData {
+        params: CellModel,
+        applicability: Source,
+        capacity_ah: Option<DepthRange>,
+        initial_soc: Option<DepthRange>,
+        initial_polarization_v: Option<Vec<DepthRange>>,
+        temperature_c: Option<DepthRange>,
+        self_discharge_a: Option<DepthRange>,
+        cutoff_v: Option<DepthRange>,
+        voltage_error_v: Option<DepthRange>,
+    }
+
+    impl SleepBatteryData {
+        fn model<'a>(&'a self, polarization: Option<&'a [SourcedRange]>) -> SleepDrainBattery<'a> {
+            SleepDrainBattery {
+                params: &self.params.0,
+                applicability: &self.applicability.0,
+                capacity_ah: range(&self.capacity_ah),
+                initial_soc: range(&self.initial_soc),
+                initial_polarization_v: polarization,
+                temperature_c: range(&self.temperature_c),
+                self_discharge_a: range(&self.self_discharge_a),
+                cutoff_v: range(&self.cutoff_v),
+                voltage_error_v: range(&self.voltage_error_v),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct CellModel(#[serde(with = "CellParamsData")] CellParams);
+
+    #[derive(Deserialize)]
+    #[serde(remote = "CellParams", deny_unknown_fields)]
+    struct CellParamsData {
+        name: String,
+        capacity_ah: f64,
+        nominal_v: f64,
+        v_max: f64,
+        v_min: f64,
+        #[serde(with = "TableData")]
+        ocv: Table,
+        #[serde(with = "TableData")]
+        entropic: Table,
+        #[serde(with = "TableData")]
+        r0: Table,
+        #[serde(deserialize_with = "rc_params")]
+        rc: Vec<RcParams>,
+        ea_r0: f64,
+        ea_rc: f64,
+        #[serde(with = "TableData")]
+        capacity_factor: Table,
+        charge_temp_c: (f64, f64),
+        discharge_temp_c: (f64, f64),
+        max_charge_a: Vec<(f64, f64)>,
+        max_discharge_a: Vec<(f64, f64)>,
+        mass_kg: f64,
+        heat_capacity_j_k: f64,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(remote = "Table")]
+    struct TableData(Vec<(f64, f64)>);
+
+    fn rc_params<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Vec<RcParams>, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RcData {
+            #[serde(with = "TableData")]
+            r: Table,
+            c: f64,
+        }
+        Ok(Vec::<RcData>::deserialize(de)?
+            .into_iter()
+            .map(|p| RcParams { r: p.r, c: p.c })
+            .collect())
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableData {
+        mount: Option<CableMountData>,
+        motion: Option<CableMotionData>,
+        duty: Option<CableDutyData>,
+        rating: Option<RatingRef<CablePassport>>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableMountData {
+        ends: [CableEndData; 2],
+        guides: Vec<CableGuideData>,
+        applicability: Option<Source>,
+    }
+
+    impl CableMountData {
+        fn model<'a>(&'a self, guides: &'a [CableGuide<'a>]) -> CableMount<'a> {
+            CableMount {
+                ends: self.ends.each_ref().map(|e| CableEnd {
+                    site: &e.site,
+                    relief: e.relief.as_ref().map(|r| CableRelief {
+                        installed: r.installed,
+                        source: &r.source.0,
+                    }),
+                }),
+                guides,
+                applicability: source(&self.applicability),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableEndData {
+        site: String,
+        relief: Option<CableReliefData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableReliefData {
+        installed: bool,
+        source: Source,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableGuideData {
+        site: String,
+        setback_m: f64,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableMotionData {
+        start: CablePoseData,
+        steps: Vec<CableStepData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CablePoseData {
+        at_ns: u64,
+        sites_m: BTreeMap<String, [f64; 3]>,
+    }
+
+    impl CablePoseData {
+        fn model(&self) -> CablePose<'_> {
+            CablePose {
+                at: Time(self.at_ns),
+                sites_m: &self.sites_m,
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableStepData {
+        end: CablePoseData,
+        length_error_m: Option<DepthRange>,
+        curvature_error_inv_m: Option<DepthRange>,
+    }
+
+    impl CableStepData {
+        fn model(&self) -> CableStep<'_> {
+            CableStep {
+                end: self.end.model(),
+                length_error_m: range(&self.length_error_m),
+                curvature_error_inv_m: range(&self.curvature_error_inv_m),
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableDutyData {
+        cycles: u64,
+        orientation: String,
+        profile: String,
+        temperature_k: DepthRange,
+        applicability: Source,
+    }
+
+    impl CableDutyData {
+        fn model(&self) -> CableFlexDuty<'_> {
+            CableFlexDuty {
+                cycles: self.cycles,
+                orientation: &self.orientation,
+                profile: &self.profile,
+                temperature_k: &self.temperature_k.0,
+                applicability: &self.applicability.0,
+            }
+        }
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CablePassport {
+        usable_length_m: Option<DepthRange>,
+        min_bend_radius_m: Option<DepthRange>,
+        curve: Option<CableCurveData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableCurveData {
+        source: Source,
+        bands: Vec<CableBandData>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct CableBandData {
+        cycles: [u64; 2],
+        orientation: String,
+        profile: String,
+        temperature_k: [f64; 2],
+        min_bend_radius_m: Option<DepthRange>,
+    }
+
+    impl CableBandData {
+        fn model(&self) -> CableFlexBand<'_> {
+            CableFlexBand {
+                cycles: self.cycles,
+                orientation: &self.orientation,
+                profile: &self.profile,
+                temperature_k: self.temperature_k,
+                min_bend_radius_m: range(&self.min_bend_radius_m),
+            }
+        }
+    }
+
+    impl CablePassport {
+        fn model<'a>(&'a self, bands: &'a [CableFlexBand<'a>]) -> CableFlexRatings<'a> {
+            CableFlexRatings {
+                usable_length_m: range(&self.usable_length_m),
+                min_bend_radius_m: range(&self.min_bend_radius_m),
+                curve: self.curve.as_ref().map(|c| CableFlexCurve {
+                    source: &c.source.0,
+                    bands,
+                }),
+            }
+        }
     }
 }

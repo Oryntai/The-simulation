@@ -1,0 +1,69 @@
+# Отдельные опыты радио на живом контуре без опоры, как в режимах radio/open.
+# Режим, стимулы, окна и стендовые пределы взяты из stage6.toml.
+# Только перечисленные инъекции. Штатный опыт этого режима служит контролем.
+# Входящий пакет после отметки 1 с отправляется в 1,005 с по hold_relaxed-wiring.toml.
+# stage6-control.toml задаёт срок приёма 25 мкс для команд и 15,025 мс
+# для ответов. Добавка 60 мс превышает оба срока. Ожидается просрочка
+# после инъекции и прекращение доставки только на затронутом направлении.
+version = 1
+control = "../stage6-control.toml"
+profile = "profile.toml"
+
+[[modes]]
+id = "hold_relaxed"
+horizon_ns = 3000000000
+before_ns = 50000000
+after_ns = 100000000
+max_gap_ns = 25000
+source = { kind = "derived", reference = "Горизонт и окна hold_relaxed из stage6.toml. В profile.toml опора отключена, штатные пакеты идут по hold_relaxed-wiring.toml. Здесь проверяется отдельный отказ на живом пути. Исходная строка: devices/stage6/depth-open.toml." }
+excitation = "контрольная метка"
+stimuli = [{ id = "контрольная метка", signal = { name = "устройство/проверочное_усилие", unit = "N*m" }, at_ns = 1000000000, value = 0, comparison_value = 0.5, source = { kind = "derived", reference = "Для сверки на траекторию действует только штатное усилие. 0.5 Н·м предусмотрено для независимого возбуждения на будущем стенде." } }]
+
+[[modes.faults]]
+fault = { node = "channel:радио", kind = "packet_loss" }
+at_ns = 1000000000
+source = { kind = "derived", reference = "1 с из fault_sweep в stage6.toml. Маршруты живы по hold_relaxed-wiring.toml." }
+
+[[modes.faults]]
+fault = { node = "channel:радио", kind = "packet_delay" }
+at_ns = 1000000000
+extra_delay_ns = 60000000
+source = { kind = "derived", reference = "1 с из fault_sweep в stage6.toml. Маршруты живы по hold_relaxed-wiring.toml. Добавка задержки из fault_sweep исходной задачи." }
+
+[[modes.faults]]
+fault = { node = "channel:ответ", kind = "packet_delay" }
+at_ns = 1000000000
+extra_delay_ns = 60000000
+source = { kind = "derived", reference = "1 с из fault_sweep в stage6.toml. Маршруты живы по hold_relaxed-wiring.toml. Добавка задержки из fault_sweep исходной задачи." }
+
+[[criteria]]
+case = { path = "драйвер", mode = "hold_relaxed" }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 2.2, source = { kind = "derived", reference = "Границы хода MS-Human-700. Мягкий упор может дать выход." } },
+  { kind = "range", signal = { name = "устройство/мотор/current_a", unit = "A" }, min = -12.18, max = 12.18, source = { kind = "derived", reference = "Порог прошивки 3×4.06 А из её блока настроек." } },
+]
+response = { signal = { name = "устройство/мотор/current_a", unit = "A" }, min_change = 0.01, within_ns = 100000000, source = { kind = "derived", reference = "0.01 А различима по штатной шкале ADC 0.1 В/А." } }
+
+[[criteria]]
+case = { path = "драйвер", mode = "hold_relaxed", fault = { node = "channel:радио", kind = "packet_loss" } }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 2.2, source = { kind = "derived", reference = "Границы хода MS-Human-700. Мягкий упор может дать выход." } },
+  { kind = "range", signal = { name = "устройство/мотор/current_a", unit = "A" }, min = -12.18, max = 12.18, source = { kind = "derived", reference = "Порог прошивки 3×4.06 А из её блока настроек." } },
+]
+response = { signal = { name = "устройство/мотор/current_a", unit = "A" }, min_change = 0.01, within_ns = 100000000, source = { kind = "derived", reference = "0.01 А различима по штатной шкале ADC 0.1 В/А." } }
+
+[[criteria]]
+case = { path = "драйвер", mode = "hold_relaxed", fault = { node = "channel:радио", kind = "packet_delay" } }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 2.2, source = { kind = "derived", reference = "Границы хода MS-Human-700. Мягкий упор может дать выход." } },
+  { kind = "range", signal = { name = "устройство/мотор/current_a", unit = "A" }, min = -12.18, max = 12.18, source = { kind = "derived", reference = "Порог прошивки 3×4.06 А из её блока настроек." } },
+]
+response = { signal = { name = "устройство/мотор/current_a", unit = "A" }, min_change = 0.01, within_ns = 100000000, source = { kind = "derived", reference = "0.01 А различима по штатной шкале ADC 0.1 В/А." } }
+
+[[criteria]]
+case = { path = "драйвер", mode = "hold_relaxed", fault = { node = "channel:ответ", kind = "packet_delay" } }
+limits = [
+  { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = 0, max = 2.2, source = { kind = "derived", reference = "Границы хода MS-Human-700. Мягкий упор может дать выход." } },
+  { kind = "range", signal = { name = "устройство/мотор/current_a", unit = "A" }, min = -12.18, max = 12.18, source = { kind = "derived", reference = "Порог прошивки 3×4.06 А из её блока настроек." } },
+]
+response = { signal = { name = "устройство/мотор/current_a", unit = "A" }, min_change = 0.01, within_ns = 100000000, source = { kind = "derived", reference = "0.01 А различима по штатной шкале ADC 0.1 В/А." } }

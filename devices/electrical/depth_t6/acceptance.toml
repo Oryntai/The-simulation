@@ -1,0 +1,91 @@
+format = 1
+
+[spectrum]
+# Т6.5 владеет геометрией, портами, полосами, сетками и запуском openEMS.
+# `audit_t6_intermediate_frequencies` сверяет 33 частоты на стенд.
+# Между отсчётами непрерывная огибающая остаётся открытой.
+# Из корня репозитория:
+# cargo test --locked --offline --target-dir target --manifest-path devices/electrical/depth_t6/loop/Cargo.toml -- --include-ignored --nocapture --test-threads=1
+# Пары и независимый спектр RL:
+# cargo test --offline -p sim-cli --test depth_t6 -- --nocapture --test-threads=1
+reference = "loop/Cargo.toml"
+rl_deck = "loop/rl.cir"
+
+[esd]
+# Из этих данных тест depth_t6 строит мир, схему, каталог и два временных
+# TOML-профиля instances.<экземпляр>.esd_event для штатного sim-run --campaign.
+# Поля профиля: exposed, protected, return, start_ns, exposure, pulse,
+# network.domain, network.protection и limits с источниками диапазонов.
+source = "Синтетический блок Т6.6 для одиночного контактного разряда, IEC 61000-4-2:2008, табл. 3 и рис. 2, уровень 1"
+catalog = '''
+format = 1
+[parts.block]
+kind = "other"
+source = "Клеммы резистивного блока Т6.6"
+reference_only = true
+model_gap = "Переходный резистивный эквивалент задаёт стенд ЭМС"
+[parts.block.pins]
+terminal = { contact = "terminal", role = "passive" }
+input = { contact = "pad", role = { signal_in = "return" } }
+return = { contact = "pad", role = "return" }
+'''
+scheme = '''
+format = 1
+scope = "reference"
+name = "Блок контактного импульса"
+nets = ["exposed", "input", "return"]
+[components.block]
+part = "block"
+nets = { terminal = "exposed", input = "input", return = "return" }
+'''
+ports = ["block/terminal", "block/input", "block/return"]
+start_ns = 100 # Метка контакта в стенде Т6.6.
+bandwidth_hz = 2e9
+length_m = 1e-3
+wave_speed_m_s = 2e8
+max_length_wavelengths = 0.1
+max_terminal_v = 40.0
+# Резистивный эквивалент Т6.6. Ток калибровочной мишени здесь задан
+# как ток клеммы синтетической схемы.
+samples_ns_a = [[0.0, 0.0], [1.0, 7.5], [5.0, 2.0], [30.1, 4.0], [60.1, 2.0], [100.0, 0.0]]
+series_ohm = 3.0
+pin_ohm = 2.0
+voltage_limit_v = 4.0
+current_limit_a = 3.0
+
+[esd.tvs]
+# Линейный участок между точками 1 А / 7 В и 5 А / 9 В.
+# Условия для всей формы задаёт синтетический стенд Т6.6.
+source = "TI ESD224, табл. 6.6, https://www.ti.com/lit/ds/symlink/esd224.pdf; резистивный эквивалент стенда Т6.6"
+knee_v = 6.5
+dynamic_ohm = 0.5
+max_injected_peak_a = 8.0
+min_rise_ns = 0.6
+max_pulse_ns = 100.0
+
+[reset]
+# Т6.7, блок: коммутация по общему резистивному возврату. Шина питания
+# 3,3 В независима от дифференциального входа сброса, см. стенд в тесте.
+catalog = "../corpus/catalog"
+scheme = "../corpus/pin_overvoltage/fixed.toml"
+source = "Синтетический стенд Т6.7, общий резистивный возврат и дифференциальный вход сброса блока"
+board = "fixture"
+switch = "sender"
+input = "board/io"
+reference = "board/g"
+start_ns = 11000
+end_ns = 22000
+horizon_ns = 60000
+bias_v = 3.0
+falling_v = 2.0
+rising_v = 2.5
+assert_ns = 8000
+release_ns = 3000
+current_a = 2.0
+unsafe_ohm = 0.6
+fixed_ohm = 0.4
+bandwidth_hz = 1e6
+model_max_hz = 2e6
+length_m = 0.1
+wave_speed_m_s = 2e8
+max_length_wavelengths = 0.01

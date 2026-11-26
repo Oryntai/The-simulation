@@ -1,0 +1,21 @@
+[package]
+name = "depth-t65-reference"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Стенд запускается отдельно. В платформу входят только существующие API.
+[workspace]
+
+[lib]
+path = "reference.rs"
+
+[dependencies]
+sim-circuit = { path = "../../../../crates/sim-circuit" }
+nalgebra = "0.35"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

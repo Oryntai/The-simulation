@@ -1,0 +1,49 @@
+format = 1
+name = "Блок"
+scope = "reference"
+nets = ["p", "a", "d", "s", "g"]
+
+[components.fault]
+part = "series_fault"
+nets = { p = "p", a = "a", d = "d", s = "s", g = "g" }
+
+[[modes.cases]]
+mode = { kind = "stall" }
+source = { derived = "Аналитическая постановка синтетического стенда Т3" }
+probes = [{ kind = "current", branch = { kind = "element", component = "fault", element = "fuse" } }]
+# Последний наносекундный фронт завершён к левой границе окна отказа.
+window = { step_ns = 5000000, end_ns = 1035000000 }
+sources = [{ branch = { kind = "element", component = "fault", element = "emf" }, points = [[0, 0.0], [999999999, 0.0], [1000000000, 12.0]], source = { derived = "Расчётное включение источника 12 В в 1 с, ток до инъекции нулевой" } }]
+
+[[depth_checks]]
+id = "fuse_coordination"
+mode = { kind = "stall" }
+branch = { kind = "element", component = "fault", element = "fuse" }
+window = { start_ns = 1000000000, end_ns = 1035000000 }
+applicability = { derived = "Аналитическая постановка синтетического стенда Т3" }
+reference_only = true
+event = { kind = "fault_applied", at_ns = 1000000000, branch = { kind = "element", component = "fault", element = "channel" }, source = { derived = "Расчётная ступень тока через включённый канал начинается в 1 с" } }
+
+[depth_checks.check]
+kind = "fuse_coordination"
+# До размыкания 12 В / (0,1 + 0,4 + 0,1) Ом = 20 А, на ключе 2 В.
+# Доза за 35 мс без размыкания 14 А²·с. Провод с порогом 8–9,2 А²·с
+# повреждается за 20–23 мс, ключ за 25–27 мс. Полное отключение 28–30 / 15–17 мс.
+wire = { kind = "element", component = "fault", element = "wire" }
+switch = { kind = "element", component = "fault", element = "channel" }
+rating = "fuse_slow"
+protection_path = { derived = "Последовательная цепь с общим током предохранителя, провода и ключа" }
+prospective_current_a = { min = 20.0, nominal = 20.0, max = 20.0, source = { derived = "12 В / 0,6 Ом" } }
+recovery_voltage_v = { min = 12.0, nominal = 12.0, max = 12.0, source = { derived = "ЭДС источника после размыкания" } }
+dc_time_constant_s = { min = 0.0, nominal = 0.0, max = 0.0, source = { derived = "Чисто резистивная цепь L/R = 0" } }
+fuse_temperature_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "До импульса 300 К" } }
+wire_start_temperature_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "До импульса 300 К" } }
+switch_start_temperature_k = { min = 300.0, nominal = 300.0, max = 300.0, source = { derived = "До импульса 300 К" } }
+prospective_waveform = { kind = "dc_step" }
+switch_waveform = { kind = "dc_step" }
+
+[[depth_checks.check.trace]]
+window = { start_ns = 1000000000, end_ns = 1035000000 }
+wire_current_a = { min = 20.0, nominal = 20.0, max = 20.0, source = { derived = "Потенциальная ступень без защиты: 12 В / 0,6 Ом" } }
+switch_current_a = { min = 20.0, nominal = 20.0, max = 20.0, source = { derived = "Тот же последовательный ток" } }
+switch_voltage_v = { min = 2.0, nominal = 2.0, max = 2.0, source = { derived = "20 А × 0,1 Ом канала" } }

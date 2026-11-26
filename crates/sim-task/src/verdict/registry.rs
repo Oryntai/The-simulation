@@ -1,11 +1,18 @@
 //! Реестр обязательств. Идентификаторы являются частью формата отчёта.
 
-use serde::Serialize;
-use sim_process::{schematic::ElectricalClass, work::HazardKind};
+use serde::{Deserialize, Serialize};
+use sim_process::{
+    schematic::{
+        ElectricalClass, capacitor_stress::CAPACITOR_STRESS_CODE,
+        deep_discharge::DEEP_DISCHARGE_CODE, fuse_coordination::FUSE_COORDINATION_CODE,
+        sleep_drain::SLEEP_DRAIN_CODE, switch_thermal::SWITCH_THERMAL_CODE,
+    },
+    work::{HazardKind, cable_flex::CABLE_FLEX_CODE},
+};
 
 use super::{ComponentKind, Group};
 
-pub const REGISTRY_VERSION: u32 = 2;
+pub const REGISTRY_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,7 +55,7 @@ macro_rules! registry {
             $($electric:ident, $code:literal, $electric_group:ident, $origin:literal, $verification:literal;)*
         }
     ) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
         pub enum HazardClass {
             $(#[serde(rename = $id)] $class,)*
             $(#[serde(rename = $code)] $electric,)*
@@ -59,8 +66,7 @@ macro_rules! registry {
             class_spec!($class, $id, $group, [$($kind),*], $method, $limit, $check),
         )*];
 
-        /// Дополнительные классы отдельного электрического корпуса.
-        /// Две причины превышения тока используют запись Overcurrent.
+        /// Дополнительные классы электрического вердикта.
         pub const ELECTRICAL_REGISTRY: &[ClassSpec] = &[$(
             class_spec!($electric, $code, $electric_group, [], Electrical, $origin, $verification),
         )*];
@@ -121,8 +127,81 @@ registry! {
         StartupActuation, "startup_actuation", Firmware, "штатное состояние нагрузки при пуске", "подтяжки, ток и реакция нагрузки";
         InductiveSpike, "inductive_spike", Power, "импульсный предел", "напряжение ограничения и сходимость по шагу";
         SwitchUnderdrive, "switch_underdrive", Power, "применимая область ключа", "напряжение управления и баланс потерь";
+        CapacitorStress, "capacitor_stress", Power, "пределы напряжения, RMS пульсаций и температуры", "пик напряжения, интеграл квадрата тока и баланс потерь";
+        SwitchThermal, "switch_thermal", Power, "тепловая характеристика монтажа, предел Tj и линейная SOA", "стационарный тепловой баланс и переходная тепловая модель";
+        EsdEvent, "esd_event", Wiring, "импульсные пределы напряжения и тока защищаемого вывода", "остаточные U/I на адресованных клеммах и сопоставление со стендовым воздействием";
+        EmiReset, "emi_reset", Firmware, "пороги и выдержки входа сброса в заявленном монтаже", "синхронная запись напряжения входа, сброса и доставки в опыте и контроле";
+        SolderDefect, "solder_defect", Wiring, "окно пайки по температуре, времени и объёму для данного стыка", "аналитический тепловой баланс, четырёхпроводный замер сопротивления и разрушающее испытание прочности";
+        CreepageClearance, "creepage_clearance", Wiring, "пределы воздушного зазора и пути утечки для материала, напряжения и среды", "обмер меди и поверхности по той же ревизии";
+        GroundBounce, "ground_bounce", Wiring, "допустимое смещение опоры приёмника для тока и фронта режима", "расчёт RI + L·di/dt и синхронный дифференциальный замер";
     }
 }
+
+impl HazardClass {
+    pub(super) fn pcb_measurement(self) -> Option<&'static str> {
+        match self {
+            Self::CreepageClearance => Some("нужны измеренные зазоры и пути утечки, данные материала, напряжения и среды для ревизии платы"),
+            Self::GroundBounce => Some("нужен замер смещения опоры на входе приёмника при огибающей тока и фронтов этой ревизии"),
+            _ => None,
+        }
+    }
+
+    pub(super) fn emc_measurement(self) -> Option<&'static str> {
+        match self {
+            Self::EsdEvent => Some("нужен адресованный контактный разряд со стендовым замером остаточных U/I"),
+            Self::EmiReset => Some("нужен связанный опыт и контроль с синхронным замером напряжения входа, сброса и доставки"),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DepthCauseSpec {
+    pub code: &'static str,
+    pub class: HazardClass,
+    /// Смежные классы со своими обязательствами и условиями доказательства.
+    pub related: &'static [HazardClass],
+    pub independent_check: &'static str,
+}
+
+pub const DEPTH_REGISTRY: &[DepthCauseSpec] = &[
+    DepthCauseSpec {
+        code: CAPACITOR_STRESS_CODE,
+        class: HazardClass::CapacitorStress,
+        related: &[HazardClass::InductiveSpike],
+        independent_check: "пик напряжения, интеграл квадрата тока и баланс потерь",
+    },
+    DepthCauseSpec {
+        code: FUSE_COORDINATION_CODE,
+        class: HazardClass::Overcurrent,
+        related: &[HazardClass::WiringHeat, HazardClass::SwitchThermal],
+        independent_check: "полная TCC, интеграл I²t и время повреждения ключа по SOA",
+    },
+    DepthCauseSpec {
+        code: SWITCH_THERMAL_CODE,
+        class: HazardClass::SwitchThermal,
+        related: &[HazardClass::SwitchUnderdrive],
+        independent_check: "стационарный тепловой баланс и переходная тепловая модель",
+    },
+    DepthCauseSpec {
+        code: DEEP_DISCHARGE_CODE,
+        class: HazardClass::Battery,
+        related: &[],
+        independent_check: "напряжение каждой ячейки под нагрузкой, баланс заряда и момент отсечки",
+    },
+    DepthCauseSpec {
+        code: SLEEP_DRAIN_CODE,
+        class: HazardClass::Battery,
+        related: &[],
+        independent_check: "интеграл токов покоя и пробуждения, доступный заряд и порог отсечки",
+    },
+    DepthCauseSpec {
+        code: CABLE_FLEX_CODE,
+        class: HazardClass::ConnectionFailure,
+        related: &[HazardClass::Fatigue, HazardClass::WireFault],
+        independent_check: "длина и радиус на траектории, шаблон монтажа и испытание на циклы",
+    },
+];
 
 impl From<HazardKind> for HazardClass {
     fn from(kind: HazardKind) -> Self {
@@ -161,6 +240,34 @@ impl From<ElectricalClass> for HazardClass {
             ElectricalClass::ConnectionOvercurrent | ElectricalClass::RegulatorOverload => {
                 Self::Overcurrent
             }
+        }
+    }
+}
+
+pub(super) fn depth_class(code: &str) -> Option<HazardClass> {
+    DEPTH_REGISTRY
+        .iter()
+        .find(|spec| spec.code == code)
+        .map(|spec| spec.class)
+        .or_else(|| {
+            ELECTRICAL_REGISTRY
+                .iter()
+                .find(|spec| {
+                    spec.id == code
+                        && (spec.class.emc_measurement().is_some()
+                            || spec.class.pcb_measurement().is_some())
+                })
+                .map(|spec| spec.class)
+        })
+}
+
+impl ComponentKind {
+    pub(super) fn depth_codes(self) -> &'static [&'static str] {
+        match self {
+            Self::Battery => &[DEEP_DISCHARGE_CODE, SLEEP_DRAIN_CODE],
+            Self::Protection => &[FUSE_COORDINATION_CODE],
+            Self::ExposedElectricalPath => &["esd_event"],
+            _ => &[],
         }
     }
 }

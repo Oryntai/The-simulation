@@ -1,13 +1,20 @@
 //! Электрическая схема устройства. Физические участки и выводы сохраняются при раскрытии в MNA.
 
 mod assembly;
+pub mod capacitor_stress;
 mod catalog;
 mod checks;
 mod compile;
+pub mod deep_discharge;
+pub mod fuse_coordination;
 mod graph;
+pub mod mcu_energy;
 mod modes;
+pub mod pcb_map;
 mod pins;
 mod reference;
+pub mod sleep_drain;
+pub mod switch_thermal;
 
 pub use assembly::*;
 pub use catalog::*;
@@ -28,3 +35,8 @@ fn invalid(message: impl Into<String>) -> ProcessError {
 fn identifier(value: &str) -> bool {
     !value.trim().is_empty() && value.trim() == value && !value.chars().any(char::is_control)
 }
+
+pub mod emi_reset;
+pub mod esd_event;
+
+pub mod solder_joint;
