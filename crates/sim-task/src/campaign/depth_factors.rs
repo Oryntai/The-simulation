@@ -68,7 +68,8 @@ impl DepthLevels {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DepthFactor {
-    /// Тройки строятся только из факторов с этой явной пометкой.
+    /// Фактор участвует в тройках безопасности. Для отказов пометка обязательна
+    /// и при загрузке набора факторов приводится к `true`.
     pub safety: bool,
     pub source: Source,
     pub levels: DepthLevels,
@@ -146,6 +147,7 @@ impl TryFrom<Description> for DepthFactors {
                         }
                     }
                     DepthLevels::Faults { values } => {
+                        factor.safety = true;
                         for faults in values.values_mut() {
                             faults.sort();
                             distinct(faults.iter())?;
@@ -515,11 +517,30 @@ impl<'a> DepthPlan<'a> {
                 constraint: rule.clone(),
             });
         }
-        let open = |key, reason: &str| {
-            Ok(DepthRow::NotAnalyzed {
-                key,
-                reasons: vec![reason.into()],
-            })
+        let needs_velocity = !self.inputs.initial_velocity
+            && self.factors.axis_values(selection).any(|(axis, value)| {
+                matches!(axis.parameter, Parameter::JointVelocity { .. }) && value != 0.0
+            });
+        Ok(self.bind_row(key, needs_velocity))
+    }
+
+    pub(super) fn route_ready(&self, mut selection: Selection) -> bool {
+        // Для проверки пути достаточно режима, сетки и расписаний отказов.
+        // Значения разброса ещё будут достроены с физическими ограничениями.
+        for axis in &self.factors.axes {
+            selection.entry(axis.id.clone()).or_insert_with(|| {
+                self.factors.factors[&axis.id].levels.level_ids()
+                    .next().expect("уровни оси проверены").into()
+            });
+        }
+        let key = self.factors.run_key(&selection).expect("уровни пути взяты из факторов");
+        matches!(self.bind_row(key, false), DepthRow::Bound(row) if matches!(row.disposition, Disposition::Ready))
+    }
+
+    fn bind_row(&self, key: RunKey, needs_velocity: bool) -> DepthRow {
+        let open = |key, reason: &str| DepthRow::NotAnalyzed {
+            key,
+            reasons: vec![reason.into()],
         };
         let Some(path) = self.inputs.paths.iter().find(|path| {
             path.station == key.station && path.mode == key.mode && path.path == key.path
@@ -564,11 +585,7 @@ impl<'a> DepthPlan<'a> {
         } else {
             None
         };
-        let needs_velocity = !self.inputs.initial_velocity
-            && self.factors.axis_values(selection).any(|(axis, value)| {
-                matches!(axis.parameter, Parameter::JointVelocity { .. }) && value != 0.0
-            });
-        Ok(DepthRow::Bound(self.campaign.row(
+        DepthRow::Bound(self.campaign.row(
             key,
             path,
             mode,
@@ -576,7 +593,7 @@ impl<'a> DepthPlan<'a> {
             combination_source,
             &self.inputs,
             needs_velocity,
-        )))
+        ))
     }
 
     pub fn materialize(&self, selection: &Selection) -> Result<SampledInputs, Error> {

@@ -3,13 +3,13 @@
 
 use std::{cmp::Ordering, collections::BTreeMap, fmt};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     RunKey, Window,
     depth_factors::{DepthFactors, DepthLevels, Selection},
 };
-use crate::{Error, Fingerprint, Outcome, Signal, Source, SourceKind, verdict::LimitValue};
+use crate::{Error, Fingerprint, Limit, Outcome, Signal, Source, SourceKind, verdict::LimitValue};
 
 #[derive(Debug)]
 pub enum SearchError {
@@ -41,21 +41,21 @@ impl From<Error> for SearchError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Normalization {
     /// Положительная характерная величина в единицах сигнала, общая для критерия.
     pub scale: f64,
     pub source: Source,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Criterion {
     pub signal: Signal,
     pub window: Window,
     pub normalization: Option<Normalization>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MarginEvidence {
     /// Огибающая ряда в окне критерия с учётом заявленной погрешности.
     pub observed: Option<[f64; 2]>,
@@ -64,6 +64,40 @@ pub struct MarginEvidence {
     pub limit_source: Option<Source>,
     /// Исход именно этого критерия по штатному оценщику.
     pub outcome: Outcome,
+}
+
+/// Переносит порог штатного оценщика в единицы и окно адресного поиска.
+pub fn criterion_margin(
+    limit: &Limit,
+    window: Window,
+    observed: Option<[f64; 2]>,
+    outcome: Outcome,
+) -> (Criterion, MarginEvidence) {
+    // Для диапазона масштаб задаёт наибольший модуль предела. У двоичного
+    // запрета расстояние между состояниями 0 и 1 равно единице.
+    let (lower, upper, scale, source) = match limit {
+        Limit::Range { min, max, source, .. } => (
+            min.map(|v| [v; 2]),
+            max.map(|v| [v; 2]),
+            min.iter().chain(max).map(|v| v.abs()).reduce(f64::max),
+            source,
+        ),
+        Limit::Forbidden { source, .. } => (None, Some([0.0; 2]), Some(1.0), source),
+    };
+    (
+        Criterion {
+            signal: limit.signal().clone(),
+            window,
+            normalization: scale.filter(|&scale| scale > 0.0)
+                .map(|scale| Normalization { scale, source: source.clone() }),
+        },
+        MarginEvidence {
+            limit: Some(LimitValue { lower, upper }),
+            limit_source: Some(source.clone()),
+            observed,
+            outcome,
+        },
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]

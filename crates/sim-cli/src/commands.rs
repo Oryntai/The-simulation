@@ -106,6 +106,7 @@ pub(crate) struct CoverageRow {
     pub input: String,
     pub manifest: std::path::PathBuf,
     pub recording: Option<Recording>,
+    pub launches: u32,
 }
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]

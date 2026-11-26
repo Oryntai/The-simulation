@@ -203,6 +203,10 @@ pub struct ElectricalEvidence {
     assessment: sim_process::schematic::ElectricalAssessment,
     findings: Vec<Finding>,
     solder_joints: BTreeMap<String, SolderJointReport>,
+    depth_subjects: BTreeMap<(&'static str, String), (HazardClass, &'static str)>,
+    declared_depth: BTreeSet<(&'static str, String)>,
+    emc_logic: bool,
+    emc_switching: bool,
 }
 
 impl ElectricalEvidence {
@@ -369,9 +373,174 @@ impl ElectricalEvidence {
             assessment,
             findings,
             solder_joints: BTreeMap::new(),
+            depth_subjects: BTreeMap::new(),
+            declared_depth: BTreeSet::new(),
+            emc_logic: false,
+            emc_switching: false,
         };
+        result.derive_depth_subjects(compiled)?;
         result.assess_solder(compiled, solder)?;
         Ok(result)
+    }
+
+    fn derive_depth_subjects(&mut self, compiled: &CompiledSchematic) -> Result<(), Error> {
+        use sim_process::schematic::{BindingTarget, PartKind, PinRole, PrimitiveKind};
+
+        if self.assessment.scope != Scope::Assembly {
+            return Ok(());
+        }
+        self.emc_logic = compiled.bindings().iter().any(|binding| {
+            matches!(
+                binding.target,
+                BindingTarget::BoardPin { .. }
+                    | BindingTarget::BoardPower { .. }
+                    | BindingTarget::SensorPower { .. }
+            )
+        });
+        self.emc_switching = compiled
+            .bindings()
+            .iter()
+            .any(|binding| matches!(binding.target, BindingTarget::DrivePower { .. }));
+        for (component, part) in compiled.part_instances() {
+            let switch = matches!(
+                part.kind,
+                PartKind::Nmos | PartKind::Pmos | PartKind::SwitchModule
+            ) || part.elements.values().any(|element| {
+                matches!(
+                    element.kind,
+                    PrimitiveKind::Nmos | PrimitiveKind::Pmos | PrimitiveKind::Switch
+                )
+            });
+            self.emc_switching |= switch;
+            self.emc_logic |= part.pins.values().any(|pin| {
+                matches!(
+                    pin.role,
+                    PinRole::SignalIn(_) | PinRole::SignalOut(_) | PinRole::SignalIo(_)
+                )
+            });
+            if switch {
+                self.expect_depth("switch_thermal", component, "силовой ключ")?;
+            }
+            match part.kind {
+                PartKind::Capacitor | PartKind::PolarCapacitor => {
+                    self.expect_depth(
+                        "capacitor_stress",
+                        component,
+                        "позиция конденсатора в каталоге",
+                    )?;
+                }
+                PartKind::Battery => {
+                    self.expect_depth("deep_discharge", component, "батарея")?;
+                    self.expect_depth("sleep_drain", component, "батарея")?;
+                }
+                PartKind::ChargePowerModule => {
+                    self.expect_depth("fuse_coordination", component, "зарядно-защитный тракт")?;
+                }
+                PartKind::Wire => {
+                    self.expect_depth(
+                        "cable_flex",
+                        component,
+                        "проводка на устройстве с подвижным сочленением",
+                    )?;
+                }
+                _ => {}
+            }
+        }
+        if compiled.has_exposed_contact() {
+            self.expect_depth(
+                "esd_event",
+                "",
+                "открытая клемма, вывод или свободный разъём",
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Добавляет обязательство по установленной позиции с отдельным углублённым паспортом.
+    pub fn expect_depth(
+        &mut self,
+        code: &'static str,
+        component: &str,
+        basis: &'static str,
+    ) -> Result<(), Error> {
+        let class = super::registry::depth_class(code)
+            .ok_or_else(|| invalid("неизвестный код обязательства ТЗ-3"))?;
+        if self.assessment.scope == Scope::Assembly {
+            let object = if component.is_empty() {
+                self.instance.clone()
+            } else {
+                format!("{}/{component}", self.instance)
+            };
+            self.depth_subjects.insert((code, object), (class, basis));
+        }
+        Ok(())
+    }
+
+    /// Незаявленные проверки, применимые к составу разрешённой сборки.
+    pub fn undeclared_depth(&self, device: &sim_world::Device) -> Vec<Finding> {
+        if self.assessment.scope != Scope::Assembly {
+            return Vec::new();
+        }
+        let moving = device.links.iter().any(|link| {
+            matches!(
+                link.joint.kind,
+                JointType::Hinge | JointType::Slide | JointType::Ball
+            ) || (link.parent.is_some() && link.joint.kind == JointType::Free)
+        });
+        let emi = (self.emc_switching || !device.drives.is_empty())
+            && (self.emc_logic || !device.sensors.is_empty());
+        let mut subjects = self.depth_subjects.clone();
+        if emi {
+            subjects.insert(
+                ("emi_reset", self.instance.clone()),
+                (
+                    HazardClass::EmiReset,
+                    "коммутируемая силовая часть и логика в одном экземпляре",
+                ),
+            );
+        }
+        subjects
+            .into_iter()
+            .filter_map(|((code, object), (class, basis))| {
+                if (code == "cable_flex" && !moving) || self.depth_declared(code, &object) {
+                    return None;
+                }
+                Some(Self::open_depth(class, code, object, basis))
+            })
+            .collect()
+    }
+
+    pub(super) fn open_depth(
+        class: HazardClass,
+        code: &str,
+        object: String,
+        basis: &str,
+    ) -> Finding {
+        let key = RequirementKey {
+            class,
+            object,
+            extension: Some(format!("depth/{code}/не заявлено")),
+            run: None,
+            window_ns: None,
+            level: super::Level::Simulation,
+        };
+        let mut finding = Finding::open(&key, format!("не заявлено свидетельство: {basis}"));
+        finding.code = code.into();
+        if let Some(spec) = DEPTH_REGISTRY.iter().find(|spec| spec.code == code) {
+            finding.verification = spec.independent_check.into();
+        }
+        finding
+    }
+
+    pub(super) fn depth_declared(&self, code: &str, object: &str) -> bool {
+        self.assessment.scope == Scope::Assembly
+            && (self
+                .declared_depth
+                .iter()
+                .any(|&(own, ref subject)| own == code && subject == object)
+                || (matches!(code, "esd_event" | "emi_reset")
+                    && object == self.instance
+                    && self.findings.iter().any(|f| f.code == code)))
     }
 
     fn assess_solder(
@@ -497,6 +666,11 @@ impl ElectricalEvidence {
             .iter()
             .find(|spec| spec.code == depth.code)
             .ok_or_else(|| invalid("неизвестная углублённая причина"))?;
+        let subject = match &depth.branch {
+            sim_process::schematic::Section::Element { component, .. }
+            | sim_process::schematic::Section::Connection(component) => component,
+        };
+        self.declared_depth.insert((spec.code, format!("{}/{subject}", self.instance)));
         let branch = format!("{:?}", depth.branch);
         let window_ns = depth.window.map(|window| [window.start.0, window.end.0]);
         let key = RequirementKey {
@@ -521,13 +695,11 @@ impl ElectricalEvidence {
             }
             .into(),
         );
-        if depth.applicability_gap.is_none() {
-            finding.outcome = match depth.status {
-                ElectricalStatus::Pass => Outcome::Pass,
-                ElectricalStatus::Fail => Outcome::Fail,
-                ElectricalStatus::NotAnalyzed => Outcome::NotAnalyzed,
-            };
-        }
+        finding.outcome = match depth.status {
+            ElectricalStatus::Pass => Outcome::Pass,
+            ElectricalStatus::Fail => Outcome::Fail,
+            ElectricalStatus::NotAnalyzed => Outcome::NotAnalyzed,
+        };
         finding.confirmed_hazard = finding.outcome == Outcome::Fail;
         if finding.outcome != Outcome::NotAnalyzed {
             finding.missing_data.clear();

@@ -17,13 +17,15 @@ use sim_task::{
     campaign::{
         Campaign, Disposition, PlanRow, ReferenceKind, ResolvedInputs, RunKey, SampledInputs,
         Target,
-        depth_factors::{DepthFactors, DepthPlan, DepthRow, Selection},
+        depth_cover::{DepthCover, plan_cover_for},
+        depth_factors::{DepthPlan, DepthRow, Selection},
+        depth_search::{Criterion, MarginEvidence, Refinement, RunWitness, SearchRun, SearchStep, criterion_margin, refine},
     },
     metrics::{self, CampaignStats},
     verdict::Readiness,
 };
 
-use super::super::{Checkpoint, RowReport, RunStatus, bench, encode, playback, value};
+use super::super::{Checkpoint, RowReport, RunStatus, bench, depth_report, encode, playback, unavailable_reason, value};
 use super::{ResultRows, Spec, linked_row, setup};
 use crate::{
     Options,
@@ -41,6 +43,8 @@ use crate::{
 pub(super) struct Limits {
     runs: u32,
     seconds: u64,
+    #[serde(default)]
+    repeat_worst: bool,
 }
 
 type PathKey = (String, String, String);
@@ -79,6 +83,8 @@ pub(super) struct Installation<'a> {
     pub inputs: &'a ResolvedInputs,
     pub models: Option<&'a Models>,
     pub electrical_profiles: Profiles,
+    pub started: Option<std::time::Instant>,
+    pub report_checkpoint: Option<&'a Checkpoint>,
 }
 
 fn result(rows: BTreeMap<String, RowReport>, resumed: usize, view: Option<Vec<u8>>) -> ResultRows {
@@ -92,6 +98,7 @@ fn result(rows: BTreeMap<String, RowReport>, resumed: usize, view: Option<Vec<u8
         readiness,
         resumed,
         view,
+        depth: None,
         statistics: CampaignStats {
             rows: Vec::new(),
             series: Vec::new(),
@@ -233,15 +240,14 @@ pub(super) fn run(
     });
     let budget = if child.is_none() {
         let budget = match budget_dir.as_deref() {
-            Some(dir)
-                if dir
-                    .join("depth-budget-v1.json")
-                    .try_exists()
-                    .map_err(|e| e.to_string())? =>
-            {
+            // Каталог создаёт сам бюджет. Потеря записи в существующем
+            // каталоге не даёт права на новый срок и новую квоту.
+            Some(dir) if dir.try_exists().map_err(|e| e.to_string())? => {
                 DepthBudget::resume(limits, &plan_id, dir)
             }
-            dir => DepthBudget::start(limits, &plan_id, dir),
+            dir => DepthBudget::start_at(
+                limits, &plan_id, dir, driver.started.ok_or("нет отметки старта координатора")?,
+            ),
         }
         .map_err(|e| e.to_string())?;
         Some(budget)
@@ -283,7 +289,14 @@ pub(super) fn run(
             .plan
             .materialize(&request.selection)
             .map_err(|e| e.to_string())?;
+        if work.launch_cost(&row, &mode)? != request.launches {
+            return Err("схема дочерних ветвей изменилась после резерва".into());
+        }
         let (mut report, recording) = work.execute(&row, &mode, input, &id, archive)?;
+        let scenario = report.detail.get(1).unwrap_or(&report.detail);
+        let comparison = scenario["profile"]["evidence"]["cases"]
+            .as_array()
+            .is_some_and(|cases| cases.iter().any(|case| case["comparison_started"] == true));
         work.verify(&engine)?;
         if let Some(recording) = recording {
             use std::io::Write;
@@ -296,11 +309,13 @@ pub(super) fn run(
                 .map_err(|e| e.to_string())?;
         }
         annotate(&mut report, &request.selection, &row.key, input, None);
+        report.detail["coverage"]["launches"] = json!(1 + u32::from(comparison));
         return Ok(result(BTreeMap::from([(id, report)]), 0, None));
     }
 
     let budget = budget.expect("координатор имеет бюджет");
-    let planned = cover(factors)?;
+    // Потолок числа строк из блока Е. Непоместившиеся проекции остаются в реестре.
+    let planned = plan_cover_for(&work.plan, 1000).map_err(|e| e.to_string())?;
     let workers = work
         .driver
         .options
@@ -317,10 +332,17 @@ pub(super) fn run(
     let mut rows = BTreeMap::new();
     let mut resumed = 0;
     let mut addresses = BTreeSet::new();
-    let missing = planned.missing;
-    for (index, selection) in planned.rows.into_iter().enumerate() {
+    let DepthCover { rows: plan_rows, pairs, safety_triples } = planned;
+    let recorded = work.driver.options.repeat.as_ref()
+        .filter(|key| key.strip_prefix(work.driver.prefix).is_some_and(|tail| tail.starts_with('/')))
+        .zip(work.driver.report_checkpoint)
+        .map(|(key, checkpoint)| depth_report::recorded_refinement(checkpoint, key))
+        .transpose()?.flatten();
+    let planned = plan_rows.into_iter().enumerate().map(|(index, row)| (index, row.selection));
+    let refined = recorded.as_ref().map(|row| (row.order, row.selection.clone()));
+    for (index, selection) in planned.chain(refined) {
         let row = work.resolve(&selection)?;
-        let (id, input) = work.address(&row)?;
+        let (id, _) = work.address(&row)?;
         if !addresses.insert(id.clone()) {
             return Err("коллизия ключа строки покрытия".into());
         }
@@ -332,144 +354,66 @@ pub(super) fn run(
         }) {
             continue;
         }
-        let name = stamp(input);
-        let key = row.key().clone();
-        let phase = match row {
-            DepthRow::Excluded { .. } => {
-                return Err("планировщик выбрал физически исключённую строку".into());
-            }
-            DepthRow::NotAnalyzed { reasons, .. } => Err(value(reasons)?),
-            DepthRow::Bound(row) => match row.disposition {
-                Disposition::Ready => Ok(row),
-                _ => Err(value(row.disposition)?),
-            },
-        };
-        let row = match phase {
-            Ok(row) => row,
-            Err(reason) => {
-                let mut row = open(input, reason)?;
-                annotate(&mut row, &selection, &key, input, Some(index));
+        let mut job = match work.prepare_job(
+            selection, index, scratch.path().join(index.to_string()),
+        )? {
+            Prepared::Open(id, row) => {
                 rows.insert(id, row);
                 continue;
             }
+            Prepared::Ready(job) => job,
         };
-        let sampled = work
-            .plan
-            .materialize(&selection)
-            .map_err(|e| e.to_string())?;
-        let reason = work.unsupported(&row, &sampled, format)?;
-        if let Some(reason) = reason {
-            let mut row = open(input, reason)?;
-            annotate(&mut row, &selection, &key, input, Some(index));
-            rows.insert(id, row);
-            continue;
-        }
-
-        let cache = checkpoint.as_ref().filter(|_| {
-            work.driver.options.repeat.is_none()
-                && work.electrical_profile(&key).is_none()
-                && sampled
-                    .experiment
-                    .as_ref()
-                    .is_some_and(|experiment| experiment.kind.is_none())
+        job.cache = checkpoint.as_ref().filter(|_| {
+            work.driver.options.repeat.is_none() && work.is_cacheable(&job.key)
         });
-        if let Some(cache) = cache
-            && let Some(saved) = cache.load_row::<RowReport>(&name)?
+        if let Some(cache) = job.cache
+            && let Some(saved) = cache.load_row::<RowReport>(&job.name)?
         {
-            validate_reply(&saved, input, &selection, &key)?;
+            validate_reply(&saved, job.input, &job.selection, &job.key)?;
             if saved.executed != 1 || saved.status != RunStatus::Completed {
                 return Err("контрольная точка содержит незавершённую строку покрытия".into());
             }
-            rows.insert(id, saved);
+            rows.insert(job.id, saved);
             resumed += 1;
             continue;
         }
-        let dir = scratch.path().join(index.to_string());
-        fs::create_dir(&dir).map_err(|e| e.to_string())?;
-        jobs.push((id, input, name, key, selection, index, dir, cache));
+        jobs.push(job);
     }
+    let launcher = Launcher {
+        exe: &exe, prefix: work.driver.prefix,
+        campaign: work.driver.path.canonicalize().map_err(|e| e.to_string())?,
+        installation: work.driver.installation.canonicalize().map_err(|e| e.to_string())?,
+        manifest: &source_manifest, budget: &budget, workers,
+    };
+    let repeat_worst = work.driver.options.repeat.is_none()
+        && spec.coverage.as_ref().is_some_and(|limits| limits.repeat_worst);
+    let keep_runs = if repeat_worst { jobs.iter().map(|job| job.launches).max().unwrap_or(1) } else { 0 };
+    // Два этапа делят общий дедлайн: покрытие с уточнением и проверка повтора.
+    let keep_time = if repeat_worst { limits.time() / 2 } else { Duration::ZERO };
     let mut view = None;
-    let campaign_path = work.driver.path.canonicalize().map_err(|e| e.to_string())?;
-    let installation_path = work
-        .driver
-        .installation
-        .canonicalize()
-        .map_err(|e| e.to_string())?;
-    let recording = format.map(|format| match format {
-        PlaybackFormat::Log => Recording::Log,
-        PlaybackFormat::View => Recording::View,
-    });
-    // Дескрипторы вывода открываются только на порцию по числу доступных ядер.
-    for jobs in jobs.chunks(crate::tasks::workers::Workers::cpu_count().get()) {
-        let commands = jobs
-            .iter()
-            .map(|(_, _, name, _, selection, _, dir, _)| {
-                let request = CoverageRow {
-                    installation: installation_path.clone(),
-                    manifest: source_manifest.clone(),
-                    input: name.clone(),
-                    selection: selection.clone(),
-                    recording,
-                };
-                commands::coverage_command(&exe, dir, work.driver.prefix, &campaign_path, &request)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let replies = workers.map_budgeted(&budget, commands, None)?;
-        for ((id, input, name, key, selection, index, dir, cache), status) in
-            jobs.iter().zip(replies)
-        {
-            let mut row = match status {
-                Ok(status) => {
-                    let bytes = fs::read(dir.join("report.json")).map_err(|e| e.to_string())?;
-                    let mut response: serde_json::Value = serde_json::from_slice(&bytes)
-                        .map_err(|e| format!("дочерний опыт «{id}» ({status}): {e}"))?;
-                    if !status.success() {
-                        return Err(format!("дочерний опыт «{id}»: {}", response["detail"]));
-                    }
-                    let (assembly, _) = work
-                        .driver
-                        .prefix
-                        .split_once('/')
-                        .expect("адрес установки проверен");
-                    let row: RowReport =
-                        serde_json::from_value(response["assemblies"][assembly]["runs"][id].take())
-                            .map_err(|e| e.to_string())?;
-                    validate_reply(&row, *input, selection, key)?;
-                    if recording.is_some() && row.playback.is_some() {
-                        view = Some(fs::read(dir.join("record")).map_err(|e| e.to_string())?);
-                    }
-                    row
-                }
-                Err(
-                    error @ (BudgetError::QuotaExhausted
-                    | BudgetError::DeadlineExceeded
-                    | BudgetError::Cancelled),
-                ) => open(*input, error.to_string())?,
-                Err(error) => return Err(error.to_string()),
-            };
-            // У дочернего процесса нет порядкового номера координатора.
-            if row.detail.get("coverage").is_some() {
-                row.detail["coverage"]["order"] = json!(index);
-            } else {
-                annotate(&mut row, selection, key, *input, Some(*index));
+    for batch in jobs.chunks(crate::tasks::workers::Workers::cpu_count().get()) {
+        for (key, mut row, archive) in launcher.run(batch, format, keep_runs, keep_time)? {
+            if recorded.as_ref().is_some_and(|saved| row.detail["coverage"]["order"] == saved.order) {
+                row.detail["coverage"]["phase"] = json!("refinement");
             }
-            if let Some(cache) =
-                cache.filter(|_| row.executed == 1 && row.status == RunStatus::Completed)
-            {
-                cache.save_row(name, &row)?;
+            if let Some(archive) = archive {
+                view = Some(archive);
             }
-            let actual_id = if row.input != *input {
-                format!("{id}@{}", stamp(row.input))
-            } else if row.status == RunStatus::Open {
-                work.driver.options.repeat.as_ref().unwrap_or(id).clone()
+            let key = if row.status == RunStatus::Open {
+                work.driver.options.repeat.as_ref().cloned().unwrap_or(key)
             } else {
-                id.clone()
+                key
             };
-            if rows.insert(actual_id, row).is_some() {
+            if rows.insert(key, row).is_some() {
                 return Err("коллизия ключа строки покрытия".into());
             }
         }
     }
+    let refinement = if repeat_worst {
+        Some(refine_rows(&work, &launcher, &mut rows, scratch.path(), keep_runs, keep_time)?)
+    } else {
+        None
+    };
     work.verify(&engine)?;
     if !spec.checks.is_empty() {
         for row in rows.values_mut() {
@@ -477,17 +421,277 @@ pub(super) fn run(
                 json!("для проверок установки нужна отдельная привязка к выполненным строкам");
         }
     }
-    if work.driver.options.repeat.is_none() && missing != 0 {
+    if work.driver.options.repeat.is_none()
+        && (!pairs.unplanned().is_empty() || !safety_triples.unplanned().is_empty())
+    {
         rows.insert(
             format!("{}/depth-unplanned", work.driver.prefix),
             open(
                 build,
-                json!({ "unplanned_interactions": missing,
+                json!({ "unplanned_pairs": pairs.unplanned(), "unplanned_safety_triples": safety_triples.unplanned(),
                 "reason": "число строк покрытия достигло предела из блока Е" }),
             )?,
         );
     }
-    Ok(result(rows, resumed, view))
+    let mut summary = depth_report::summarize(
+        factors, &rows, work.driver.options.repeat.is_some(), refinement,
+    )?;
+    if repeat_worst {
+        let (mut repeat, launches) = repeat_worst_row(&work, &launcher, &rows, &summary, scratch.path())?;
+        work.verify(&engine)?;
+        let usage = budget.usage().map_err(|e| e.to_string())?;
+        if usage.remaining_time.is_zero() && matches!(repeat, depth_report::RepeatStatus::Verified) {
+            repeat = depth_report::RepeatStatus::NotAnalyzed {
+                reason: "проверка SIMVIEW завершилась после дедлайна установки".into(),
+            };
+        }
+        let confirmed_launches = rows.values()
+            .filter_map(|row| row.detail["coverage"]["launches"].as_u64())
+            .sum::<u64>() + launches;
+        if confirmed_launches > u64::from(usage.reserved) {
+            return Err("отчёт содержит больше запусков, чем оплачено бюджетом".into());
+        }
+        summary.acceptance = Some(depth_report::Acceptance {
+            reserved_runs: usage.reserved,
+            confirmed_launches,
+            elapsed_ns: u64::try_from(usage.elapsed.as_nanos()).map_err(|e| e.to_string())?,
+            repeat,
+        });
+    }
+    let mut result = result(rows, resumed, view);
+    if !result.rows.is_empty() {
+        result.depth = Some(summary);
+    }
+    Ok(result)
+}
+
+type Margins = BTreeMap<String, (Criterion, MarginEvidence)>;
+
+fn search_history(
+    revision: Fingerprint,
+    rows: &BTreeMap<String, RowReport>,
+) -> Result<(BTreeMap<String, Criterion>, Vec<SearchRun>), String> {
+    let mut criteria = BTreeMap::new();
+    let mut history = Vec::new();
+    for row in rows.values() {
+        let key: RunKey = serde_json::from_value(row.detail["coverage"]["key"].clone())
+            .map_err(|e| e.to_string())?;
+        let witness = row.playback.as_ref().map(|play| RunWitness {
+            revision,
+            input: row.input,
+            journal: Fingerprint::from_fnv1a(play.journal),
+            seed: play.seed,
+            horizon_ns: play.end_ns,
+            injections_confirmed: key.faults.is_empty() || row.detail["scenario"]["injections_confirmed"] == true,
+        });
+        let mut evidence = BTreeMap::new();
+        if let Some(margins) = row.detail["scenario"].get("margins") {
+            let margins: Margins = serde_json::from_value(margins.clone())
+                .map_err(|e| e.to_string())?;
+            for (id, (criterion, observed)) in margins {
+                // У одного сигнала могут быть разные пределы в штатном режиме
+                // и после отказа. Сравнивать можно только те же предел и окно.
+                let definition = encode((&criterion, &observed.limit, &observed.limit_source))?;
+                let stamp = stamp(Fingerprint::of(&definition));
+                let id = format!("{}/{}/{id}@{stamp}", key.station, key.mode);
+                if let Some(prior) = criteria.get(&id)
+                    && encode(prior)? != encode(&criterion)?
+                {
+                    return Err(format!("изменился критерий уточнения «{id}»"));
+                }
+                criteria.insert(id.clone(), criterion);
+                evidence.insert(id, observed);
+            }
+        }
+        history.push(SearchRun { key, witness, evidence });
+    }
+    Ok((criteria, history))
+}
+
+fn refine_rows(
+    work: &Work<'_>,
+    launcher: &Launcher<'_>,
+    rows: &mut BTreeMap<String, RowReport>,
+    scratch: &Path,
+    keep_runs: u32,
+    keep_time: Duration,
+) -> Result<Refinement, String> {
+    let factors = work.driver.campaign.depth_factors().ok_or("нет факторов уточнения")?;
+    loop {
+        let usage = launcher.budget.usage().map_err(|e| e.to_string())?;
+        let remaining = if usage.remaining_time > keep_time {
+            usage.remaining_runs.saturating_sub(keep_runs)
+        } else {
+            0
+        };
+        let (criteria, history) = search_history(work.build, rows)?;
+        let mut search = refine(factors, &criteria, &history, remaining as usize)
+            .map_err(|e| e.to_string())?;
+        let SearchStep::Probe(probe) = &search.step else {
+            return Ok(search);
+        };
+        let index = rows.len();
+        let dir = scratch.join(format!("refine-{index}"));
+        let prepared = work.prepare_job(probe.selection.clone(), index, dir)?;
+        let (id, mut row) = match prepared {
+            Prepared::Open(id, row) => (id, row),
+            Prepared::Ready(job) => {
+                if job.launches > remaining {
+                    search.step = SearchStep::BudgetExhausted;
+                    return Ok(search);
+                }
+                let [(id, row, _)] = launcher.run(&[job], None, keep_runs, keep_time)?
+                    .try_into().map_err(|_| "уточнение не вернуло строку")?;
+                (id, row)
+            }
+        };
+        // Уточнение участвует в фактическом покрытии и остаётся отличимым в отчёте.
+        row.detail["coverage"]["phase"] = json!("refinement");
+        if rows.insert(id, row).is_some() {
+            return Err("коллизия ключа уточнения".into());
+        }
+    }
+}
+
+fn repeat_worst_row(
+    work: &Work<'_>,
+    launcher: &Launcher<'_>,
+    rows: &BTreeMap<String, RowReport>,
+    summary: &depth_report::Summary,
+    scratch: &Path,
+) -> Result<(depth_report::RepeatStatus, u64), String> {
+    use depth_report::RepeatStatus;
+    let open = |reason| Ok((RepeatStatus::NotAnalyzed { reason }, 0));
+    let Some(worst) = &summary.worst else {
+        return open("нет худшей строки с подтверждённым журналом".into());
+    };
+    let initial = &rows[&worst.run_key];
+    let Some(playback) = &initial.playback else {
+        return open(unavailable_reason(initial));
+    };
+    let selection = serde_json::from_value(initial.detail["coverage"]["selection"].clone())
+        .map_err(|e| e.to_string())?;
+    let index = initial.detail["coverage"]["order"].as_u64().ok_or("нет номера худшей строки")? as usize;
+    let Prepared::Ready(job) = work.prepare_job(selection, index, scratch.join("repeat"))? else {
+        return open("худшая строка перестала разрешаться".into());
+    };
+    let [(id, mut current, archive)] = launcher.run(&[job], Some(PlaybackFormat::View), 0, Duration::ZERO)?
+        .try_into().map_err(|_| "повтор не вернул строку")?;
+    let launches = current.detail["coverage"]["launches"].as_u64().unwrap_or(0);
+    let Some(archive) = archive else {
+        return Ok((RepeatStatus::NotAnalyzed { reason: unavailable_reason(&current) }, launches));
+    };
+    if let Some(phase) = initial.detail["coverage"].get("phase") {
+        current.detail["coverage"]["phase"] = phase.clone();
+    }
+    let view = crate::view::RunView::read(&archive)?;
+    if id != worst.run_key || encode(&current)? != encode(initial)?
+        || view.journal.fingerprint() != playback.journal
+        || view.journal.header().seed != playback.seed
+        || view.journal.end().time.0 != playback.end_ns
+        || view.metadata.physics_hz != playback.physics_hz as f64
+        || view.metadata.mode.as_deref() != Some(playback.child.mode.as_str())
+    {
+        return Err("SIMVIEW расходится с квитанцией худшей строки".into());
+    }
+    Ok((RepeatStatus::Verified, launches))
+}
+
+enum Prepared<'a> {
+    Open(String, RowReport),
+    Ready(Job<'a>),
+}
+
+struct Job<'a> {
+    id: String,
+    input: Fingerprint,
+    name: String,
+    key: RunKey,
+    selection: Selection,
+    index: usize,
+    dir: PathBuf,
+    cache: Option<&'a Checkpoint>,
+    launches: u32,
+}
+
+struct Launcher<'a> {
+    exe: &'a Path,
+    prefix: &'a str,
+    campaign: PathBuf,
+    installation: PathBuf,
+    manifest: &'a Path,
+    budget: &'a DepthBudget,
+    workers: &'a crate::tasks::workers::Workers,
+}
+
+impl Launcher<'_> {
+    fn run(
+        &self,
+        jobs: &[Job<'_>],
+        format: Option<PlaybackFormat>,
+        keep_runs: u32,
+        keep_time: Duration,
+    ) -> Result<Vec<(String, RowReport, Option<Vec<u8>>)>, String> {
+        let recording = format.map(|format| match format {
+            PlaybackFormat::Log => Recording::Log,
+            PlaybackFormat::View => Recording::View,
+        });
+        let commands = jobs.iter().map(|job| {
+            let request = CoverageRow {
+                installation: self.installation.clone(),
+                manifest: self.manifest.to_owned(),
+                input: job.name.clone(),
+                selection: job.selection.clone(),
+                recording,
+                launches: job.launches,
+            };
+            let command = commands::coverage_command(self.exe, &job.dir, self.prefix, &self.campaign, &request)?;
+            Ok((command, job.launches))
+        }).collect::<Result<Vec<_>, String>>()?;
+        let replies = self.workers.map_budgeted(self.budget, commands, None, keep_runs, keep_time)?;
+        let assembly = self.prefix.split_once('/').expect("адрес установки проверен").0;
+        jobs.iter().zip(replies).map(|(job, status)| {
+            let mut archive = None;
+            let mut row = match status {
+                Ok(status) => {
+                    let bytes = fs::read(job.dir.join("report.json")).map_err(|e| e.to_string())?;
+                    let mut response: serde_json::Value = serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("дочерний опыт «{}» ({status}): {e}", job.id))?;
+                    if !status.success() {
+                        return Err(format!("дочерний опыт «{}»: {}", job.id, response["detail"]));
+                    }
+                    let row: RowReport = serde_json::from_value(response["assemblies"][assembly]["runs"][&job.id].take())
+                        .map_err(|e| e.to_string())?;
+                    validate_reply(&row, job.input, &job.selection, &job.key)?;
+                    if !(1..=u64::from(job.launches)).contains(
+                        &row.detail["coverage"]["launches"].as_u64().unwrap_or(0),
+                    ) {
+                        return Err("число ветвей опыта расходится с резервом".into());
+                    }
+                    if recording.is_some() && row.playback.is_some() {
+                        archive = Some(fs::read(job.dir.join("record")).map_err(|e| e.to_string())?);
+                    }
+                    row
+                }
+                Err(error @ (BudgetError::QuotaExhausted | BudgetError::DeadlineExceeded | BudgetError::Cancelled)) => {
+                    let mut row = open(job.input, error.to_string())?;
+                    annotate(&mut row, &job.selection, &job.key, job.input, None);
+                    row
+                }
+                Err(error) => return Err(error.to_string()),
+            };
+            row.detail["coverage"]["order"] = json!(job.index);
+            if let Some(cache) = job.cache.filter(|_| row.status == RunStatus::Completed) {
+                cache.save_row(&job.name, &row)?;
+            }
+            let id = if row.input == job.input {
+                job.id.clone()
+            } else {
+                format!("{}@{}", job.id, stamp(row.input))
+            };
+            Ok((id, row, archive))
+        }).collect()
+    }
 }
 
 fn validate_reply(
@@ -504,6 +708,7 @@ fn validate_reply(
         || row.executed > 1
         || row.outcome == Outcome::Pass
         || (row.executed == 1) != (row.status == RunStatus::Completed)
+        || (row.executed == 1) != row.playback.is_some()
         || row
             .playback
             .as_ref()
@@ -523,6 +728,37 @@ struct Work<'a> {
 }
 
 impl Work<'_> {
+    fn prepare_job(&self, selection: Selection, index: usize, dir: PathBuf) -> Result<Prepared<'_>, String> {
+        let row = self.resolve(&selection)?;
+        let (id, input) = self.address(&row)?;
+        let key = row.key().clone();
+        let pending = |reason| {
+            let mut row = open(input, reason)?;
+            annotate(&mut row, &selection, &key, input, Some(index));
+            Ok(Prepared::Open(id.clone(), row))
+        };
+        let row = match row {
+            DepthRow::Excluded { .. } => return Err("планировщик выбрал физически исключённую строку".into()),
+            DepthRow::NotAnalyzed { reasons, .. } => return pending(value(reasons)?),
+            DepthRow::Bound(row) if matches!(row.disposition, Disposition::Ready) => row,
+            DepthRow::Bound(row) => return pending(value(row.disposition)?),
+        };
+        let sampled = self.plan.materialize(&selection).map_err(|e| e.to_string())?;
+        if let Some(reason) = self.unsupported(&row, &sampled)? {
+            return pending(value(reason)?);
+        }
+        let launches = self.launch_cost(&row, &sampled)?;
+        fs::create_dir(&dir).map_err(|e| e.to_string())?;
+        Ok(Prepared::Ready(Job {
+            id, input, name: stamp(input), key, selection, index, dir, cache: None, launches,
+        }))
+    }
+
+    fn is_cacheable(&self, key: &RunKey) -> bool {
+        self.electrical_profile(key).is_none()
+            && self.driver.campaign.native_horizon(&key.station, &key.mode).is_some()
+    }
+
     fn resolve(&self, selection: &Selection) -> Result<DepthRow, String> {
         self.plan.row(selection).map_err(|e| e.to_string())
     }
@@ -557,7 +793,6 @@ impl Work<'_> {
         &self,
         row: &PlanRow,
         sampled: &SampledInputs,
-        archive: Option<PlaybackFormat>,
     ) -> Result<Option<&'static str>, String> {
         let mode = sampled.mode.as_ref().ok_or("нет режима строки покрытия")?;
         let linked = sampled.experiment.as_ref().and_then(|e| e.kind);
@@ -568,30 +803,33 @@ impl Work<'_> {
                 .then_some("электрический путь использует расписание своего профиля")
         } else if let Some(kind) = linked {
             match kind {
-                ReferenceKind::ControlTask if archive.is_none() => {
-                    let task = sampled
+                ReferenceKind::ControlTask if !self.driver.campaign.catalog_path().is_dir() => {
+                    Some("связанный контур требует папку каталога из установки покрытия")
+                }
+                ReferenceKind::ControlTask => {
+                    let task_path = sampled
                         .experiment
                         .as_ref()
                         .and_then(|e| e.task.as_ref())
                         .ok_or("отсутствует файл задания связанного опыта")?;
-                    let text =
-                        fs::read_to_string(task).map_err(|e| format!("{}: {e}", task.display()))?;
+                    let text = fs::read_to_string(task_path)
+                        .map_err(|e| format!("{}: {e}", task_path.display()))?;
                     let task = sim_task::Task::parse(&text).map_err(|e| e.to_string())?;
-                    let paired = task
-                        .modes()
-                        .iter()
-                        .filter(|m| m.id == row.key.mode)
-                        .any(|m| {
-                            m.stimuli
-                                .iter()
-                                .any(|s| s.id == m.excitation && s.comparison_value.is_some())
-                        });
-                    paired.then_some(
-                        "сравнительная ветвь связанного опыта требует отдельного резерва",
-                    )
-                }
-                ReferenceKind::ControlTask => {
-                    Some("запись связанного опыта требует однопроходного захвата")
+                    if let Some(profile) = task.profile() {
+                        let path = processes::dir(task_path).join(profile);
+                        let profile: toml::Value = processes::Inputs::default().toml(&path)?;
+                        // Отдельная физика режима может заменить мир и модели.
+                        // Штатная квитанция связанного опыта не сверяет их с планом покрытия.
+                        if profile.get("mode_physics")
+                            .and_then(|modes| modes.get(row.key.mode.as_str()))
+                            .is_some()
+                        {
+                            return Ok(Some(
+                                "отдельная физика связанного режима не сверена с установкой покрытия",
+                            ));
+                        }
+                    }
+                    None
                 }
                 _ => Some(
                     "связанный профиль запускает несколько проб; нужен установщик одного варианта на одной сетке",
@@ -608,6 +846,19 @@ impl Work<'_> {
         Ok(reason)
     }
 
+    fn launch_cost(&self, row: &PlanRow, sampled: &SampledInputs) -> Result<u32, String> {
+        let Some(experiment) = sampled.experiment.as_ref().filter(|e| e.kind == Some(ReferenceKind::ControlTask)) else {
+            return Ok(1);
+        };
+        let path = experiment.task.as_ref().ok_or("отсутствует файл задания связанного опыта")?;
+        let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let task = sim_task::Task::parse(&text).map_err(|e| e.to_string())?;
+        let paired = task.modes().iter().filter(|mode| mode.id == row.key.mode).any(|mode| {
+            mode.stimuli.iter().any(|stimulus| stimulus.id == mode.excitation && stimulus.comparison_value.is_some())
+        });
+        Ok(1 + u32::from(paired))
+    }
+
     fn execute(
         &self,
         row: &PlanRow,
@@ -616,7 +867,7 @@ impl Work<'_> {
         id: &str,
         format: Option<PlaybackFormat>,
     ) -> Result<(RowReport, Option<Vec<u8>>), String> {
-        if let Some(reason) = self.unsupported(row, sampled, format)? {
+        if let Some(reason) = self.unsupported(row, sampled)? {
             return Ok((open(input, reason)?, None));
         }
         let mode = sampled.mode.as_ref().ok_or("нет режима строки покрытия")?;
@@ -628,7 +879,8 @@ impl Work<'_> {
             .as_ref()
             .is_some_and(|e| e.kind.is_some())
         {
-            let (mut report, _) = linked_row(
+            let options = Options { coverage_control: true, ..self.driver.options.clone() };
+            let (mut report, archive) = linked_row(
                 self.driver.campaign,
                 sampled,
                 row,
@@ -636,11 +888,59 @@ impl Work<'_> {
                 input,
                 id,
                 None,
-                None,
-                self.driver.options,
+                format,
+                &options,
             )?;
+            if report.status == RunStatus::Completed {
+                let cases: Vec<sim_task::CaseReport> = serde_json::from_value(
+                    report.detail["profile"]["evidence"]["cases"].clone(),
+                ).map_err(|e| e.to_string())?;
+                let [case] = cases.as_slice() else {
+                    return Err("связанный опыт должен подтвердить один запрошенный случай".into());
+                };
+                if case.case.mode != row.key.mode
+                    || case.case.path != row.key.path
+                    || case.case.fault.as_ref() != row.key.faults.first()
+                    || case.journal != report.playback.as_ref().map(|play| play.journal)
+                {
+                    return Err("окно связанного критерия относится к другому случаю".into());
+                }
+                if self.launch_cost(row, sampled)? == 2 && !case.comparison_execution.as_ref()
+                    .is_some_and(|comparison| comparison.complete
+                        && comparison.seed == sampled.sample.seeds.run
+                        && comparison.reached_ns == mode.horizon_ns)
+                {
+                    report.status = RunStatus::Incomplete;
+                    report.executed = 0;
+                    report.playback = None;
+                    report.detail["reason"] = json!("сравнительная ветвь не подтвердила свой горизонт и зерно");
+                    return Ok((report, None));
+                }
+                let margins: Margins = case.metrics.iter().enumerate().filter_map(|(index, metric)| {
+                    let window = metric.covered_window?;
+                    let (failed, source) = match &metric.limit {
+                        sim_task::Limit::Range { min, max, source, .. } => (
+                            min.is_some_and(|min| metric.min < min) || max.is_some_and(|max| metric.max > max),
+                            source,
+                        ),
+                        sim_task::Limit::Forbidden { source, .. } => (metric.max == 1.0, source),
+                    };
+                    let outcome = if failed {
+                        Outcome::Fail
+                    } else if source.kind == sim_task::SourceKind::Estimate {
+                        Outcome::NotAnalyzed
+                    } else {
+                        Outcome::Pass
+                    };
+                    Some((format!("{}/{index}/{}", row.key.path, metric.signal.name),
+                        criterion_margin(&metric.limit, window, Some([metric.min, metric.max]), outcome)))
+                }).collect();
+                report.detail["margins"] = value(margins)?;
+                // Горизонт, цель и окно инъекции уже сверены в linked_row.
+                report.detail["injections_confirmed"] = json!(true);
+            }
             report.outcome = report.outcome.max(Outcome::NotAnalyzed);
-            return Ok((report, None));
+            return Ok((report, archive));
         }
         let compiled = sampled.world.compile().map_err(|e| e.to_string())?;
         let mut runtime = Runtime::load(compiled.clone())?;
@@ -682,7 +982,7 @@ impl Work<'_> {
             &runtime,
             complete,
             summary.outcome,
-            json!({ "summary": summary }),
+            json!({ "summary": summary, "margins": metrics::scenario_margins(mode, runtime.log()).map_err(|e| e.to_string())? }),
         )?;
         let archive = collect(format, &report, &runtime, &row.key.mode)?;
         Ok((report, archive))
@@ -760,11 +1060,18 @@ impl Work<'_> {
             })
             .transpose()
             .map_err(|e| e.to_string())?;
-        let outcome = evaluated.report.outcome().max(
+        let margins = metrics::scenario_margins(mode, run.runtime.log()).map_err(|e| e.to_string())?;
+        let mut outcome = evaluated.report.outcome().max(
             scenario
                 .as_ref()
                 .map_or(Outcome::NotAnalyzed, |result| result.outcome),
         );
+        // В отказном опыте применимость проверяется по журналу инъекции.
+        if injections && !row.faults.is_empty()
+            && margins.values().any(|(_, evidence)| evidence.outcome == Outcome::Fail)
+        {
+            outcome = Outcome::Fail;
+        }
         let mut report = live_report(
             row,
             input,
@@ -773,6 +1080,7 @@ impl Work<'_> {
             outcome,
             json!({
                 "electrical": value(&evaluated.report)?, "installation": receipt, "summary": scenario,
+                "margins": margins,
                 "injections_confirmed": injections,
                 "reason": (!injections).then_some("нет совпадающего запроса и применения электрической инъекции"),
             }),
@@ -918,97 +1226,3 @@ fn collect(
         .transpose()
 }
 
-struct Cover {
-    rows: Vec<Selection>,
-    missing: usize,
-}
-
-type Interaction<'a> = Vec<(&'a str, &'a str)>;
-
-fn extend(
-    factors: &DepthFactors,
-    levels: &[(&str, Vec<&str>)],
-    selection: &mut Selection,
-    at: usize,
-) -> Result<bool, String> {
-    if factors
-        .exclusion(selection)
-        .map_err(|e| e.to_string())?
-        .is_some()
-    {
-        return Ok(false);
-    }
-    let Some((id, levels_at)) = levels.get(at) else {
-        return Ok(true);
-    };
-    if selection.contains_key(*id) {
-        return extend(factors, levels, selection, at + 1);
-    }
-    for level in levels_at {
-        selection.insert((*id).into(), (*level).into());
-        if extend(factors, levels, selection, at + 1)? {
-            return Ok(true);
-        }
-    }
-    selection.remove(*id);
-    Ok(false)
-}
-
-fn cover(factors: &DepthFactors) -> Result<Cover, String> {
-    // Блок Е. Отбор перебирает только пары и тройки, завершает частичную
-    // строку с отсечением и останавливается на первом допустимом продолжении.
-    const MAX_ROWS: usize = 1000;
-    let levels: Vec<_> = factors
-        .factors()
-        .iter()
-        .map(|(id, factor)| (id.as_str(), factor.levels.level_ids().collect()))
-        .collect();
-    let mut tuples: BTreeSet<Interaction<'_>> = BTreeSet::new();
-    for (i, (a, aa)) in levels.iter().enumerate() {
-        for (j, (b, bb)) in levels.iter().enumerate().skip(i + 1) {
-            for &x in aa {
-                for &y in bb {
-                    tuples.insert(vec![(a, x), (b, y)]);
-                    if factors.factors()[*a].safety && factors.factors()[*b].safety {
-                        for (c, cc) in levels
-                            .iter()
-                            .skip(j + 1)
-                            .filter(|(id, _)| factors.factors()[*id].safety)
-                        {
-                            for &z in cc {
-                                tuples.insert(vec![(a, x), (b, y), (c, z)]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    let mut tuples: Vec<_> = tuples.into_iter().collect();
-    tuples.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
-    let mut rows: Vec<Selection> = Vec::new();
-    let mut missing = 0;
-    for tuple in tuples {
-        if rows
-            .iter()
-            .any(|row| tuple.iter().all(|(id, level)| row[*id] == *level))
-        {
-            continue;
-        }
-        let mut row: Selection = tuple
-            .into_iter()
-            .map(|(id, level)| (id.into(), level.into()))
-            .collect();
-        if extend(factors, &levels, &mut row, 0)? {
-            if rows.len() < MAX_ROWS {
-                rows.push(row);
-            } else {
-                missing += 1;
-            }
-        }
-    }
-    if rows.is_empty() {
-        return Err("план покрытия не содержит допустимых сочетаний".into());
-    }
-    Ok(Cover { rows, missing })
-}

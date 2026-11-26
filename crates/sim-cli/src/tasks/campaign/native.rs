@@ -243,6 +243,7 @@ pub(super) struct ResultRows {
     pub resumed: usize,
     pub readiness: Readiness,
     pub view: Option<Vec<u8>>,
+    pub depth: Option<super::depth_report::Summary>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -285,6 +286,7 @@ pub(super) fn run(
         None
     };
     let transport = processes::dir(installation);
+    let started = child.is_none().then(std::time::Instant::now);
     let installation = child.as_ref().map_or(installation, |child| child.installation.as_path());
     let spec: Spec = files.toml(installation)?;
     if spec.version != 1 {
@@ -299,17 +301,36 @@ pub(super) fn run(
         .is_dir()
         .then(|| super::super::Models::load(campaign.catalog_path()))
         .transpose()?;
+    let electrical_profiles = depth_install::profiles(installation, &spec)?;
     let mut probe = Runtime::load(nominal.clone())?;
-    if campaign.has_native_scenarios() {
+    if campaign.has_native_scenarios()
+        && (spec.coverage.is_none()
+            || spec.paths.iter().any(|path| {
+                campaign.native_horizon(&path.station, &path.mode).is_some()
+                    && path.electrical_profile.is_none()
+            }))
+    {
         setup(&mut probe, &nominal, models.as_ref())?;
     } else {
         // Ссылочный профиль самостоятельно устанавливает каталог и проводку.
         probe.record_joint_state("запись состояния")?;
     }
-    let header = probe.log().header();
-    let targets = header
-        .commands
-        .iter()
+    let header = probe.log().header().clone();
+    let mut headers = vec![header.clone()];
+    let mut checked_profiles = BTreeSet::new();
+    for ((station, mode, _), profile) in &electrical_profiles {
+        let until = campaign.native_horizon(station, mode)
+            .ok_or("электрическому пути нужна встроенная постановка")?;
+        if checked_profiles.insert((profile, until)) {
+            let mut live = crate::electrical::LiveExperiment::load(
+                campaign.world_path(), profile, campaign.catalog_path(), None, until,
+                crate::electrical::LivePath::Full,
+            )?;
+            live.runtime.record_joint_state("запись состояния")?;
+            headers.push(live.runtime.log().header().clone());
+        }
+    }
+    let targets = headers.iter().flat_map(|header| &header.commands)
         .map(|spec| {
             (
                 Target::Effort {
@@ -323,16 +344,12 @@ pub(super) fn run(
             )
         })
         .collect();
-    let signals = header
-        .truth
-        .iter()
-        .chain(&header.observations)
+    let signals = headers.iter().flat_map(|header| header.truth.iter().chain(&header.observations))
         .map(|spec| Signal {
             name: spec.name.clone(),
             unit: spec.unit.clone(),
         })
         .collect();
-    let electrical_profiles = depth_install::profiles(installation, &spec)?;
     let paths = spec
         .paths
         .iter()
@@ -411,7 +428,8 @@ pub(super) fn run(
         return depth_install::run(depth_install::Installation {
             prefix, path, installation, transport: child.as_ref().map(|_| transport),
             options, bench, spec: &spec, files,
-            campaign: &campaign, inputs: &inputs, models: models.as_ref(), electrical_profiles,
+            campaign: &campaign, inputs: &inputs, models: models.as_ref(), electrical_profiles, started,
+            report_checkpoint: checkpoint,
         }, child.as_ref());
     }
     let plan = campaign.plan(&inputs).map_err(|e| e.to_string())?;
@@ -530,7 +548,7 @@ pub(super) fn run(
             return finish(RowExecution::Report(RowReport::omitted(input)));
         }
         let measurements: Vec<_> = bench.iter().filter(|record| &record.run == key).collect();
-        let checkpoint = checkpoint.filter(|_| measurements.is_empty());
+        let checkpoint = checkpoint.filter(|_| measurements.is_empty() && options.repeat.is_none());
         if let Some(checkpoint) = checkpoint {
             let filename = checkpoint_name(&run_key, input)?;
             if let Some(saved) = checkpoint.load_row::<Saved>(&filename)? {
@@ -902,6 +920,7 @@ pub(super) fn run(
         resumed,
         readiness: verdict.readiness,
         view,
+        depth: None,
     })
 }
 
@@ -972,6 +991,7 @@ fn linked_row(
             path: row.key.path.clone(),
             fault: row.key.faults.first().cloned(),
         }),
+        coverage_control: campaign_options.coverage_control,
         linked_grid_hz: Some(row.grid.hz),
         workers: campaign_options.workers.clone(),
         seed: Some(sampled.sample.seeds.run),
@@ -1020,11 +1040,20 @@ fn linked_row(
         || stamp.reached_ns != Some(mode.horizon_ns)
         || !schedule_matches
     {
-        let (mut unconfirmed, _) = open(
+        if !campaign_options.coverage_control {
+            let (mut unconfirmed, _) = open(
+                "нет подтверждённого горизонта, сетки, зерна или применения отказа ссылочной строки",
+            )?;
+            unconfirmed.detail = value((unconfirmed.detail, result.detail))?;
+            return Ok((unconfirmed, None));
+        }
+        result.status = RunStatus::Incomplete;
+        result.executed = 0;
+        result.playback = None;
+        result.detail["reason"] = value(
             "нет подтверждённого горизонта, сетки, зерна или применения отказа ссылочной строки",
         )?;
-        unconfirmed.detail = value((unconfirmed.detail, result.detail))?;
-        return Ok((unconfirmed, None));
+        return Ok((result, None));
     }
     let old_key = value(&child.key)?;
     child.key = row.key.clone();

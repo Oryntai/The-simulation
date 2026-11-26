@@ -203,11 +203,11 @@ pub fn assess_solder_window(
     ordered_limits(&min_time, &max_time, "время над ликвидусом")?;
     ordered_limits(&min_volume, &bridge, "объём припоя")?;
 
-    let thermal = match prepare_thermal(input)? {
+    let (thermal, cold_end) = match prepare_thermal(input)? {
         Ok((law, initial, duration)) => {
             simulate(input, law, initial, duration, steps, wetting, liquidus)?
         }
-        Err(reason) => unknown(&reason),
+        Err(reason) => (unknown(&reason), false),
     };
     let (wetting_time, above, pad, component) = match &thermal {
         Analysis::Analyzed { value, .. } => (
@@ -225,7 +225,7 @@ pub fn assess_solder_window(
     };
     let minimum = LimitSide::Minimum;
     let maximum = LimitSide::Maximum;
-    let checks = [
+    let mut checks = [
         check_wetting(wetting_time, deadline)?,
         minimum.check(MinAboveLiquidus, above.clone(), min_time)?,
         maximum.check(MaxAboveLiquidus, above, max_time)?,
@@ -234,6 +234,18 @@ pub fn assess_solder_window(
         maximum.check(Bridge, dose.clone().map(SolderBounds::from), bridge)?,
         minimum.check(MinVolume, dose.map(SolderBounds::from), min_volume)?,
     ];
+    for check in &mut checks {
+        if matches!(check.criterion, MaxAboveLiquidus | MaxComponentTemperature)
+            && check.status == SolderWindowStatus::Pass
+            && !cold_end
+        {
+            *check = SolderWindowCheck::open(
+                check.criterion,
+                "нет фазы остывания: не подтверждено, что площадка и вывод холоднее ликвидуса при снятии жала".into(),
+                None,
+            );
+        }
+    }
     Ok(SolderWindowReport { thermal, checks })
 }
 
@@ -625,13 +637,14 @@ fn simulate(
     steps: NonZeroU32,
     wetting: Evidence<&SourcedRange>,
     liquidus: Evidence<&SourcedRange>,
-) -> Result<Analysis<SolderThermalMetrics>, ProcessError> {
+) -> Result<(Analysis<SolderThermalMetrics>, bool), ProcessError> {
     let mut network = SolderNetwork::new(input.network.clone())?;
     let mut previous = initial;
     let mut error_k = 0.0;
     let mut start = Time::ZERO;
     let n = duration.0.min(u64::from(steps.get()));
     let mut run = ThermalRun::new(initial, wetting.as_ref().ok().copied());
+    let mut end_k = [initial[1], initial[2]].map(SolderBounds::point);
     // Тепловая сеть детерминирована, генератор требуется контрактом StepModel.
     let mut rng = Rng::stream(0, "тепловое окно пайки");
     for k in 1..=n {
@@ -640,11 +653,12 @@ fn simulate(
         let result = network.advance(interval, &input.thermal, &mut rng)?;
         let value = match result {
             Analysis::Analyzed { value, .. } => value,
-            Analysis::NotAnalyzed { reason } => return Ok(unknown(&reason)),
+            Analysis::NotAnalyzed { reason } => return Ok((unknown(&reason), false)),
         };
         let node = value.end_k;
         let next = [node.tip, node.pad, node.lead, node.copper];
         let envelope = enclose_step(&law, previous, next, seconds(end.0 - start.0), &mut error_k)?;
+        end_k = [envelope.pad_end, envelope.component_end];
         run.observe(
             interval,
             envelope,
@@ -654,7 +668,10 @@ fn simulate(
         previous = next;
         start = end;
     }
-    Ok(calculated(run.metrics(wetting, liquidus), SCOPE))
+    let cold_end = liquidus.as_ref().is_ok_and(|threshold| {
+        end_k.iter().all(|bounds| bounds.upper < threshold.min)
+    });
+    Ok((calculated(run.metrics(wetting, liquidus), SCOPE), cold_end))
 }
 
 fn time_span([start, end]: [u64; 2]) -> SolderBounds {

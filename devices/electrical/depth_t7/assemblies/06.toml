@@ -1,0 +1,32 @@
+version = 1
+world = "../../../06-xyz/electrical-world.toml"
+catalog = "../../../../catalog"
+seed = 6 # Зерно из electrical-world.toml.
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 9550000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 06 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qpos[0]", unit = "m" }, min = 0, max = 0, source = { kind = "estimate", reference = "Нулевая начальная координата X из electrical/axes.toml. Электрический профиль не подаёт усилие по X, гравитация направлена по Z, ось X без контакта" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 9550000000
+max_gap_ns = 500000 # Один такт physics_hz штатного мира.
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический профиль из electrical/acceptance.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Схема и живой путь из electrical-profile.toml" }
+levels = { kind = "path", values = { electric = "electric" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из electrical-world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }

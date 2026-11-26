@@ -41,6 +41,9 @@ pub struct Metric {
     pub first_ns: u64,
     pub last_ns: u64,
     pub samples: usize,
+    /// Окно с подтверждённой непрерывностью дискретных наблюдений.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub covered_window: Option<crate::campaign::Window>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -101,6 +104,14 @@ pub struct ComparisonAudit {
     pub command_stream_equal: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComparisonExecution {
+    pub journal: u64,
+    pub seed: u64,
+    pub reached_ns: u64,
+    pub complete: bool,
+}
+
 /// Статистика действительных доставок с одинаковыми границами задержки.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransferMetric {
@@ -135,6 +146,10 @@ pub struct CaseReport {
     pub radio_coverage: BTreeMap<String, Outcome>,
     pub comparison: Option<Comparison>,
     pub comparison_audit: Option<ComparisonAudit>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub comparison_started: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comparison_execution: Option<ComparisonExecution>,
     pub losses: BTreeMap<String, usize>,
     pub runtime_error: Option<String>,
     pub missing: Vec<String>,
@@ -179,6 +194,8 @@ impl CaseReport {
             radio_coverage: BTreeMap::new(),
             comparison: None,
             comparison_audit: None,
+            comparison_started: false,
+            comparison_execution: None,
             losses: BTreeMap::new(),
             runtime_error: None,
             missing: Vec::new(),
@@ -797,6 +814,9 @@ pub(crate) fn compare(
         _ => false,
     };
     if !controls_match {
+        if let Some(execution) = &mut report.comparison_execution {
+            execution.complete = false;
+        }
         report
             .missing
             .push("в парном опыте изменились ресурсы, проводка или расписание контура".into());
@@ -810,6 +830,9 @@ pub(crate) fn compare(
         || end.time != Time(plan.mode.horizon_ns)
         || log.header() != original.header()
     {
+        if let Some(execution) = &mut report.comparison_execution {
+            execution.complete = false;
+        }
         report
             .missing
             .push("парный прогон не завершён или собран с другим набором сигналов".into());
@@ -1023,6 +1046,7 @@ fn check_limit(
         0.0
     };
     finite(rms)?;
+    let covered = covered(entries, mode, anchor);
     report.metrics.push(Metric {
         signal: signal.clone(),
         limit: limit.clone(),
@@ -1035,8 +1059,13 @@ fn check_limit(
         first_ns: first.at.0,
         last_ns: last.at.0,
         samples: entries.len(),
+        covered_window: (covered && first.at < last.at).then_some(crate::campaign::Window {
+            start_ns: first.at.0,
+            end_ns: last.at.0,
+            max_gap_ns: mode.max_gap_ns,
+        }),
     });
-    if !covered(entries, mode, anchor) {
+    if !covered {
         report
             .missing
             .push(format!("неполное окно истины «{}»", signal.name));

@@ -775,11 +775,49 @@ impl CompiledSchematic {
         findings
     }
 
-    fn part_instances(&self) -> impl Iterator<Item = (&str, &Part)> {
+    /// Установленные позиции каталога в порядке имён компонентов схемы.
+    pub fn part_instances(&self) -> impl Iterator<Item = (&str, &Part)> {
         self.schematic
             .components
             .iter()
             .map(|(id, component)| (id.as_str(), self.catalog.part(&component.part).unwrap()))
+    }
+
+    /// Имена экземпляров указанной позиции каталога.
+    pub fn instances_of_part<'a>(&'a self, part: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        self.schematic
+            .components
+            .iter()
+            .filter_map(move |(id, component)| (component.part == part).then_some(id.as_str()))
+    }
+
+    /// Доступность оценивается по монтажу клемм и разъёмов.
+    pub fn has_exposed_contact(&self) -> bool {
+        use super::{ContactKind, PinRole};
+
+        let joined: BTreeSet<_> = self
+            .schematic
+            .connections
+            .iter()
+            .filter(|(id, _)| !self.mismatches.contains(*id))
+            .flat_map(|(_, joint)| &joint.ends)
+            .collect();
+        self.pins().any(|end| {
+            let pin = self.pin(end);
+            match pin.contact.kind {
+                ContactKind::Terminal => true,
+                ContactKind::Plug | ContactKind::Socket => !joined.contains(end),
+                ContactKind::Bare => {
+                    !joined.contains(end)
+                        && (pin.role.reference().is_some()
+                            || matches!(
+                                pin.role,
+                                PinRole::Power | PinRole::Return | PinRole::Control
+                            ))
+                }
+                ContactKind::Pad => false,
+            }
+        })
     }
 
     fn electrical_classes(&self) -> (BTreeSet<ElectricalClass>, BTreeMap<ElectricalClass, String>) {
@@ -1910,16 +1948,24 @@ impl CompiledSchematic {
             && self.capacitor_mode_conflicts(plan, &input, result)?
         {
             Some("ряд напряжения не согласуется с запасом до предела в указанном режиме")
+        } else if status == Status::Pass && scope == Scope::Assembly {
+            // Заявленные ряды, погрешности и события не извлечены из фактического
+            // журнала. Присутствие другого живого опыта не связывает с ним входы Т3.
+            Some("нет привязки углублённой проверки к фактическому журналу опыта")
         } else {
             None
         };
         if let Some(gap) = applicability_gap {
-            status = Status::NotAnalyzed;
-            if reference_gap {
-                reason = gap.into();
-            } else {
-                reason = format!("{gap}. {reason}");
+            if reference_gap || status == Status::Pass {
+                status = Status::NotAnalyzed;
             }
+            reason = if reference_gap {
+                gap.into()
+            } else if status == Status::Fail {
+                format!("{reason}. {gap}")
+            } else {
+                format!("{gap}. {reason}")
+            };
         }
         Ok(DepthFinding {
             code,

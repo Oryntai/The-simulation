@@ -52,6 +52,7 @@ struct Options {
     selected_control_case: Option<sim_task::Case>,
     linked_grid_hz: Option<u64>,
     campaign_capture: Option<view::PlaybackCapture>,
+    coverage_control: bool,
     jobs: Option<std::num::NonZeroUsize>,
     workers: Option<std::sync::Arc<tasks::workers::Workers>>,
     checkpoint: Option<PathBuf>,

@@ -1,14 +1,12 @@
 use std::collections::BTreeMap;
 
 use sim_task::{
-    Error, Fingerprint, Outcome, Signal, Source, SourceKind,
-    campaign::{RunKey, Window, depth_factors},
-    verdict::{self, LimitValue},
+    Fingerprint, Outcome, Signal, Source, SourceKind,
+    campaign::{Window, depth_factors},
+    verdict::LimitValue,
 };
 
-// Объявление штатного модуля кампании относится к подключению координатора.
-#[path = "../src/campaign/depth_search.rs"]
-mod depth_search;
+use sim_task::campaign::depth_search;
 
 use depth_factors::{DepthFactors, Selection};
 use depth_search::{

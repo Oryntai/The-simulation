@@ -11,6 +11,7 @@ use sim_task::{
     campaign::{
         RunKey,
         depth_factors::{DepthFactors, Selection},
+        depth_search::{Margin, Refinement},
     },
 };
 
@@ -30,10 +31,25 @@ struct Count {
 #[derive(Serialize)]
 pub(super) struct Summary {
     scope: &'static str,
+    status: &'static str,
     pairs: Count,
     safety_triples: Count,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    safety_triples_not_required: Option<String>,
     open_rows: Vec<OpenRow>,
     pub(super) worst: Option<Worst>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) refinement: Option<Refinement>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) acceptance: Option<Acceptance>,
+}
+
+#[derive(Serialize)]
+pub(super) struct Acceptance {
+    pub reserved_runs: u32,
+    pub confirmed_launches: u64,
+    pub elapsed_ns: u64,
+    pub repeat: RepeatStatus,
 }
 
 #[derive(Serialize)]
@@ -41,10 +57,11 @@ struct OpenRow {
     run_key: String,
     key: Option<RunKey>,
     order: Option<usize>,
+    status: RunStatus,
     reason: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct SelectionReceipt {
     selection: Selection,
     key: RunKey,
@@ -60,15 +77,13 @@ pub(super) struct Worst {
     plan_input: Fingerprint,
     input: Fingerprint,
     outcome: Outcome,
+    status: RunStatus,
     parameters: Option<BTreeMap<String, f64>>,
     playback: Option<CampaignPlayback>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    view_unavailable: Option<String>,
     ranking: &'static str,
-    margin: RepeatStatus,
-}
-
-pub(super) fn is_planned(runs: &BTreeMap<String, RowReport>) -> bool {
-    runs.values()
-        .any(|row| row.detail["coverage"]["order"].is_u64())
+    margin: Margin,
 }
 
 fn interactions<'a>(
@@ -129,11 +144,10 @@ fn count<const N: usize>(
 ) -> Count {
     let mut required = 0;
     interactions(axes, N, &mut Vec::new(), &mut |tuple| {
-        required += usize::from(admissible(
-            constrained,
-            rules,
-            &mut tuple.iter().copied().collect(),
-        ));
+        required += usize::from(
+            rules.is_empty()
+                || admissible(constrained, rules, &mut tuple.iter().copied().collect()),
+        );
     });
     let mut planned = BTreeSet::new();
     let mut executed = BTreeSet::new();
@@ -162,6 +176,7 @@ pub(super) fn summarize(
     factors: &DepthFactors,
     runs: &BTreeMap<String, RowReport>,
     repeat: bool,
+    refinement: Option<Refinement>,
 ) -> Result<Summary, String> {
     let mut rows = Vec::new();
     let mut open_rows = Vec::new();
@@ -180,6 +195,7 @@ pub(super) fn summarize(
                 run_key: run_key.clone(),
                 key: annotation.as_ref().map(|receipt| receipt.key.clone()),
                 order: annotation.as_ref().and_then(|receipt| receipt.order),
+                status: row.status,
                 reason: unavailable_reason(row),
             });
         }
@@ -199,7 +215,7 @@ pub(super) fn summarize(
                 .map_err(|e| e.to_string())?
                 .is_some()
             || row.required != 1
-            || row.executed != usize::from(complete)
+            || row.executed != usize::from(row.status == RunStatus::Completed)
             || (complete && row.detail["scenario"]["injections_confirmed"] == false)
             || row
                 .playback
@@ -210,12 +226,16 @@ pub(super) fn summarize(
                 "несогласованная квитанция строки покрытия «{run_key}»"
             ));
         }
-        // Исход оценщика имеет приоритет. При равном исходе выбираем первый
-        // завершённый опыт с доступным журналом в фактическом порядке плана.
-        if complete {
+        // Подтверждённое нарушение может произойти до конца опыта. При
+        // равном исходе предпочитаем завершённый опыт с доступным журналом.
+        if complete || row.outcome == Outcome::Fail {
+            let normalized = refinement.as_ref().and_then(|search| search.worst.as_ref())
+                .filter(|scored| scored.key == receipt.key && complete && row.playback.is_some());
             let rank = (
                 row.outcome,
+                complete,
                 row.playback.is_some(),
+                normalized.is_some(),
                 std::cmp::Reverse(receipt.order),
             );
             if worst.as_ref().is_none_or(|(previous, _)| rank > *previous) {
@@ -234,20 +254,25 @@ pub(super) fn summarize(
                 {
                     return Err("неконечное фактически установленное значение".into());
                 }
-                worst = Some((rank, Worst {
-                    run_key: run_key.clone(),
-                    key: receipt.key.clone(),
-                    selection: receipt.selection.clone(),
-                    plan_input: receipt.input,
-                    input: row.input,
-                    outcome: row.outcome,
-                    parameters,
-                    playback: row.playback.clone(),
-                    ranking: "outcome",
-                    margin: RepeatStatus::NotAnalyzed {
-                        reason: "в квитанции оценщика отсутствует привязанный нормированный запас и окно критерия".into(),
+                worst = Some((
+                    rank,
+                    Worst {
+                        run_key: run_key.clone(),
+                        key: receipt.key.clone(),
+                        selection: receipt.selection.clone(),
+                        plan_input: receipt.input,
+                        input: row.input,
+                        outcome: row.outcome,
+                        status: row.status,
+                        parameters,
+                        playback: row.playback.clone(),
+                        view_unavailable: row.playback.is_none().then(|| unavailable_reason(row)),
+                        ranking: if normalized.is_some() { "normalized_margin" } else { "outcome" },
+                        margin: normalized.map_or(Margin::NotAnalyzed {
+                            reason: "в квитанции оценщика отсутствуют привязанный нормированный запас и окно критерия",
+                        }, |scored| Margin::Scored { normalized: scored.normalized, outcome: scored.outcome }),
                     },
-                }));
+                ));
             }
         }
         rows.push((receipt, complete));
@@ -274,35 +299,52 @@ pub(super) fn summarize(
         .filter(|(id, _)| involved.contains(id))
         .cloned()
         .collect();
-    let safety = axes
+    let safety: Axes<'_> = axes
         .iter()
         .filter(|(id, _)| factors.factors()[*id].safety)
         .cloned()
         .collect();
+    let pairs = count::<2>(&axes, &constrained, &rules, &rows);
+    let safety_triples = count::<3>(&safety, &constrained, &rules, &rows);
+    // Блок Е ТЗ требует тройки только между факторами безопасности.
+    let safety_count = safety.len();
+    let safety_triples_not_required = (safety_count < 3)
+        .then(|| format!("Тройки не требуются: факторов безопасности {safety_count}"));
+    let complete = pairs.required == pairs.executed
+        && safety_triples.required == safety_triples.executed
+        && open_rows.is_empty();
     Ok(Summary {
         scope: if repeat { "repeat" } else { "plan" },
-        pairs: count::<2>(&axes, &constrained, &rules, &rows),
-        safety_triples: count::<3>(&safety, &constrained, &rules, &rows),
+        status: if complete { "completed" } else { "incomplete" },
+        pairs,
+        safety_triples,
+        safety_triples_not_required,
         open_rows,
         worst: worst.map(|(_, worst)| worst),
+        refinement,
+        acceptance: None,
     })
 }
 
 impl Summary {
     pub(super) fn complete(&self) -> bool {
-        self.pairs.required == self.pairs.executed
-            && self.safety_triples.required == self.safety_triples.executed
-            && self.open_rows.is_empty()
+        self.status == "completed"
+            && self.acceptance.as_ref().is_none_or(|acceptance| matches!(acceptance.repeat, RepeatStatus::Verified))
     }
 
     pub(super) fn write(&self, out: &mut impl std::io::Write) -> std::io::Result<()> {
-        for (name, count) in [
-            ("Пары", &self.pairs),
-            ("Тройки безопасности", &self.safety_triples),
-        ] {
+        writeln!(
+            out,
+            "  Пары · требуется {}, спланировано {}, выполнено {}",
+            self.pairs.required, self.pairs.planned, self.pairs.executed
+        )?;
+        if let Some(reason) = &self.safety_triples_not_required {
+            writeln!(out, "  {reason}")?;
+        } else {
+            let count = &self.safety_triples;
             writeln!(
                 out,
-                "  {name} · требуется {}, спланировано {}, выполнено {}",
+                "  Тройки безопасности · требуется {}, спланировано {}, выполнено {}",
                 count.required, count.planned, count.executed
             )?;
         }
@@ -310,7 +352,15 @@ impl Summary {
             writeln!(out, "  Открытая строка {} · {}", row.run_key, row.reason)?;
         }
         if let Some(worst) = &self.worst {
-            writeln!(out, "  Худший выполненный опыт · {}", worst.run_key)?;
+            writeln!(out, "  Худший опыт · {}", worst.run_key)?;
+        }
+        if let Some(acceptance) = &self.acceptance {
+            writeln!(out, "  Запусков подтверждено {}, зарезервировано {}. Время {} нс",
+                acceptance.confirmed_launches, acceptance.reserved_runs, acceptance.elapsed_ns)?;
+            match &acceptance.repeat {
+                RepeatStatus::Verified => writeln!(out, "  Повтор худшего случая подтверждён через SIMVIEW")?,
+                RepeatStatus::NotAnalyzed { reason } => writeln!(out, "  Повтор остаётся открытым · {reason}")?,
+            }
         }
         Ok(())
     }
@@ -329,6 +379,14 @@ struct Recorded {
     binding: CampaignBinding,
     outcome: Outcome,
     report: Fingerprint,
+    #[serde(default)]
+    refinement: Option<RefinedSelection>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(super) struct RefinedSelection {
+    pub selection: Selection,
+    pub order: usize,
 }
 
 impl Recorded {
@@ -337,6 +395,9 @@ impl Recorded {
             binding,
             outcome: row.outcome,
             report: Fingerprint::of(&encode((&row.findings, &row.detail))?),
+            refinement: (row.detail["coverage"]["phase"] == "refinement")
+                .then(|| serde_json::from_value(row.detail["coverage"].clone()))
+                .transpose().map_err(|e| e.to_string())?,
         })
     }
 
@@ -346,6 +407,14 @@ impl Recorded {
             Fingerprint::of(key.as_bytes()).as_u64()
         )
     }
+}
+
+pub(super) fn recorded_refinement(checkpoint: &Checkpoint, key: &str) -> Result<Option<RefinedSelection>, String> {
+    let saved = checkpoint.load_row::<Recorded>(&Recorded::name(key))?;
+    if saved.as_ref().is_some_and(|entry| entry.binding.key != key) {
+        return Err("чужой ключ в квитанции уточнения".into());
+    }
+    Ok(saved.and_then(|entry| entry.refinement))
 }
 
 pub(super) fn record(
@@ -503,5 +572,52 @@ impl HistoricalRows {
             )?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn реестр_сохраняет_исходные_ключи_источники_и_причины() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut files = processes::Inputs::default();
+        let report =
+            HistoricalRows::load(&base, "devices/stage6/depth-open.toml".into(), &mut files)
+                .unwrap();
+        // Разбивка исходных 22 строк зафиксирована в ARCHITECTURE.md §7.7.
+        assert_eq!(
+            report
+                .rows
+                .iter()
+                .filter(|row| matches!(row.classification, Classification::ConflictingFault))
+                .count(),
+            9
+        );
+        assert_eq!(
+            report
+                .rows
+                .iter()
+                .filter(|row| matches!(row.classification, Classification::ObservationUnavailable))
+                .count(),
+            12
+        );
+        assert_eq!(
+            report
+                .rows
+                .iter()
+                .filter(|row| matches!(row.classification, Classification::InstallationRejected))
+                .count(),
+            1
+        );
+        assert!(report.rows.windows(2).all(|pair| pair[0].key < pair[1].key));
+        assert!(
+            report
+                .rows
+                .iter()
+                .all(|row| row.outcome == Outcome::NotAnalyzed)
+        );
+        files.verify().unwrap();
     }
 }

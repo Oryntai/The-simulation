@@ -731,6 +731,8 @@ fn linked(
     let mut audit = new_audit();
     audit.record_files(&roots)?;
     let mut stdout = Vec::new();
+    let first_capture = format.filter(|_| options.coverage_control).map(PlaybackCapture::first);
+    options.campaign_capture = first_capture.clone();
     let cache_profile = run_linked_profile(world, &task, &mut options, &mut audit, sample, &mut stdout)?;
     if let Some(reason) = audit.unavailable {
         return Ok((
@@ -838,6 +840,9 @@ fn linked(
     };
     let mut view = None;
     if let Some((choice, format)) = row.playback.as_ref().zip(format) {
+        if let Some(capture) = first_capture {
+            return Ok((row, false, Some(capture.take()?)));
+        }
         let capture = PlaybackCapture::new(choice.clone(), format);
         if cache_profile {
             options.case = Some(choice.child.mode.clone());
@@ -1142,7 +1147,7 @@ fn run_assembly(
                             },
                             sample,
                             gap,
-                            checkpoint,
+                            checkpoint.filter(|_| options.repeat.is_none()),
                             PlaybackFormat::for_options(options).filter(|_| selected),
                         )?;
                         let run_key = if selected && sample.is_some() {
@@ -1176,21 +1181,22 @@ fn run_assembly(
                         }
                     }
                     let (series, worst) = linked_statistics(&prefix, &series_rows, sampling)?;
-                    Ok(native::ResultRows {
+                    native::ResultRows {
                         rows: runs,
                         statistics: series,
                         metric_worst: worst,
+                        depth: None,
                         resumed: resumed_count,
                         readiness: Readiness::NeedsWork,
                         view,
-                    })
+                    }
                 }
                 Experiment::Scenario {
                     campaign,
                     installation,
                 } => {
                     let path = base.join(campaign);
-                    let result = native::run(
+                    let mut result = native::run(
                         &prefix,
                         &path,
                         &base.join(installation),
@@ -1198,16 +1204,10 @@ fn run_assembly(
                         checkpoint,
                         bench,
                     )?;
-                    if depth_report::is_planned(&result.rows) {
-                        let campaign = sim_task::campaign::Campaign::load(&path)
-                            .map_err(|e| e.to_string())?;
-                        let factors = campaign.depth_factors()
-                            .ok_or("факторы покрытия пропали после выполнения плана")?;
-                        depth_coverage = Some(depth_report::summarize(factors, &result.rows, options.repeat.is_some())?);
-                    }
-                    Ok(result)
+                    depth_coverage = result.depth.take();
+                    result
                 }
-            }?;
+            };
             Ok((name, is_task, result, depth_coverage))
         },
     )?;
@@ -1338,7 +1338,8 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         }
     }
     let engine = sim_runtime::Runtime::physics_engine_identity()?;
-    let historical_open_rows = manifest.open_rows
+    let historical_open_rows = manifest
+        .open_rows
         .map(|path| depth_report::HistoricalRows::load(base, path, &mut files))
         .transpose()?;
     let identity = if options.checkpoint.is_some() {
@@ -1397,7 +1398,7 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
                 assembly,
                 base,
                 &engine,
-                checkpoint.as_ref().filter(|_| options.repeat.is_none()),
+                checkpoint.as_ref(),
                 &bench,
                 &options,
                 &workers,
@@ -1420,7 +1421,10 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         if let Some(archive) = archive {
             view = Some(archive);
         }
-        if report.historical_open_rows.as_ref().is_some_and(|history| history.contains_assembly(&id))
+        if report
+            .historical_open_rows
+            .as_ref()
+            .is_some_and(|history| history.contains_assembly(&id))
             && assembly.verdict == SimulationVerdict::PassedSimulation
         {
             assembly.verdict = SimulationVerdict::NotProven;
@@ -1445,28 +1449,38 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         let depth = assembly.depth_coverage.is_some();
         let destination = options.view.as_ref().or(options.log.as_ref());
         if let Some(binding) = campaign_binding(assembly, key, row) {
-            let binding = if depth {
-                let (binding, status) = depth_report::repeat(checkpoint.as_ref(), binding, row)?;
-                report.depth_repeat = Some(status);
-                binding
-            } else {
-                binding
-            };
             if let Some(path) = destination {
+                let (binding, status) = if depth {
+                    let (binding, status) = depth_report::repeat(checkpoint.as_ref(), binding, row)?;
+                    (binding, Some(status))
+                } else {
+                    (binding, None)
+                };
                 let bytes = view.ok_or("для исполненной строки отсутствует журнал повтора")?;
                 playback::publish(&bytes, binding, path, options.log.is_some())?;
+                report.depth_repeat = status;
+            } else if depth {
+                report.depth_repeat = Some(depth_report::RepeatStatus::NotAnalyzed {
+                    reason: "повтор требует выгрузки и проверки записи".into(),
+                });
             }
         } else {
             let reason = unavailable_reason(row);
             if depth {
-                report.depth_repeat = Some(depth_report::RepeatStatus::NotAnalyzed { reason: reason.clone() });
+                report.depth_repeat = Some(depth_report::RepeatStatus::NotAnalyzed {
+                    reason: reason.clone(),
+                });
             }
             if destination.is_some() {
                 report.view_unavailable = Some(reason);
             }
         }
     } else if let Some(checkpoint) = &checkpoint {
-        for assembly in report.assemblies.values().filter(|a| a.depth_coverage.is_some()) {
+        for assembly in report
+            .assemblies
+            .values()
+            .filter(|a| a.depth_coverage.is_some())
+        {
             for (key, row) in &assembly.runs {
                 if let Some(binding) = campaign_binding(assembly, key, row) {
                     depth_report::record(checkpoint, binding, row)?;
@@ -1481,6 +1495,17 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     } else {
         if let Some(reason) = &report.view_unavailable {
             writeln!(out, "Просмотр недоступен · {reason}").map_err(|e| e.to_string())?;
+        }
+        if let Some(status) = &report.depth_repeat {
+            match status {
+                depth_report::RepeatStatus::Verified => {
+                    writeln!(out, "Повтор совпал с исходной квитанцией")
+                }
+                depth_report::RepeatStatus::NotAnalyzed { reason } => {
+                    writeln!(out, "Повтор не подтверждён · {reason}")
+                }
+            }
+            .map_err(|e| e.to_string())?;
         }
         if let Some(history) = &report.historical_open_rows {
             history.write(out).map_err(|e| e.to_string())?;
@@ -1500,7 +1525,11 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     Ok(0)
 }
 
-fn campaign_binding(assembly: &AssemblyReport, key: &str, row: &RowReport) -> Option<CampaignBinding> {
+fn campaign_binding(
+    assembly: &AssemblyReport,
+    key: &str,
+    row: &RowReport,
+) -> Option<CampaignBinding> {
     Some(CampaignBinding {
         key: key.into(),
         input: row.input,

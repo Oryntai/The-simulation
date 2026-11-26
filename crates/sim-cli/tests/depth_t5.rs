@@ -84,6 +84,8 @@ impl Block {
             dir,
             assemblies: String::new(),
         };
+        // Оба прогона сравнения читают один исполняемый файл и его отпечаток.
+        fs::copy(env!("CARGO_BIN_EXE_sim-run"), block.dir.join("sim-run")).unwrap();
         let corpus: Corpus = toml::from_str(&block.read_corpus("manifest.toml")).unwrap();
         fs::create_dir_all(block.dir.join("catalog/electrical")).unwrap();
         for (src, dest) in [
@@ -171,7 +173,7 @@ solder = "{name}-setup.toml"
                 self.assemblies
             ),
         );
-        Command::new(env!("CARGO_BIN_EXE_sim-run"))
+        Command::new(self.dir.join("sim-run"))
             .arg("--campaign")
             .arg(self.dir.join("campaign.toml"))
             .arg("--json")
@@ -237,7 +239,7 @@ fn пять_пар_проверяют_окно_и_вердикт_через_cli(
     }
     let first = block.launch();
     assert!(first.status.success(), "{first:?}");
-    assert_eq!(first.stdout, block.launch().stdout);
+    assert!(first.stdout == block.launch().stdout, "отчёты одного образа отличаются побайтно");
     let report: Value = serde_json::from_slice(&first.stdout).unwrap();
     let solder_catalog = SolderCatalog::load(&block.dir.join("solder.toml"))
         .unwrap()
@@ -256,7 +258,9 @@ fn пять_пар_проверяют_окно_и_вердикт_через_cli(
             assert_eq!(joint["address"]["connection"], JOINT);
             assert_eq!(joint["revision"], corpus.revision);
             assert_eq!(joint["code"], corpus.finding);
-            let status = if is_dangerous { "fail" } else { "pass" };
+            // tfix1 №1: у стендов корпуса нет фазы остывания. Исправление
+            // своего критерия оставляет обоим верхним пределам открытое окно.
+            let status = if is_dangerous { "fail" } else { "not_analyzed" };
             assert_eq!(joint["window_status"], status, "{case}: {joint}");
             let window = &joint["window"]["value"];
             let checks = window["checks"].as_object().unwrap();
@@ -264,8 +268,11 @@ fn пять_пар_проверяют_окно_и_вердикт_через_cli(
             for (criterion, check) in checks {
                 assert_eq!(
                     check["status"],
-                    if criterion == &pair.criterion {
-                        status
+                    if criterion == &pair.criterion && is_dangerous {
+                        "fail"
+                    } else if matches!(criterion.as_str(), "max_above_liquidus_s" | "max_component_k") {
+                        assert!(check["reason"].as_str().unwrap().contains("нет фазы остывания"));
+                        "not_analyzed"
                     } else {
                         "pass"
                     },
@@ -415,7 +422,11 @@ fn analytical_check(
         ("min_volume_m3", dose - volume(1.0)),
     ] {
         let tolerance = if key.ends_with("_m3") { 1e-25 } else { 0.0 };
-        includes(bounds(&checks[key]["margin"]), expected, tolerance);
+        if matches!(key, "max_above_liquidus_s" | "max_component_k") {
+            assert!(checks[key]["margin"].is_null() && expected > 0.0);
+        } else {
+            includes(bounds(&checks[key]["margin"]), expected, tolerance);
+        }
     }
     max_error
 }
@@ -533,23 +544,26 @@ fn пропуски_оставляют_окно_открытым_неконеч�
 fn старый_формат_и_выполненное_окно_без_серии_не_доказывают_сборку() {
     let (mut block, corpus) = Block::new("hardware");
     let scheme = block
-        .read_corpus(corpus.scheme)
+        .read_corpus(&corpus.scheme)
         .replace("scope = \"reference\"", "scope = \"assembly\"");
     let parts = block
-        .read_corpus(corpus.component_catalog)
+        .read_corpus(&corpus.component_catalog)
         .replace("reference_only = true\n", "");
     block.write("scheme.toml", scheme);
     block.write("catalog/electrical/parts.toml", parts);
     block
         .assemblies
         .push_str("[assemblies.legacy]\nworld = \"world.toml\"\n");
-    block.case("window", &block.read_corpus(&corpus.pairs[0].fixed), None);
+    let profile = cooled_profile(&block, &corpus);
+    block.case("window", &profile, None);
     let report = block.report();
     for (name, expected) in [("legacy", "not_analyzed"), ("window", "pass")] {
         let report = &report["assemblies"][name];
         assert_eq!(joint(report)["window_status"], expected);
         let finding = solder_finding(report);
         assert_eq!(finding["outcome"], "not_analyzed");
+        assert_eq!(joint(report)["status"], finding["outcome"]);
+        assert_eq!(joint(report)["scope"], "assembly");
         assert_eq!(joint(report)["series"]["id"], Value::Null);
         assert_eq!(report["simulation"], "NotProven", "{report}");
         let finding: Finding = serde_json::from_value(finding.clone()).unwrap();
@@ -573,12 +587,58 @@ fn старый_формат_и_выполненное_окно_без_сери�
     assert_ne!(verdict.readiness, Readiness::Passed);
 }
 
+fn cooled_profile(block: &Block, corpus: &Corpus) -> String {
+    let mut profile: Toml = toml::from_str(&block.read_corpus(&corpus.pairs[0].fixed)).unwrap();
+    let mut catalog: Toml =
+        toml::from_str(&fs::read_to_string(block.dir.join("solder.toml")).unwrap()).unwrap();
+    let set = |value: &mut Toml, number: f64| {
+        for bound in ["min", "nominal", "max"] {
+            value[bound] = Toml::Float(number);
+        }
+        value["source"]["datasheet"] = Toml::String("Аналитическая мода охлаждения теста".into());
+    };
+    // tfix1 №1: используем точную моду охлаждения из sim-process/tests/solder_joint.rs.
+    // T = 460 + 20 × [3, 2, 3, 1] × exp(−t/1 с); при t = 1 с оба узла
+    // холоднее 493,15 К, выдержка ln(40 / 33,15) > 0,1 с.
+    set(
+        &mut catalog["tools"]["bench-t5-r1"]["tip_capacity_j_k"],
+        1.0 / 3.0,
+    );
+    for (field, number) in [
+        ("pad_capacity_j_k", 0.5),
+        ("lead_capacity_j_k", 1.0 / 3.0),
+        ("copper_capacity_j_k", 1.0),
+        ("pad_lead_w_k", 1.0),
+        ("pad_copper_w_k", 3.0),
+        ("copper_polygon_w_k", 4.0),
+        ("polygon_k", 460.0),
+    ] {
+        set(&mut profile["geometry"][field], number);
+    }
+    for (field, number) in [
+        ("tip_initial_k", 520.0),
+        ("pad_initial_k", 500.0),
+        ("lead_initial_k", 520.0),
+        ("copper_initial_k", 480.0),
+        ("requested_thermal_power_w", 0.0),
+        ("duration_s", 1.0),
+    ] {
+        set(&mut profile["mode"][field], number);
+    }
+    set(&mut profile["mode"]["contact"]["conductance_w_k"], 1.0);
+    set(&mut profile["limits"]["min_above_liquidus_s"], 0.1);
+    // Предел на 10 К выше начальных 520 К, как на стенде переноса серии.
+    set(&mut profile["limits"]["max_component_k"], 530.0);
+    block.write("solder.toml", toml::to_string(&catalog).unwrap());
+    toml::to_string(&profile).unwrap()
+}
+
 #[test]
 fn серия_переносит_замеры_только_для_своего_стыка_ревизии_и_режима() {
     let (mut block, corpus) = Block::new("series");
-    let profile = block.read_corpus(&corpus.pairs[0].fixed);
+    let profile = cooled_profile(&block, &corpus);
     block.write("calibration.toml", &profile);
-    // Числа режима из cold/fixed.toml и expected.md. Синтетические чтения
+    // Синтетические чтения
     // задают эталон переноса: падение 1, 2, 3 мВ при 1 А и разрушение
     // в трёх опытах при F = 2 Н/мм × (3, 3,5, 4 мм).
     let series = format!(
@@ -593,7 +653,7 @@ ends = ["площадка/p", "вывод/p"]
 [applicability]
 calibration_profile = "calibration.toml"
 force_n = [1.0, 1.0]
-duration_s = [1.45, 1.45]
+duration_s = [1.0, 1.0]
 pitch_m = [0.001, 0.001]
 dose_m3 = [3.75e-10, 3.75e-10]
 source.measured = "Синтетический протокол покрытия точки стенда"
@@ -621,7 +681,7 @@ conditions = "Одноосное растяжение, три условные �
             "ends",
             series.replace("\"площадка/p\", \"вывод/p\"", "\"вывод/p\", \"площадка/p\""),
         ),
-        ("domain", series.replace("[1.45, 1.45]", "[1.25, 1.25]")),
+        ("domain", series.replace("[1.0, 1.0]\npitch_m", "[1.25, 1.25]\npitch_m")),
         (
             "source",
             series.replace(

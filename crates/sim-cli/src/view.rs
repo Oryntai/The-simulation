@@ -594,14 +594,18 @@ impl PlaybackFormat {
 /// При повторе составной строки запись включается только в выбранном опыте.
 #[derive(Clone)]
 pub(crate) struct PlaybackCapture {
-    pub playback: CampaignPlayback,
+    playback: Option<CampaignPlayback>,
     format: PlaybackFormat,
     bytes: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>,
 }
 
 impl PlaybackCapture {
     pub fn new(playback: CampaignPlayback, format: PlaybackFormat) -> Self {
-        Self { playback, format, bytes: Default::default() }
+        Self { playback: Some(playback), format, bytes: Default::default() }
+    }
+
+    pub fn first(format: PlaybackFormat) -> Self {
+        Self { playback: None, format, bytes: Default::default() }
     }
 
     pub fn records_view(&self) -> bool {
@@ -609,17 +613,21 @@ impl PlaybackCapture {
     }
 
     pub fn grid(&self, variant: Option<&str>, hz: u64) -> bool {
-        self.playback.variant.as_deref() == variant && self.playback.physics_hz == hz
+        self.playback.as_ref().is_some_and(|p| p.variant.as_deref() == variant && p.physics_hz == hz)
     }
 
     pub fn save(&self, runtime: &Runtime, case: Option<&sim_task::Case>) -> Result<(), String> {
-        let p = &self.playback;
-        if runtime.seed() != p.seed || runtime.log().fingerprint() != p.journal
-            || runtime.log().end().time.0 != p.end_ns
-        {
-            return Err("журнал дочернего прогона изменился при повторе".into());
-        }
-        let bytes = self.format.collect(runtime, &p.child.mode, case)?;
+        let mode = if let Some(p) = &self.playback {
+            if runtime.seed() != p.seed || runtime.log().fingerprint() != p.journal
+                || runtime.log().end().time.0 != p.end_ns
+            {
+                return Err("журнал дочернего прогона изменился при повторе".into());
+            }
+            &p.child.mode
+        } else {
+            &case.ok_or("для однопроходной записи нужен ключ опыта")?.mode
+        };
+        let bytes = self.format.collect(runtime, mode, case)?;
         let mut buffer = self.bytes.lock().map_err(|_| "авария записи пакета")?;
         if buffer.is_some() {
             return Err("расчётная сетка повтора исполнена дважды".into());

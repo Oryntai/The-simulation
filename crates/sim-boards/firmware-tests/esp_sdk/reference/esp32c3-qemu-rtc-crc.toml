@@ -1,0 +1,8 @@
+# Два чтения после CRC_START в каждом из опытов echo, corrupt, silent.
+# tests/data/esp_peripherals/qemu.trace. Этот профиль воспроизводит ожидание гостя.
+[[reset]]
+address = 0x600c0048
+field = "RTC_FASTMEM_CONFIG_CRC_PENDING"
+value = 0
+kind = "qemu"
+source = "tests/data/esp_peripherals/qemu.trace; https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3_clk.c"

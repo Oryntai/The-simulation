@@ -2,16 +2,17 @@
 //! с ручными таблицами. Поиск продолжения использует только условия
 //! постановки, без планировщика, установщика и запуска симуляции.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use serde::Deserialize;
-use sim_task::campaign::depth_factors::{DepthFactor, DepthFactors, Selection};
+use sim_task::campaign::depth_factors::{DepthFactors, Selection};
+
+#[path = "fixtures/depth_pair_oracle.rs"]
+mod depth_pair_oracle;
+use depth_pair_oracle::{Registry, required_interactions};
 
 const BLOCK: &str = include_str!("../../../devices/electrical/depth_t7/fixtures/block.toml");
 const ROD: &str = include_str!("../../../devices/electrical/depth_t7/fixtures/rod.toml");
-
-type Level<'a> = (&'a str, &'a str);
-type Registry<'a, const N: usize> = BTreeSet<[Level<'a>; N]>;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,89 +39,6 @@ fn manual_registry<const N: usize>(groups: &[Group<[String; N]>]) -> Registry<'_
             assert!(registry.insert(tuple), "повтор в ручном реестре: {tuple:?}");
         }
     }
-    registry
-}
-
-fn has_extension<'a>(
-    description: &'a DepthFactors,
-    fixed: &mut BTreeMap<&'a str, &'a str>,
-) -> bool {
-    let active = description.constraints().values().find(|rule| {
-        rule.when.iter().all(|(id, forbidden)| {
-            fixed
-                .get(id.as_str())
-                .is_none_or(|&selected| selected == forbidden)
-        })
-    });
-    let Some(rule) = active else {
-        // Каждое правило уже опровергнуто. Остальные факторы можно заполнить любыми уровнями.
-        return true;
-    };
-    // Любое допустимое продолжение обязано опровергнуть хотя бы один член этого
-    // запрета. Пробуем только такие присваивания. Если все члены уже совпали,
-    // исправить выбор оставшимися факторами невозможно.
-    for (id, forbidden) in &rule.when {
-        if fixed.contains_key(id.as_str()) {
-            continue;
-        }
-        for level in description.factors()[id].levels.level_ids() {
-            if level == forbidden {
-                continue;
-            }
-            fixed.insert(id, level);
-            let admissible = has_extension(description, fixed);
-            fixed.remove(id.as_str());
-            if admissible {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn collect_interactions<'a, const N: usize>(
-    description: &'a DepthFactors,
-    remaining: &[(&'a str, &'a DepthFactor)],
-    tuple: &mut Vec<Level<'a>>,
-    registry: &mut Registry<'a, N>,
-) {
-    let needed = N - tuple.len();
-    if needed == 0 {
-        if has_extension(description, &mut tuple.iter().copied().collect()) {
-            registry.insert(
-                tuple
-                    .as_slice()
-                    .try_into()
-                    .expect("размер кортежа проверен"),
-            );
-        }
-        return;
-    }
-    if remaining.len() < needed {
-        return;
-    }
-    // Перебираются только уровни выбранных пар или троек.
-    for (i, &(id, factor)) in remaining[..=remaining.len() - needed].iter().enumerate() {
-        for level in factor.levels.level_ids() {
-            tuple.push((id, level));
-            collect_interactions(description, &remaining[i + 1..], tuple, registry);
-            tuple.pop();
-        }
-    }
-}
-
-fn required_interactions<const N: usize>(
-    description: &DepthFactors,
-    safety_only: bool,
-) -> Registry<'_, N> {
-    let factors: Vec<_> = description
-        .factors()
-        .iter()
-        .filter(|(_, factor)| !safety_only || factor.safety)
-        .map(|(id, factor)| (id.as_str(), factor))
-        .collect();
-    let mut registry = BTreeSet::new();
-    collect_interactions(description, &factors, &mut Vec::new(), &mut registry);
     registry
 }
 

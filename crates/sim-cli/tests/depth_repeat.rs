@@ -136,7 +136,8 @@ impl Drop for Stand {
 
 #[test]
 fn пары_тройки_и_повтор_худшей_строки_по_исходной_квитанции() {
-    let stand = Stand::new("complete", 4);
+    // Два прогона плана, два точных повтора и одна отрицательная проверка квитанции.
+    let stand = Stand::new("complete", 5);
     let checkpoint = stand.0.join("state");
     let state = checkpoint.to_str().unwrap();
     let report = stand.run(&["--checkpoint", state, "--jobs", "1"], 0);
@@ -158,6 +159,10 @@ fn пары_тройки_и_повтор_худшей_строки_по_исхо
     let key = report["worst_run_key"].as_str().unwrap();
     let worst_row = &assembly["runs"][key];
     assert_eq!(worst_row["detail"]["coverage"]["key"]["grid"], "base");
+    assert_eq!(
+        worst_row["detail"]["scenario"]["summary"]["outcome"],
+        "fail"
+    );
     assert_eq!(depth["worst"]["run_key"], key);
     let bindings = campaign_bindings(&report.to_string()).unwrap();
 
@@ -173,6 +178,15 @@ fn пары_тройки_и_повтор_худшей_строки_по_исхо
             0.25e-6,
         ),
     ] {
+        let expected_outcome = if expected_reserve < 0.0 {
+            "fail"
+        } else {
+            "pass"
+        };
+        assert_eq!(
+            assembly["runs"][row_key]["detail"]["scenario"]["summary"]["outcome"],
+            expected_outcome
+        );
         let archive = stand.0.join("row.simview");
         let repeat = stand.run(
             &[
@@ -205,6 +219,48 @@ fn пары_тройки_и_повтор_худшей_строки_по_исхо
         assert!(((2.75e-6 - observed.value) - expected_reserve).abs() < 1e-12);
         fs::remove_file(archive).unwrap();
     }
+    // Контрольная сумма контейнера совпадает, но журнал принадлежит другой сетке.
+    let other = bindings
+        .values()
+        .find(|binding| binding.key != key)
+        .unwrap();
+    let filename = format!(
+        "depth-report-v1-{:016x}.json",
+        sim_signal::fnv1a(key.bytes())
+    );
+    let receipt = fs::read_dir(&checkpoint)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join(&filename))
+        .find(|path| path.is_file())
+        .unwrap();
+    let mut envelope: Value = serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
+    let mut payload: Value = serde_json::from_str(envelope["payload"].as_str().unwrap()).unwrap();
+    payload["binding"]["playback"]["journal"] = other.playback.journal.into();
+    let payload = serde_json::to_string(&payload).unwrap();
+    envelope["checksum"] = sim_signal::fnv1a(payload.bytes()).into();
+    envelope["payload"] = payload.into();
+    fs::write(receipt, serde_json::to_vec(&envelope).unwrap()).unwrap();
+    let archive = stand.0.join("mismatch.simview");
+    let error = stand.run(
+        &[
+            "--checkpoint",
+            state,
+            "--repeat",
+            key,
+            "--view",
+            archive.to_str().unwrap(),
+        ],
+        2,
+    );
+    assert!(
+        error["detail"]
+            .as_str()
+            .unwrap()
+            .contains("повтор покрытия расходится")
+    );
+    assert!(!archive.exists());
+
     let archive = stand.0.join("exhausted.simview");
     let repeat = stand.run(
         &[
@@ -226,6 +282,8 @@ fn неполное_покрытие_и_физическое_исключени�
     let stand = Stand::new("partial", 1);
     let a = stand.run(&["--jobs", "1"], 0);
     let depth = &a["assemblies"]["block"]["depth_coverage"];
+    assert_eq!(a["status"], "completed");
+    assert_eq!(depth["status"], "incomplete");
     assert_eq!(
         depth["pairs"],
         serde_json::json!({"required": 9, "planned": 9, "executed": 6})
@@ -266,4 +324,78 @@ source = {{ kind = "measured", reference = "профиль оснастки" }}
         serde_json::json!({"required": 1, "planned": 1, "executed": 1})
     );
     assert_eq!(assembly["verdict"], "NotProven");
+}
+
+#[test]
+fn недоступная_инъекция_и_реестр_сохраняют_причины_и_ключи() {
+    let stand = Stand::new("fault", 4);
+    let manifest = fs::read_to_string(stand.0.join("manifest.toml")).unwrap();
+    stand.write(
+        "manifest.toml",
+        &manifest.replacen("version = 1", "version = 1\nopen_rows = 'open.toml'", 1),
+    );
+    stand.write("open.toml", r#"
+version = 1
+baseline = "manifest.toml"
+[placements.separate]
+world = "world.toml"
+task = "campaign.toml"
+mode = "motion"
+[[rows]]
+key = { station = "block/cover", mode = "motion", path = "line", faults = [], sample = { kind = "nominal" }, grid = "base" }
+classification = "observation_unavailable"
+outcome = "not_analyzed"
+source = "install.toml"
+reason = "Исходный вход стенда отсутствует"
+replacement = "separate"
+"#);
+    let input = fs::read_to_string(stand.0.join("campaign.toml")).unwrap();
+    stand.write("campaign.toml", &format!(r#"{input}
+[depth_factors.factors.interruption]
+safety = false
+source = {{ kind = "measured", reference = "отдельная постановка отказа" }}
+levels = {{ kind = "faults", values = {{ nominal = [], open = [{{ node = "wire:line", kind = "wire_open" }}] }} }}
+"#));
+    let report = stand.run(&[], 0);
+    let historical = &report["historical_open_rows"]["rows"][0];
+    assert_eq!(historical["key"]["station"], "block/cover");
+    assert_eq!(historical["reason"], "Исходный вход стенда отсутствует");
+    assert_eq!(historical["source"], "install.toml");
+    assert_eq!(historical["outcome"], "not_analyzed");
+    assert_eq!(historical["replacement"], "separate");
+    let depth = &report["assemblies"]["block"]["depth_coverage"];
+    // Четыре уровня сетки и отказа в паре. Сеть/отказ с остальными
+    // дают ещё 12, пары постоянных факторов ещё 3. После отказа теряются 5 пар.
+    assert_eq!(
+        depth["pairs"],
+        serde_json::json!({"required": 19, "planned": 19, "executed": 14})
+    );
+    // Два уровня сетки и отказа, путь и режим постоянны. Тройки с
+    // отказом дают 4 + 4 + 2, номинальный уровень даёт 2 + 2 + 1.
+    assert_eq!(
+        depth["safety_triples"],
+        serde_json::json!({"required": 12, "planned": 12, "executed": 7})
+    );
+    let open = depth["open_rows"].as_array().unwrap();
+    assert_eq!(open.len(), 2);
+    for row in open {
+        assert_eq!(row["key"]["faults"][0]["kind"], "wire_open");
+        assert_eq!(row["key"]["faults"][0]["node"], "wire:line");
+        assert_eq!(
+            row["reason"],
+            "отказ отсутствует у выбранного пути и режима"
+        );
+    }
+    let archive = stand.0.join("unavailable.simview");
+    let repeat = stand.run(
+        &[
+            "--repeat",
+            open[0]["run_key"].as_str().unwrap(),
+            "--view",
+            archive.to_str().unwrap(),
+        ],
+        0,
+    );
+    assert_eq!(repeat["depth_repeat"]["status"], "not_analyzed");
+    assert!(!archive.exists());
 }

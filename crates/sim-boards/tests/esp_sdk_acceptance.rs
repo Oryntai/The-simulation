@@ -445,6 +445,32 @@ fn check_uart(times: &[(u8, u128)]) {
     }
 }
 
+fn check_pwm(edges: &[(bool, u128)], high_counts: u128) {
+    // TRM §32.3, делитель 2500/256 от XTAL, таймер 10 бит.
+    let period = (SECOND / XTAL_HZ) * 2500 * (1 << 10) / 256;
+    let high = period * high_counts / (1 << 10);
+    assert!(
+        edges.len() >= 6,
+        "недостаточно фронтов для duty={high_counts}: {edges:?}"
+    );
+    for triple in edges.windows(3).skip(1) {
+        let [(first, a), (middle, b), (last, c)] = triple else {
+            unreachable!()
+        };
+        assert_eq!(first, last);
+        assert_ne!(first, middle);
+        assert!((c - a).abs_diff(period) <= POLL + CPU_QNS);
+        let expected = if *first { high } else { period - high };
+        assert!((b - a).abs_diff(expected) <= POLL + CPU_QNS);
+    }
+    eprintln!(
+        "LEDC duty={high_counts}/1024: период {} мкс, высокий уровень {:.1} мкс, {} фронтов",
+        period / (MS / 1000),
+        high as f64 / (MS / 1000) as f64,
+        edges.len()
+    );
+}
+
 fn check_i2c(requests: &[(u64, I2cRequest)], done: &[OutputEvent]) {
     assert_eq!(requests.len(), 3);
     assert_eq!(done.len(), 3);
@@ -520,10 +546,11 @@ fn штатная_периферия() {
     let mut requests = Vec::new();
     let mut done = Vec::new();
     let mut gpio_edges = Vec::new();
-    let mut pwm_edges = Vec::new();
+    let mut pwm_edges = [Vec::new(), Vec::new()];
     let mut last_gpio = false;
     let mut last_pwm = false;
-    let mut pwm_config = None;
+    let mut pwm_stage = None;
+    let mut pwm_stopped = false;
     let mut barrier = None;
     let mut last_sleep = None;
     for deadline in (POLL..=SECOND).step_by(POLL as usize) {
@@ -605,12 +632,27 @@ fn штатная_периферия() {
             last_gpio = level;
         }
         if let Some(config) = board.pwm(PWM) {
-            pwm_config.get_or_insert(config);
+            assert!(!pwm_stopped, "ШИМ снова включился после остановки");
+            assert_eq!(config.period_s, 1.0 / 4000.0);
+            let stage = match config.duty {
+                0.25 => 0,
+                0.75 => 1,
+                duty => panic!("неожиданное заполнение {duty}"),
+            };
             let level = board.pin_output(PWM).unwrap();
-            if level != last_pwm {
-                pwm_edges.push((level, now));
-                last_pwm = level;
+            if pwm_stage == Some(stage) {
+                if level != last_pwm {
+                    pwm_edges[stage].push((level, now));
+                }
+            } else {
+                // Переходный период не участвует в измерении длительности.
+                assert_eq!(stage, pwm_stage.map_or(0, |previous| previous + 1));
+                pwm_stage = Some(stage);
             }
+            last_pwm = level;
+        } else if pwm_stage.is_some() {
+            assert_eq!(board.pin_output(PWM), Some(false));
+            pwm_stopped = true;
         }
     }
 
@@ -620,11 +662,11 @@ fn штатная_периферия() {
         "FIXTURE gpio out=1 in=1",
         "FIXTURE uart tx=4 rx=4 55 a6 00 ff match",
         "FIXTURE ledc begin hz=4000 duty=256,768",
-        "FIXTURE error ledc duty ESP_FAIL",
+        "FIXTURE ledc readback hz=4000 duty=768",
         "FIXTURE i2c probe 0x50 ESP_OK",
         "FIXTURE i2c probe 0x51 ESP_ERR_NOT_FOUND",
         "FIXTURE i2c data 5a a5",
-        "FIXTURE sleep timer us=2000000 failures=0x2",
+        "FIXTURE sleep timer us=2000000 failures=0x0",
     ] {
         assert!(
             text.lines().any(|actual| actual == line),
@@ -648,41 +690,21 @@ fn штатная_периферия() {
         (down - up) as f64 / MS as f64
     );
 
-    let pwm = pwm_config.expect("нет PWM на GPIO5");
-    // TRM §32.3, делитель / (2500/256), 10 бит. QEMU зафиксировал
-    // CONF=0x9c40 | 0xa и DUTY=0x1000, уровень проверяем на GPIO5.
-    let period = SECOND / 4000;
-    assert_eq!(pwm.duty, 0.25);
-    assert_eq!(pwm.period_s, period as f64 / SECOND as f64);
-    assert!(PERIPHERALS_QEMU.contains("LEDC duty 0x60019008 0x1000 "));
-    assert!(pwm_edges.len() >= 6, "{pwm_edges:?}");
-    // Первый переход может попасть внутрь периода при подключении матрицы.
-    for triple in pwm_edges[2..].windows(3).take(3) {
-        let [(first, a), (middle, b), (last, c)] = triple else {
-            unreachable!()
-        };
-        assert_eq!(first, last);
-        assert_ne!(first, middle);
-        assert!((c - a).abs_diff(period) <= POLL + CPU_QNS);
-        let expected = if *first { period / 4 } else { period * 3 / 4 };
-        assert!((b - a).abs_diff(expected) <= POLL + CPU_QNS);
-    }
-    eprintln!(
-        "LEDC: {} мкс, высокий уровень {:.1} мкс",
-        period / (MS / 1000),
-        pwm.high_s * 1e6
-    );
+    assert!(pwm_stopped);
+    assert!(PERIPHERALS_QEMU.contains("LEDC duty 0x60019008 0x1000 0x3000 [esp32c3.iomem]"));
+    check_pwm(&pwm_edges[0], 256);
+    check_pwm(&pwm_edges[1], 768);
     check_uart(&frames);
     check_i2c(&requests, &done);
 
     // ELF 2.21, rtc_deep_sleep_start: запись CRC_START в 0x600c0048.
     // Успех этого теста требует явного отказа до SLEEP_EN.
     let expected = BoardFault::Unsupported(
-        "сон ESP32-C3: CRC RTC FAST: для расчёта нет параметров аппаратного алгоритма в TRM §16.4"
+        "сон ESP32-C3: CRC RTC FAST: SYSTEM_RTC_FASTMEM_CONFIG_REG 0x600c0048; TRM рег. 16.11–16.12 не задаёт алгоритм и время расчёта"
             .into(),
     );
     assert_eq!(barrier, Some(expected.clone()), "{text}");
-    assert_eq!(board.esp_boot_position().unwrap().pc, 0x4201_7938);
+    assert_eq!(board.esp_boot_position().unwrap().pc, 0x4201_764e);
     assert_eq!(board.run_cycles(1), Err(expected));
     let sleep = last_sleep.unwrap();
     assert_eq!((sleep.entered_at, sleep.last_wake), (None, None));
@@ -692,9 +714,7 @@ fn штатная_периферия() {
             .any(|line| line.starts_with("FIXTURE wake ") || line == "FIXTURE done")
     );
     assert!(board.capabilities().blocks_hardware_proof);
-    eprintln!(
-        "NotAnalyzed: CRC RTC FAST 0x600c0048, сон и оба пробуждения 2.21; смену duty остановила штатная проверка LEDC SDK."
-    );
+    eprintln!("NotAnalyzed: аппаратный CRC RTC FAST 0x600c0048 и оба штатных пробуждения 2.21.");
 }
 
 #[test]

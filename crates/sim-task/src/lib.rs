@@ -24,7 +24,7 @@ use sim_signal::{Time, fnv1a};
 use sim_world::CompiledWorld;
 
 pub use evaluate::{
-    CaseReport, Comparison, ComparisonAudit, ControlActivity, LimitViolation, LoopTiming, Metric,
+    CaseReport, Comparison, ComparisonAudit, ComparisonExecution, ControlActivity, LimitViolation, LoopTiming, Metric,
     Outcome, Reaction, TransferMetric,
 };
 pub use interaction::{
@@ -354,6 +354,18 @@ impl Assessor {
     pub fn execute_observed(
         &self,
         case: &Case,
+        install: impl FnMut(&mut Runtime, &RunPlan<'_>, &EventSink) -> Result<Inputs, String>,
+        archive: impl FnMut(RunKind, &Runtime, &[Event]) -> Result<(), String>,
+    ) -> Result<RunResult, Error> {
+        self.execute_observed_with_comparison(case, false, install, archive)
+    }
+
+    /// При зарезервированном сравнении исполняет заданную парную ветвь
+    /// после завершённого основного опыта, включая диагностические исходы.
+    pub fn execute_observed_with_comparison(
+        &self,
+        case: &Case,
+        diagnostic_comparison: bool,
         mut install: impl FnMut(&mut Runtime, &RunPlan<'_>, &EventSink) -> Result<Inputs, String>,
         mut archive: impl FnMut(RunKind, &Runtime, &[Event]) -> Result<(), String>,
     ) -> Result<RunResult, Error> {
@@ -375,21 +387,36 @@ impl Assessor {
                         report
                             .missing
                             .push(format!("журнал прогона не сохранён: {error}"));
+                        if diagnostic_comparison {
+                            report.completed = false;
+                        }
                     }
-                    if (report.outcome == Outcome::Pass && report.missing.is_empty())
-                        || (report.completed && plan.mode.diagnostic_comparison)
-                    {
-                        let has_comparison = plan.mode.stimuli.iter().any(|stimulus| {
+                    let has_comparison = plan.mode.stimuli.iter().any(|stimulus| {
                             stimulus.id == plan.mode.excitation
                                 && stimulus.comparison_value.is_some()
-                        });
+                    });
+                    if (report.outcome == Outcome::Pass && report.missing.is_empty())
+                        || (report.completed && plan.mode.diagnostic_comparison)
+                        || (report.completed && diagnostic_comparison && has_comparison)
+                    {
                         if has_comparison {
                             let comparison = RunPlan {
                                 kind: RunKind::Comparison,
                                 ..plan
                             };
+                            report.comparison_started = true;
                             match self.run_live(&comparison, &mut install)? {
                                 Ok(reference) => {
+                                    let log = reference.runtime.log();
+                                    let end = log.end();
+                                    report.comparison_execution = Some(ComparisonExecution {
+                                        journal: log.fingerprint(),
+                                        seed: log.header().seed,
+                                        reached_ns: end.time.0,
+                                        complete: matches!(reference.status, Ok(Status::Running))
+                                            && end.started && end.steps > 0
+                                            && end.time == Time(plan.mode.horizon_ns),
+                                    });
                                     evaluate::compare(
                                         &mut report,
                                         &comparison,
@@ -401,6 +428,9 @@ impl Assessor {
                                         &reference.runtime,
                                         &reference.journal,
                                     ) {
+                                        if let Some(execution) = &mut report.comparison_execution {
+                                            execution.complete = false;
+                                        }
                                         report.missing.push(format!(
                                             "журнал парного прогона не сохранён: {error}"
                                         ));

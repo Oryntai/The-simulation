@@ -680,6 +680,70 @@ pub struct RunSummary {
     pub metrics: BTreeMap<String, MetricValue>,
 }
 
+fn criterion_evidence(
+    log: &Log,
+    criterion: &crate::campaign::Criterion,
+    window: Window,
+) -> Result<(Option<[f64; 2]>, Outcome, bool), Error> {
+    crate::campaign::validate_limits(&criterion.limit)?;
+    let signal = Series::from_log(log, SeriesKind::Truth, criterion.limit.signal())?;
+    let covered = signal.slice(window).filter(|points| {
+        // Журнал должен содержать истинное состояние на обеих границах критерия.
+        points.first().is_some_and(|p| p.at_ns == window.start_ns)
+            && points.last().is_some_and(|p| p.at_ns == window.end_ns)
+    });
+    let (source, invalid_data, violation) = match &criterion.limit {
+        Limit::Range {
+            min, max, source, ..
+        } => (
+            source,
+            false,
+            signal.points.iter().any(|p| {
+                p.valid
+                    && (window.start_ns..=window.end_ns).contains(&p.at_ns)
+                    && (min.is_some_and(|min| p.value < min)
+                        || max.is_some_and(|max| p.value > max))
+            }),
+        ),
+        Limit::Forbidden { source, .. } => (
+            source,
+            covered
+                .is_some_and(|points| points.iter().any(|p| p.value != 0.0 && p.value != 1.0)),
+            signal.points.iter().any(|p| {
+                p.valid
+                    && (window.start_ns..=window.end_ns).contains(&p.at_ns)
+                    && p.value == 1.0
+            }),
+        ),
+    };
+    let complete = log.end().time.0 >= window.end_ns && covered.is_some() && !invalid_data;
+    let outcome = if violation {
+        Outcome::Fail
+    } else if complete && source.can_prove() {
+        Outcome::Pass
+    } else {
+        Outcome::NotAnalyzed
+    };
+    let observed = covered.filter(|_| complete).and_then(|points| {
+        points.iter().map(|p| [p.value, p.value]).reduce(|[lo, hi], [v, _]| [lo.min(v), hi.max(v)])
+    });
+    Ok((observed, outcome, complete))
+}
+
+/// Пределы и огибающие критериев из того же журнала, который оценивает сценарий.
+pub fn scenario_margins(
+    mode: &OperatingMode,
+    log: &Log,
+) -> Result<BTreeMap<String, (crate::campaign::depth_search::Criterion, crate::campaign::depth_search::MarginEvidence)>, Error> {
+    use crate::campaign::depth_search::criterion_margin;
+
+    mode.criteria.iter().map(|criterion| {
+        let window = mode.windows[&criterion.window];
+        let (observed, outcome, _) = criterion_evidence(log, criterion, window)?;
+        Ok((criterion.id.clone(), criterion_margin(&criterion.limit, window, observed, outcome)))
+    }).collect()
+}
+
 /// Оценка общих критериев по завершённому журналу. Для непустого расписания
 /// операции и модельные порты подтверждает установщик, усилия сверяются с журналом.
 pub fn evaluate_scenario(
@@ -766,45 +830,9 @@ pub fn evaluate_scenario(
     let mut criteria_complete = true;
     for criterion in &mode.criteria {
         let window = mode.windows[&criterion.window];
-        let signal = Series::from_log(log, SeriesKind::Truth, criterion.limit.signal())?;
-        let covered = signal.slice(window).filter(|points| {
-            // Журнал должен содержать истинное состояние на обеих границах критерия.
-            points.first().is_some_and(|p| p.at_ns == window.start_ns)
-                && points.last().is_some_and(|p| p.at_ns == window.end_ns)
-        });
-        let (source, invalid_data, violation) = match &criterion.limit {
-            Limit::Range {
-                min, max, source, ..
-            } => (
-                source,
-                false,
-                signal.points.iter().any(|p| {
-                    p.valid
-                        && (window.start_ns..=window.end_ns).contains(&p.at_ns)
-                        && (min.is_some_and(|min| p.value < min)
-                            || max.is_some_and(|max| p.value > max))
-                }),
-            ),
-            Limit::Forbidden { source, .. } => (
-                source,
-                covered
-                    .is_some_and(|points| points.iter().any(|p| p.value != 0.0 && p.value != 1.0)),
-                signal.points.iter().any(|p| {
-                    p.valid
-                        && (window.start_ns..=window.end_ns).contains(&p.at_ns)
-                        && p.value == 1.0
-                }),
-            ),
-        };
-        let complete = end.time.0 >= window.end_ns && covered.is_some() && !invalid_data;
+        let (_, outcome, complete) = criterion_evidence(log, criterion, window)?;
         criteria_complete &= complete;
-        outcomes.push(if violation {
-            Outcome::Fail
-        } else if complete && source.can_prove() {
-            Outcome::Pass
-        } else {
-            Outcome::NotAnalyzed
-        });
+        outcomes.push(outcome);
     }
     let mut metrics = BTreeMap::new();
     for spec in &mode.metrics {

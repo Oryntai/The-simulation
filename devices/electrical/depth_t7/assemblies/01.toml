@@ -1,0 +1,81 @@
+version = 1
+world = "../../../01-elbow-assist/closed-world.toml"
+catalog = "../../../../catalog"
+seed = 1 # Зерно из closed-world.toml.
+include = ["01-electrical.toml"]
+
+# Отдельная постановка из реестра 7.3 сохраняет живой путь и свою инъекцию.
+[stations.linked]
+experiment = { kind = "control", task = "../../../01-elbow-assist/tasks/depth-open.toml" }
+
+[stations.linked.modes."hold_relaxed"]
+horizon_ns = 3000000000
+source = { kind = "derived", reference = "Горизонт из tasks/depth-open.toml" }
+faults = [
+    { fault = { node = "channel:ответ", kind = "packet_delay" }, at_ns = 1000000000, max_lag_ns = 15025000, extra_delay_ns = 60000000, window = "injection", source = { kind = "derived", reference = "Один слот ответа 15 мс и такт платы 25 мкс по stage6-control.toml" } },
+    { fault = { node = "channel:радио", kind = "packet_delay" }, at_ns = 1000000000, max_lag_ns = 5000000, extra_delay_ns = 60000000, window = "injection", source = { kind = "derived", reference = "Первый пакет после запроса в 1,005 с по hold_relaxed-wiring.toml" } },
+    { fault = { node = "channel:радио", kind = "packet_loss" }, at_ns = 1000000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+]
+
+# Границы окна и шаг наблюдения из того же контрольного задания.
+[stations.linked.modes."hold_relaxed".windows.injection]
+start_ns = 950000000
+end_ns = 1100000000
+max_gap_ns = 25000
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический опыт и отдельная постановка из tasks/depth-open.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" }, linked = { station = "linked", mode = "hold_relaxed" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Электрический путь и пути из tasks/depth-open.toml" }
+levels = { kind = "path", values = { electric = "electric", linked_1 = "драйвер" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из closed-world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }
+
+[depth_factors.factors.injection]
+safety = true
+source = { kind = "derived", reference = "Одиночные инъекции из tasks/depth-open.toml" }
+[depth_factors.factors.injection.levels]
+kind = "faults"
+[depth_factors.factors.injection.levels.values]
+nominal = []
+fault_1 = [{ node = "channel:ответ", kind = "packet_delay" }]
+fault_2 = [{ node = "channel:радио", kind = "packet_delay" }]
+fault_3 = [{ node = "channel:радио", kind = "packet_loss" }]
+
+[depth_factors.constraints.linked_electric]
+when = { mode = "linked", path = "electric" }
+reason = "Связанный режим исполняется на собственном пути"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+
+[depth_factors.constraints.full_linked_1]
+when = { mode = "full", path = "linked_1" }
+reason = "Электрический режим исполняется на пути электрического профиля"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_1]
+when = { path = "electric", injection = "fault_1" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_2]
+when = { path = "electric", injection = "fault_2" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_3]
+when = { path = "electric", injection = "fault_3" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.linked_native]
+when = { mode = "linked", grid = "refined" }
+reason = "Связанный контрольный профиль подтверждён только на штатной сетке"
+source = { kind = "derived", reference = "Сетка задачи tasks/depth-open.toml и её штатного мира" }

@@ -2241,6 +2241,16 @@ impl SchematicInput {
         ratings: &DepthRatings,
         evidence: &mut ElectricalEvidence,
     ) -> Result<BTreeMap<String, DepthFinding>, String> {
+        for rating in ratings.values() {
+            if let Some(part) = &rating.part {
+                let (code, basis) = rating.depth_obligation();
+                for component in self.compiled.instances_of_part(part) {
+                    evidence
+                        .expect_depth(code, component, basis)
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
         self.evaluate_depth(ratings, |id, mark, check| {
             evidence
                 .record_depth(&self.compiled, &self.modes, id, mark, check)
@@ -2317,6 +2327,24 @@ mod depth {
         scope: Scope,
         pub(super) part: Option<String>,
         data: RatingData,
+    }
+
+    impl RatingRecord {
+        pub(super) fn depth_obligation(&self) -> (&'static str, &'static str) {
+            match self.data {
+                RatingData::CapacitorStress(_) => (CAPACITOR_STRESS_CODE, "паспорт конденсатора"),
+                RatingData::FuseCoordination(_) => {
+                    (FUSE_COORDINATION_CODE, "паспорт предохранителя")
+                }
+                RatingData::SwitchThermal(_) => {
+                    (SWITCH_THERMAL_CODE, "тепловой паспорт силового ключа")
+                }
+                RatingData::CableFlex(_) => (
+                    CABLE_FLEX_CODE,
+                    "паспорт кабеля на устройстве с подвижным сочленением",
+                ),
+            }
+        }
     }
 
     #[derive(Debug, Deserialize)]

@@ -102,6 +102,7 @@ fn take_entry(fields: &mut BTreeMap<&str, &str>) -> Result<EspResetValue, BoardF
     };
     if !crate::peripheral::supports_reset_value(address, field, value)
         && !crate::esp_memory::supports_reset_value(address, field)
+        && !crate::peripheral::esp_sleep::supports_crc_profile(address, field, value, kind)
     {
         return Err(invalid(format!(
             "недопустимое значение для {address:#010x} {field}"
@@ -171,6 +172,10 @@ impl EspResetValues {
         self.read_at(address, field, address)
     }
 
+    pub(crate) fn contains(&self, address: u32, field: &str) -> bool {
+        Self::entry(self.profile.as_ref(), address, field).is_some()
+    }
+
     pub(crate) fn read_at(
         &mut self,
         address: u32,
@@ -178,15 +183,10 @@ impl EspResetValues {
         read_address: u32,
     ) -> Result<Option<u32>, BoardFault> {
         let key = (address, field);
-        let Some(entry) = self.profile.as_ref().and_then(|profile| {
-            let index = profile
-                .0
-                .binary_search_by_key(&key, |entry| (entry.address, entry.field.as_str()))
-                .ok()?;
-            Some(&profile.0[index])
-        }) else {
+        let Some(entry) = Self::entry(self.profile.as_ref(), address, field) else {
             return Ok(None);
         };
+        let value = entry.value;
         match self
             .used
             .binary_search_by_key(&key, |used| (used.entry.address, used.entry.field.as_str()))
@@ -207,6 +207,20 @@ impl EspResetValues {
                 },
             ),
         }
-        Ok(Some(entry.value))
+        Ok(Some(value))
+    }
+
+    fn entry<'a>(
+        profile: Option<&'a EspResetProfile>,
+        address: u32,
+        field: &str,
+    ) -> Option<&'a EspResetValue> {
+        let entries = profile?.entries();
+        let index = entries
+            .binary_search_by_key(&(address, field), |entry| {
+                (entry.address, entry.field.as_str())
+            })
+            .ok()?;
+        Some(&entries[index])
     }
 }

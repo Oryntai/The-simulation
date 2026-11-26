@@ -597,6 +597,7 @@ struct Execution<'a> {
     sample: Option<(LinkedSample<'a>, &'a WorldInputs, &'a ModelSettings)>,
     witnesses: &'a [control_witness::Spec],
     physics: &'a BTreeMap<String, processes::ModePhysics>,
+    coverage_control: bool,
 }
 
 struct ExecutedCase {
@@ -620,8 +621,9 @@ impl Execution<'_> {
         let plan = self.assessor.plan(case).ok_or("нет плана опыта")?;
         let result = self
             .assessor
-            .execute_observed(
+            .execute_observed_with_comparison(
                 case,
+                self.coverage_control,
                 |rt, plan, _| {
                     let mode = &plan.mode.id;
                     let reuse = plan.fault.and_then(|cause| self.setup.reuse_fault(mode, cause));
@@ -1056,6 +1058,7 @@ fn run_control(
         sample: installation,
         witnesses: &profile.hazard_witnesses,
         physics: &physics,
+        coverage_control: options.coverage_control,
     };
     if options.matrix_full {
         let plan = matrix::Plan::new(&execution, &profile, &mode_wires, options.selected_control_case.as_ref())?;

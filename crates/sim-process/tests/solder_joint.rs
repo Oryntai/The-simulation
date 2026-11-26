@@ -123,9 +123,10 @@ fn schematic(scope: Scope, joint: JointKind, pad: ContactKind) -> CompiledSchema
 }
 
 fn profile() -> SolderJointProfile {
-    // Точный стационарный режим: все узлы и полигон имеют 500 К, приток мощности нулевой.
-    // По балансу каждого из четырёх узлов dT/dt = 0, маркер 490 К достигнут в нуле,
-    // всё время контакта в 1 с выше ликвидуса 495 К, запас по перегреву 10 К.
+    // tfix1 №1: окно серии успевает остыть в контакте. Точная мода dT/dt = −(T − 460)
+    // для вектора [3, 2, 3, 1]: теплоёмкости [1/3, 1/2, 1/3, 1] и проводимости
+    // [1, 1, 3, 4] дают каждому узлу отток, равный его теплоёмкости × (T − 460).
+    // Маркер 490 К достигнут при t = 0. При t = 1 с оба узла холоднее 495 К.
     SolderJointProfile {
         connection: JOINT.into(),
         revision: Some(REVISION.into()),
@@ -133,12 +134,12 @@ fn profile() -> SolderJointProfile {
         tool: Some("жало".into()),
         input: SolderWindowInput {
             network: SolderNetworkSpec {
-                capacity_j_k: [1.0; 4].map(point).into(),
-                initial_k: [500.0; 4].map(point).into(),
+                capacity_j_k: [1.0 / 3.0, 0.5, 1.0 / 3.0, 1.0].map(point).into(),
+                initial_k: [520.0, 500.0, 520.0, 480.0].map(point).into(),
                 pad_lead_w_k: point(1.0),
-                pad_copper_w_k: point(1.0),
-                copper_polygon_w_k: point(1.0),
-                polygon_k: point(500.0),
+                pad_copper_w_k: point(3.0),
+                copper_polygon_w_k: point(4.0),
+                polygon_k: point(460.0),
                 max_power_w: point(1.0),
             },
             thermal: SolderNetworkInput {
@@ -155,10 +156,10 @@ fn profile() -> SolderJointProfile {
                 wetting_k: point(490.0),
                 max_time_to_wet_s: point(1.0),
                 liquidus_k: point(495.0),
-                min_above_liquidus_s: point(0.5),
+                min_above_liquidus_s: point(0.1),
                 max_above_liquidus_s: point(1.5),
                 max_pad_k: point(510.0),
-                max_component_k: point(510.0),
+                max_component_k: point(530.0),
                 min_volume_m3: point(2.5e-10),
                 bridge: Some(SolderBridgeLimit {
                     pitch_m: point(0.001).unwrap(),
@@ -205,8 +206,8 @@ fn series(profile: &SolderJointProfile) -> SolderControlSeries {
 }
 
 fn steps() -> NonZeroU32 {
-    // Четыре четверти секунды стационарного решения.
-    NonZeroU32::new(4).unwrap()
+    // Шаг меньше 1/8 запаса 0,1335 − 0,1 с по выдержке выше ликвидуса.
+    NonZeroU32::new(256).unwrap()
 }
 
 fn value<T>(analysis: &Analysis<T>) -> &T {
@@ -256,8 +257,8 @@ fn window_and_series_are_separate_and_legacy_branch_keeps_its_values() {
     assert_eq!(report.window_status(), SolderWindowStatus::Pass);
     let thermal = value(&value(&report.window).thermal);
     margin_contains(thermal.peak_pad_k, 500.0);
-    margin_contains(thermal.peak_component_k, 500.0);
-    margin_contains(*value(&thermal.above_liquidus_s), 1.0);
+    margin_contains(thermal.peak_component_k, 520.0);
+    margin_contains(*value(&thermal.above_liquidus_s), (40.0_f64 / 35.0).ln());
     let margin = value(&report.window)
         .check(SolderCriterion::MinVolume)
         .margin

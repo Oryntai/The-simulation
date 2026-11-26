@@ -20,6 +20,8 @@ use crate::{
 };
 
 pub mod depth_factors;
+pub mod depth_cover;
+pub mod depth_search;
 
 use depth_factors::{DepthFactors, DepthPlan};
 
@@ -743,6 +745,15 @@ impl Campaign {
         self.stations.values().any(|station| station.experiment.kind.is_none())
     }
 
+    /// Горизонт встроенной постановки, для которой установщик может открыть профиль.
+    pub fn native_horizon(&self, station: &str, mode: &str) -> Option<sim_signal::Time> {
+        let station = self.stations.get(station)?;
+        if station.experiment.kind.is_some() {
+            return None;
+        }
+        station.modes.get(mode).map(|mode| sim_signal::Time(mode.horizon_ns))
+    }
+
     pub fn depth_factors(&self) -> Option<&DepthFactors> {
         self.depth_factors.as_ref()
     }
@@ -978,7 +989,7 @@ impl Campaign {
     }
 }
 
-fn validate_limits(limit: &Limit) -> Result<(), Error> {
+pub(crate) fn validate_limits(limit: &Limit) -> Result<(), Error> {
     limit.signal().validate()?;
     match limit {
         Limit::Range {

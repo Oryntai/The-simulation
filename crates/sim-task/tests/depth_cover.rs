@@ -1,14 +1,9 @@
 use std::collections::BTreeSet;
 
 use serde::Deserialize;
-use sim_task::{
-    Error,
-    campaign::{RunKey, depth_factors},
-};
+use sim_task::campaign::depth_factors;
 
-// Подключение через штатный модуль кампании выполняется в Т7.6.
-#[path = "../src/campaign/depth_cover.rs"]
-mod depth_cover;
+use sim_task::campaign::depth_cover;
 
 use depth_cover::{CoverError, DepthCover, FactorLevel, plan_cover};
 use depth_factors::{DepthFactors, Selection};

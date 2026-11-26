@@ -1,12 +1,16 @@
 //! Проверки автомата сна через инструкции CPU, RTC_CNTL и входы платы.
 
 use sim_boards::{
-    BoardFault, BoardId, BoardInput, BoardOutput, BoardSim, EspBootPosition, EspSleepMode, EspWake,
-    InputEvent, ResetCause, esp_image, new_board,
+    BoardFault, BoardId, BoardInput, BoardOutput, BoardSim, EspBootOptions, EspBootPosition,
+    EspResetProfile, EspResetValueKind, EspSleepMode, EspWake, InputEvent, ResetCause, esp_image,
+    new_board,
 };
 
 const FLASH: &[u8] = include_bytes!("data/esp_peripherals/flash.bin");
 const QEMU_EFUSE: &[u8] = include_bytes!("data/esp_peripherals/qemu-efuse.bin");
+const CRC_PROFILE: &str =
+    include_str!("../firmware-tests/esp_sdk/reference/esp32c3-qemu-rtc-crc.toml");
+const QEMU_TRACE: &str = include_str!("data/esp_peripherals/qemu.trace");
 
 // TRM v1.4, §3.3.2, §9.7 и ESP-IDF v6.1.1, rtc_cntl_reg.h.
 const ROM: u32 = 0x4000_0000;
@@ -37,6 +41,10 @@ const REJECT_CAUSE: u32 = RTC + 0xf0;
 const WAKE_CAUSE: u32 = RTC + 0xf8;
 const RTC_GPIO_WAKE: u32 = RTC + 0x110;
 const CRC_CONFIG: u32 = 0x600c_0048; // system_reg.h, TRM рег. 16.11.
+const CRC_RESULT: u32 = 0x600c_004c; // SYSTEM_RTC_FASTMEM_CRC_REG, TRM рег. 16.12.
+const CRC_RESET: u32 = 0x7ff << 20; // RTC_MEM_CRC_LEN при сбросе.
+const CRC_START: u32 = 1 << 8;
+const CRC_FINISH: u32 = 1 << 31;
 const DIGITAL_GPIO: u32 = 0x6000_4074; // GPIO_PIN0_REG, gpio_reg.h.
 const MUX_GPIO: u32 = 0x6000_9004; // IO_MUX_GPIO0_REG, io_mux_reg.h.
 const MUX_GPIO_INPUT: u32 = (1 << 12) | (1 << 9); // MCU_SEL=GPIO, FUN_IE.
@@ -127,6 +135,10 @@ impl Probe {
 }
 
 fn board(rom: &[u8]) -> Box<dyn BoardSim> {
+    board_with_profile(rom, None)
+}
+
+fn board_with_profile(rom: &[u8], profile: Option<EspResetProfile>) -> Box<dyn BoardSim> {
     // QEMU hw/nvram/esp_efuse.c, esp_efuse_reload_from_blk: с нулевого
     // смещения файла идут слова RDATA. Адреса начала и конца в efuse_reg.h.
     let efuse: Vec<_> = QEMU_EFUSE[..0x17c - 0x2c]
@@ -134,16 +146,21 @@ fn board(rom: &[u8]) -> Box<dyn BoardSim> {
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
         .collect();
     let mut board = new_board(BoardId::Esp32C3);
-    board
-        .load_esp_flash(
+    let table = esp_image::DEFAULT_PARTITION_TABLE_OFFSET;
+    // GPIO_STRAP в QEMU, TRM §5.8: 0x08, SPI boot по GPIO9.
+    let straps = [false, false, true];
+    match profile {
+        Some(profile) => board.load_esp_flash_with_profile(
             FLASH,
-            esp_image::DEFAULT_PARTITION_TABLE_OFFSET,
+            table,
             rom,
             &efuse,
-            // GPIO_STRAP в QEMU, TRM §5.8: 0x08, SPI boot по GPIO9.
-            [false, false, true],
-        )
-        .unwrap();
+            straps,
+            EspBootOptions::default().with_reset_profile(profile),
+        ),
+        None => board.load_esp_flash(FLASH, table, rom, &efuse, straps),
+    }
+    .unwrap();
     board
 }
 
@@ -509,7 +526,7 @@ fn неизвестный_источник_вывод_или_crc_даёт_явн
     for (register, value, message) in [
         (SOURCES, 0x20 << 15, "источник сна"),
         (SOURCES, GPIO_TRIGGER << 15, "без настроенного вывода"),
-        (CRC_CONFIG, 0x7ff0_0100, "CRC RTC FAST"),
+        (CRC_CONFIG, CRC_RESET | CRC_START, "CRC RTC FAST"),
     ] {
         let mut probe = Probe::default();
         probe.write(register, value);
@@ -527,17 +544,117 @@ fn неизвестный_источник_вывод_или_crc_даёт_явн
 }
 
 #[test]
+fn crc_rtc_fast_поля_и_права_trm() {
+    let mut probe = Probe::default();
+    // TRM рег. 16.11: LEN[30:20]=0x7ff и ADDR[19:9]=0 при сбросе.
+    probe.expect(CRC_CONFIG, CRC_RESET);
+    probe.expect(CRC_RESULT, 0);
+    // Проверяем независимые поля LEN=2 и ADDR=1, а также запись бита RO.
+    let config = (2 << 20) | (1 << 9);
+    probe.write(CRC_CONFIG, config | CRC_FINISH);
+    probe.expect(CRC_CONFIG, config);
+    probe.expect(CRC_RESULT, 0);
+    let success = probe.pc();
+    probe.0.push(EBREAK);
+    finish(&mut *board(&probe.image()), success);
+
+    let mut probe = Probe::default();
+    probe.write(CRC_RESULT, 1);
+    assert_eq!(
+        board(&probe.image()).run_cycles(128),
+        Err(BoardFault::WriteToReadOnly {
+            pc: probe.pc() - size_of::<u32>() as u32,
+            addr: CRC_RESULT,
+        })
+    );
+}
+
+#[test]
+fn профиль_qemu_crc_не_подделывает_завершение_и_результат() {
+    let profile = EspResetProfile::parse(CRC_PROFILE).unwrap();
+    let [entry] = profile.entries() else {
+        panic!("ожидалась одна запись наблюдения CRC")
+    };
+    assert_eq!(
+        (entry.address, entry.kind),
+        (CRC_CONFIG, EspResetValueKind::Qemu)
+    );
+    let read = format!("read={:#x}", entry.value);
+    let polls = format!(
+        "write={:#x} write={:#x} {read} {read}",
+        CRC_RESET,
+        CRC_RESET | CRC_START
+    );
+    assert_eq!(
+        QEMU_TRACE.matches(&polls).count(),
+        3,
+        "echo, corrupt, silent"
+    );
+    assert!(
+        EspResetProfile::parse(&CRC_PROFILE.replace("kind = \"qemu\"", "kind = \"doc\"")).is_err()
+    );
+    assert!(
+        EspResetProfile::parse(&CRC_PROFILE.replace("value = 0", "value = 0x80000000")).is_err()
+    );
+
+    for (addr, expect_error) in [(CRC_RESULT, "результата"), (STATE, "до CRC_FINISH")] {
+        let mut probe = Probe::default();
+        probe.write(POWER, DEEP);
+        probe.write(SOURCES, TIMER_TRIGGER << 15);
+        probe.alarm(200);
+        probe.write(CRC_CONFIG, CRC_RESET | CRC_START);
+        probe.expect(CRC_CONFIG, 0);
+        probe.expect(CRC_CONFIG, 0);
+        if addr == CRC_RESULT {
+            probe.read(addr);
+        } else {
+            probe.write(addr, SLEEP);
+        }
+        let failure_pc = probe.pc() - size_of::<u32>() as u32;
+        let mut board = board_with_profile(&probe.image(), Some(profile.clone()));
+        for _ in 0..128 {
+            if board.esp_boot_position().unwrap().pc == failure_pc {
+                break;
+            }
+            board.run_cycles(1).unwrap();
+        }
+        assert_eq!(board.esp_boot_position().unwrap().pc, failure_pc);
+        let status = board.esp_sleep_status().unwrap();
+        assert_eq!((status.entered_at, status.last_wake), (None, None));
+        assert!(
+            matches!(board.run_cycles(1), Err(BoardFault::Unsupported(detail))
+            if detail.contains(expect_error))
+        );
+        assert_eq!(board.esp_boot_position().unwrap().pc, failure_pc);
+        let [used] = board.esp_reset_value_uses() else {
+            panic!("нет квитанции чтений CRC")
+        };
+        assert_eq!(
+            (&used.entry, used.reads, used.read_addresses[&CRC_CONFIG]),
+            (entry, 2, 2)
+        );
+        assert!(
+            !board
+                .take_events()
+                .iter()
+                .any(|event| { event.output == BoardOutput::Reset(ResetCause::DeepSleep) })
+        );
+        assert!(board.capabilities().blocks_hardware_proof);
+    }
+}
+
+#[test]
 #[ignore = "требуется дамп ROM из установленного QEMU Espressif в ESP_SLEEP_QEMU_ROM"]
 fn штатный_образ_2_21_показывает_барьер_сквозного_прогона() {
     let rom = std::fs::read(std::env::var_os("ESP_SLEEP_QEMU_ROM").expect("нужен ROM QEMU"))
         .expect("чтение ROM");
     let mut board = board(&rom);
     let failure = board.run_cycles(1_000_000).unwrap_err(); // Бюджет диагностического прогона.
-    // ROM Espressif rev. 3, uart_tx_one_char_uart.part.0. Первая запись TX;
-    // после устранения барьера этот опыт нужно продолжить до RTC_CNTL.
+    // ROM Espressif rev. 3, esp32c3_rev3_rom.elf: esp_rom_spi_flash_update_id.
+    // Этот опыт сохраняет прежние входы загрузки без профиля от QEMU.
     let position = EspBootPosition {
-        step: 6199,
-        pc: 0x4004_c0de,
+        step: 103_036,
+        pc: 0x4004_db3c,
     };
     assert_eq!(board.esp_boot_position(), Some(position));
     eprintln!(
@@ -551,10 +668,9 @@ fn штатный_образ_2_21_показывает_барьер_сквозн
             .iter()
             .any(|e| e.output == BoardOutput::Reset(ResetCause::DeepSleep))
     );
-    assert!(
-        matches!(&failure, BoardFault::Misconfigured(detail)
-        if detail.contains("UART MMIO 0x60000000")
-            && detail.contains("память или тактирование выключено")),
-        "{failure}"
+    assert_eq!(
+        failure,
+        BoardFault::Unsupported("не задан профиль ответов JEDEC/status flash".into())
     );
+    assert_eq!(board.run_cycles(1), Err(failure));
 }

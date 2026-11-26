@@ -1,0 +1,100 @@
+version = 1
+world = "../../../05-camera-tracker/stage6-world.toml"
+catalog = "../../../../catalog"
+seed = 5 # Зерно из stage6-world.toml.
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 120000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 05 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qpos[0]", unit = "rad" }, min = -0.7853981633974483, max = 0.7853981633974483, source = { kind = "estimate", reference = "Модельные пределы оси из stage6-device.toml: ±45° в радианах" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 120000000
+max_gap_ns = 4000 # Один такт physics_hz штатного мира.
+
+# Отдельная постановка из реестра 7.3 сохраняет живой путь и свою инъекцию.
+[stations.linked]
+experiment = { kind = "control", task = "../../../05-camera-tracker/tasks/depth-open.toml" }
+
+[stations.linked.modes."слежение"]
+horizon_ns = 420000000
+source = { kind = "derived", reference = "Горизонт из tasks/depth-open.toml" }
+faults = [
+    { fault = { node = "transport:зрение/request", kind = "packet_delay" }, at_ns = 150000000, max_lag_ns = 10000000, extra_delay_ns = 80000000, window = "injection", source = { kind = "derived", reference = "Один такт отправителя 100 Гц по stage6-control.toml" } },
+    { fault = { node = "transport:зрение/request", kind = "packet_loss" }, at_ns = 150000000, max_lag_ns = 10000000, window = "injection", source = { kind = "derived", reference = "Один такт отправителя 100 Гц по stage6-control.toml" } },
+    { fault = { node = "transport:зрение/response", kind = "packet_delay" }, at_ns = 150000000, max_lag_ns = 16000000, extra_delay_ns = 80000000, window = "injection", source = { kind = "derived", reference = "Один такт отправителя 10 мс и до 6 мс доставки запроса по tasks/profile.toml" } },
+    { fault = { node = "transport:зрение/response", kind = "packet_loss" }, at_ns = 150000000, max_lag_ns = 16000000, window = "injection", source = { kind = "derived", reference = "Один такт отправителя 10 мс и до 6 мс доставки запроса по tasks/profile.toml" } },
+]
+
+# Границы окна и шаг наблюдения из того же контрольного задания.
+[stations.linked.modes."слежение".windows.injection]
+start_ns = 90000000
+end_ns = 350000000
+max_gap_ns = 1000000
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический опыт и отдельная постановка из tasks/depth-open.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" }, linked = { station = "linked", mode = "слежение" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Электрический путь и пути из tasks/depth-open.toml" }
+levels = { kind = "path", values = { electric = "electric", linked_1 = "привод" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из stage6-world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }
+
+[depth_factors.factors.injection]
+safety = true
+source = { kind = "derived", reference = "Одиночные инъекции из tasks/depth-open.toml" }
+[depth_factors.factors.injection.levels]
+kind = "faults"
+[depth_factors.factors.injection.levels.values]
+nominal = []
+fault_1 = [{ node = "transport:зрение/request", kind = "packet_delay" }]
+fault_2 = [{ node = "transport:зрение/request", kind = "packet_loss" }]
+fault_3 = [{ node = "transport:зрение/response", kind = "packet_delay" }]
+fault_4 = [{ node = "transport:зрение/response", kind = "packet_loss" }]
+
+[depth_factors.constraints.linked_electric]
+when = { mode = "linked", path = "electric" }
+reason = "Связанный режим исполняется на собственном пути"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+
+[depth_factors.constraints.full_linked_1]
+when = { mode = "full", path = "linked_1" }
+reason = "Электрический режим исполняется на пути электрического профиля"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_1]
+when = { path = "electric", injection = "fault_1" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_2]
+when = { path = "electric", injection = "fault_2" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_3]
+when = { path = "electric", injection = "fault_3" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_4]
+when = { path = "electric", injection = "fault_4" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.linked_native]
+when = { mode = "linked", grid = "refined" }
+reason = "Связанный контрольный профиль подтверждён только на штатной сетке"
+source = { kind = "derived", reference = "Сетка задачи tasks/depth-open.toml и её штатного мира" }

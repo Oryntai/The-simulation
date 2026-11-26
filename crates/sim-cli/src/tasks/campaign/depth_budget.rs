@@ -36,6 +36,10 @@ impl DepthLimits {
         }
         Ok(Self { runs, time })
     }
+
+    pub(crate) fn time(self) -> Duration {
+        self.time
+    }
 }
 
 #[derive(Debug)]
@@ -118,12 +122,21 @@ impl DepthBudget {
         plan: &str,
         directory: Option<&Path>,
     ) -> Result<Self, BudgetError> {
+        Self::start_at(limits, plan, directory, Instant::now())
+    }
+
+    pub(crate) fn start_at(
+        limits: DepthLimits,
+        plan: &str,
+        directory: Option<&Path>,
+        opened: Instant,
+    ) -> Result<Self, BudgetError> {
         DepthLimits::new(limits.runs, limits.time)?;
         if plan.trim().is_empty() {
             return Err(checkpoint_error("пустой идентификатор плана"));
         }
-        let opened = Instant::now();
-        let started_unix = unix_now()?;
+        let now = unix_now()?;
+        let started_unix = now.saturating_sub(opened.elapsed());
         let checkpoint = directory
             .map(|directory| {
                 fs::create_dir_all(directory).map_err(checkpoint_error)?;
@@ -135,8 +148,8 @@ impl DepthBudget {
             plan: plan.to_owned(),
             limits,
             started_unix,
-            observed_unix: started_unix,
-            elapsed: Duration::ZERO,
+            observed_unix: now,
+            elapsed: now - started_unix,
             reserved: 0,
         };
         if let Some(checkpoint) = &checkpoint {
@@ -248,12 +261,23 @@ impl DepthBudget {
 
     /// Резерв списывается до передачи исполнителю и сохраняется даже при ошибке запуска.
     pub fn reserve(&self) -> Result<RunPermit<'_>, BudgetError> {
+        self.reserve_for(1, 0, Duration::ZERO)
+    }
+
+    pub(crate) fn reserve_for(
+        &self,
+        runs: u32,
+        keep_runs: u32,
+        keep_time: Duration,
+    ) -> Result<RunPermit<'_>, BudgetError> {
         let mut state = self.state()?;
-        self.time_left(&state)?;
-        if state.record.reserved == state.record.limits.runs {
+        if self.time_left(&state)? <= keep_time {
+            return Err(BudgetError::DeadlineExceeded);
+        }
+        if runs == 0 || runs.saturating_add(keep_runs) > state.record.limits.runs - state.record.reserved {
             return Err(BudgetError::QuotaExhausted);
         }
-        state.record.reserved += 1;
+        state.record.reserved += runs;
         if let Some(checkpoint) = &self.checkpoint {
             let saved = (|| {
                 let observed = unix_now()?;
@@ -266,8 +290,10 @@ impl DepthBudget {
             }
             saved?;
         }
-        self.time_left(&state)?;
-        Ok(RunPermit(self))
+        if self.time_left(&state)? <= keep_time {
+            return Err(BudgetError::DeadlineExceeded);
+        }
+        Ok(RunPermit(self, keep_time))
     }
 
     /// Блокирует новые старты и ждёт завершения всех выданных в работу процессов.
@@ -286,7 +312,7 @@ impl DepthBudget {
 }
 
 /// Одноразовый допуск к одному физическому опыту. Для повторов нужен новый резерв.
-pub struct RunPermit<'a>(&'a DepthBudget);
+pub struct RunPermit<'a>(&'a DepthBudget, Duration);
 
 impl RunPermit<'_> {
     /// Передавать ввод и вывод файлами или наследуемыми дескрипторами.
@@ -297,9 +323,14 @@ impl RunPermit<'_> {
 
         command.process_group(0);
         let budget = self.0;
+        let time_left = |state: &State| {
+            budget.time_left(state)?.checked_sub(self.1)
+                .filter(|left| !left.is_zero())
+                .ok_or(BudgetError::DeadlineExceeded)
+        };
         let mut process = {
             let mut state = budget.state()?;
-            budget.time_left(&state)?;
+            time_left(&state)?;
             let child = command.spawn().map_err(BudgetError::Process)?;
             state.active += 1;
             ActiveChild {
@@ -311,7 +342,7 @@ impl RunPermit<'_> {
         loop {
             let observation = (|| {
                 let state = budget.state()?;
-                let wait = budget.time_left(&state)?;
+                let wait = time_left(&state)?;
                 // Считываем статус под тем же замком, который сериализует отмену.
                 let status = process
                     .child
@@ -322,7 +353,7 @@ impl RunPermit<'_> {
                 if status.is_some() {
                     process.child = None;
                     // Завершение, прочитанное после дедлайна, уже не принимается.
-                    budget.time_left(&state)?;
+                    time_left(&state)?;
                 }
                 Ok((wait, status))
             })();

@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use super::{
     RunKey,
-    depth_factors::{DepthFactors, Selection},
+    depth_factors::{DepthFactors, DepthLevels, DepthPlan, Selection},
 };
 use crate::Error;
 
@@ -99,6 +99,7 @@ struct Factor<'a> {
     id: &'a str,
     levels: Vec<&'a str>,
     safety: bool,
+    route: bool,
 }
 
 struct Search<'a> {
@@ -118,6 +119,7 @@ impl<'a> Search<'a> {
                 id,
                 levels: factor.levels.level_ids().collect(),
                 safety: factor.safety,
+                route: !matches!(factor.levels, DepthLevels::Axis { .. }),
             })
             .collect();
         let mut constraints = Vec::new();
@@ -177,7 +179,24 @@ impl<'a> Search<'a> {
         order: &[usize],
         selected: &mut [Option<usize>],
         open: Option<&Uncovered>,
+        route: Option<&DepthPlan<'_>>,
     ) -> bool {
+        let route = if let Some(plan) = route {
+            let levels = self.factors.iter().enumerate().filter(|(_, factor)| factor.route);
+            if levels.clone().all(|(i, _)| selected[i].is_some()) {
+                let selection = levels.map(|(i, _)| {
+                    self.name_level((i, selected[i].expect("уровни пути выбраны")))
+                }).collect();
+                if !plan.route_ready(selection) {
+                    return false;
+                }
+                None
+            } else {
+                route
+            }
+        } else {
+            None
+        };
         let Some((offset, &factor)) = order
             .iter()
             .enumerate()
@@ -198,7 +217,7 @@ impl<'a> Search<'a> {
         }
         for level in levels {
             selected[factor] = Some(level);
-            if self.extend(rest, selected, open) {
+            if self.extend(rest, selected, open, route) {
                 return true;
             }
         }
@@ -238,7 +257,7 @@ impl<'a> Search<'a> {
             // Факторы вне ограничений не влияют на существование продолжения.
             let possible = self.constrained == 0
                 || self.start(&tuple).is_some_and(|mut selected| {
-                    self.extend(&self.order[..self.constrained], &mut selected, None)
+                    self.extend(&self.order[..self.constrained], &mut selected, None, None)
                 });
             if possible {
                 required.insert(tuple);
@@ -294,6 +313,20 @@ fn visit<const N: usize>(
 /// Выбирает строки по первой непокрытой паре, после пар по первой тройке безопасности.
 /// При малой квоте возвращает тот же префикс и точный остаток, в том числе при нуле.
 pub fn plan_cover(description: &DepthFactors, row_limit: usize) -> Result<DepthCover, CoverError> {
+    plan_cover_inner(description, row_limit, None)
+}
+
+/// Сначала закрывает взаимодействия с разрешённым путём и инъекциями.
+/// Остальные остаются в требованиях и получают постановки для отчёта.
+pub fn plan_cover_for(plan: &DepthPlan<'_>, row_limit: usize) -> Result<DepthCover, CoverError> {
+    plan_cover_inner(plan.factors(), row_limit, Some(plan))
+}
+
+fn plan_cover_inner(
+    description: &DepthFactors,
+    row_limit: usize,
+    mut route: Option<&DepthPlan<'_>>,
+) -> Result<DepthCover, CoverError> {
     if row_limit > MAX_ROWS {
         return Err(CoverError::RowLimit {
             requested: row_limit,
@@ -322,22 +355,29 @@ pub fn plan_cover(description: &DepthFactors, row_limit: usize) -> Result<DepthC
     };
     let mut open = required.clone();
     let mut rows = Vec::new();
-    for _ in 0..row_limit {
-        let Some(anchor) = open
-            .pairs
-            .first()
-            .map(|tuple| tuple.as_slice())
-            .or_else(|| open.triples.first().map(|tuple| tuple.as_slice()))
-        else {
-            break;
+    let mut deferred = BTreeSet::new();
+    let mut route_order = search.order.clone();
+    route_order.sort_by_key(|&i| !search.factors[i].route);
+    while rows.len() < row_limit {
+        let anchor = open.pairs.iter().map(|tuple| tuple.as_slice())
+            .chain(open.triples.iter().map(|tuple| tuple.as_slice()))
+            .find(|tuple| !deferred.contains(*tuple));
+        let Some(anchor) = anchor else {
+            if route.take().is_none() {
+                break;
+            }
+            deferred.clear();
+            continue;
         };
         let mut selected = search
             .start(anchor)
             .expect("цель проверена при построении реестра");
-        assert!(
-            search.extend(&search.order, &mut selected, Some(&open)),
-            "цель имеет допустимое продолжение"
-        );
+        let order = if route.is_some() { &route_order } else { &search.order };
+        if !search.extend(order, &mut selected, Some(&open), route) {
+            assert!(route.is_some(), "цель имеет физически допустимое продолжение");
+            deferred.insert(anchor.to_vec());
+            continue;
+        }
         let row: Vec<_> = selected
             .into_iter()
             .map(|level| level.expect("строка достроена"))

@@ -2,8 +2,8 @@
 
 use super::{Access, Chip, Hardware, esp_rtc::EspRtcReset};
 use crate::{
-    BoardFault, BoardOutput, EspSleepMode, EspSleepStatus, EspWake, OutputEvent, ResetCause,
-    esp_clock::QUARTERS_PER_SECOND, esp_memory::EspMemory,
+    BoardFault, BoardOutput, EspResetValueKind, EspSleepMode, EspSleepStatus, EspWake, OutputEvent,
+    ResetCause, esp_clock::QUARTERS_PER_SECOND, esp_memory::EspMemory,
 };
 
 // TRM рег. 9.2–9.17, 9.23–9.24, 9.29 и rtc_cntl_reg.h.
@@ -84,9 +84,27 @@ pub(super) const GPIO_HIGH: u32 = 5; // GPIO_INTR_HIGH_LEVEL.
 const FASTMEM_CONFIG: u32 = 0x600c_0048;
 const FASTMEM_CRC: u32 = 0x600c_004c;
 const CRC_START: u32 = 1 << 8;
+const CRC_FINISH: u32 = 1 << 31;
 const CRC_CONFIG_MASK: u32 = (0x7ff << 20) | (0x7ff << 9);
 const CRC_CONFIG_RESET: u32 = 0x7ff << 20;
+const CRC_RESULT_RESET: u32 = 0;
 const RTC_FAST: std::ops::Range<u32> = 0x5000_0000..0x5000_2000;
+
+// Espressif QEMU 9.2.2, esp32c3_clock_read и наблюдения qemu.trace:
+// после START весь CONFIG читается как 0. Это состояние ожидания, а не результат CRC.
+const CRC_PENDING_PROFILE: &str = "RTC_FASTMEM_CONFIG_CRC_PENDING";
+
+pub(crate) fn supports_crc_profile(
+    addr: u32,
+    field: &str,
+    value: u32,
+    kind: EspResetValueKind,
+) -> bool {
+    addr == FASTMEM_CONFIG
+        && field == CRC_PENDING_PROFILE
+        && kind == EspResetValueKind::Qemu
+        && value == 0
+}
 
 #[derive(Clone, Copy)]
 struct Sleeping {
@@ -276,6 +294,8 @@ impl Hardware {
         if reason.is_none() || reason == Some(EspRtcReset::WatchdogSystem) {
             *sleep = EspSleep::default();
         }
+        // TRM табл. 6.1-1: Core Reset сбрасывает цифровой SYSREG, RTC сохраняется.
+        sleep.crc_config = CRC_CONFIG_RESET;
         sleep.state = None;
         sleep.deep_reset = false;
         next.esp_sleep = Some(sleep);
@@ -307,6 +327,9 @@ impl Hardware {
     }
 
     pub(super) fn sleep_access(&mut self, addr: u32, size: u8, value: Option<u32>) -> Access {
+        if matches!(addr, FASTMEM_CONFIG | FASTMEM_CRC) && self.esp_sleep.is_some() {
+            return self.rtc_fast_crc_access(addr, size, value);
+        }
         if self.esp_sleep.is_none() || size as usize != size_of::<u32>() {
             return Ok(None);
         }
@@ -392,16 +415,55 @@ impl Hardware {
                 sleep.gpio_wakeup = bits & !(RTC_GPIO_MASK | RTC_GPIO_CLEAR);
                 Ok(Some(0))
             }
-            (FASTMEM_CONFIG, None) => Ok(Some(sleep.crc_config)),
-            (FASTMEM_CONFIG, Some(bits)) if bits & CRC_START == 0 => {
-                sleep.crc_config = bits & CRC_CONFIG_MASK;
+            _ => Ok(None),
+        }
+    }
+
+    fn rtc_fast_crc_access(&mut self, addr: u32, size: u8, value: Option<u32>) -> Access {
+        let boot = self
+            .esp_boot
+            .as_mut()
+            .expect("CRC доступен вместе с raw flash");
+        let sleep = self.esp_sleep.as_mut().unwrap();
+        let pending = sleep.crc_config & CRC_START != 0;
+        if size as usize != size_of::<u32>()
+            || (addr == FASTMEM_CONFIG
+                && value
+                    .is_some_and(|word| word & !(CRC_CONFIG_MASK | CRC_START | CRC_FINISH) != 0))
+        {
+            return Err(BoardFault::UnsupportedRegister {
+                pc: boot.pc,
+                addr,
+                size,
+                write: value.is_some(),
+                block: "CRC RTC FAST ESP32-C3",
+            });
+        }
+        match (addr, value) {
+            (FASTMEM_CRC, Some(_)) => Err(BoardFault::WriteToReadOnly { pc: boot.pc, addr }),
+            (FASTMEM_CRC, None) if !pending => Ok(Some(CRC_RESULT_RESET)),
+            (FASTMEM_CONFIG, None) if !pending => Ok(Some(sleep.crc_config)),
+            (FASTMEM_CONFIG, None) => boot
+                .reset_values
+                .read(addr, CRC_PENDING_PROFILE)?
+                .map(Some)
+                .ok_or_else(|| {
+                    unsupported("CRC RTC FAST: отсутствует профиль ожидания CRC_FINISH")
+                }),
+            (_, _) if pending => Err(unsupported(
+                "CRC RTC FAST: QEMU не выставил CRC_FINISH; результата и отмены расчёта в профиле нет",
+            )),
+            (FASTMEM_CONFIG, Some(bits)) => {
+                if bits & CRC_START != 0 && !boot.reset_values.contains(addr, CRC_PENDING_PROFILE) {
+                    return Err(unsupported(
+                        "CRC RTC FAST: SYSTEM_RTC_FASTMEM_CONFIG_REG 0x600c0048; TRM рег. 16.11–16.12 не задаёт алгоритм и время расчёта",
+                    ));
+                }
+                // FINISH доступен только для чтения (TRM рег. 16.11).
+                sleep.crc_config = bits & (CRC_CONFIG_MASK | CRC_START);
                 Ok(Some(0))
             }
-            (FASTMEM_CRC, None) => Ok(Some(0)), // TRM рег. 16.12: значение сброса.
-            (FASTMEM_CONFIG, Some(_)) => Err(unsupported(
-                "CRC RTC FAST: для расчёта нет параметров аппаратного алгоритма в TRM §16.4",
-            )),
-            _ => Ok(None),
+            _ => unreachable!("адрес проверен до обращения к CRC"),
         }
     }
 
@@ -413,6 +475,9 @@ impl Hardware {
         let enabled_sources =
             self.rtc_access(WAKEUP_STATE, word, None)?.unwrap() >> WAKE_MASK_SHIFT;
         let deep = power & DEEP_ENABLE != 0;
+        if deep && self.esp_sleep.as_ref().unwrap().crc_config & CRC_START != 0 {
+            return Err(unsupported("CRC RTC FAST: вход в Deep-sleep до CRC_FINISH"));
+        }
         if deep && power & DIGITAL_FORCE_ON != 0 {
             return Err(unsupported(
                 "Deep-sleep при принудительно включённом цифровом домене",

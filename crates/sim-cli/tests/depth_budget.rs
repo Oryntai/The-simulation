@@ -68,9 +68,9 @@ fn квота_на_сетки_вариант_отказ_и_повтор_обща
         let workers = Workers::new(NonZeroUsize::new(jobs).unwrap());
         let commands = names
             .iter()
-            .map(|name| shell("printf 'опыт' > \"$1\"", &temp.0.join(name)))
+            .map(|name| (shell("printf 'опыт' > \"$1\"", &temp.0.join(name)), 1))
             .collect();
-        let rows = workers.map_budgeted(&budget, commands, None).unwrap();
+        let rows = workers.map_budgeted(&budget, commands, None, 0, Duration::ZERO).unwrap();
         assert_eq!(rows.len(), names.len());
         for (index, row) in rows.into_iter().enumerate() {
             if index < quota as usize {
@@ -90,6 +90,25 @@ fn квота_на_сетки_вариант_отказ_и_повтор_обща
         assert_eq!(budget.usage().unwrap().reserved, quota);
         assert_eq!(budget.usage().unwrap().remaining_runs, 0);
     }
+}
+
+#[test]
+fn пара_списывает_два_запуска_и_оставляет_резерв_на_повтор() {
+    let temp = Temp::new();
+    // Основной опыт, сравнительная ветвь и повтор дают три запуска.
+    // Десять секунд дают запас двух фаз для простых команд стенда.
+    let time = Duration::from_secs(10);
+    let budget = DepthBudget::start(DepthLimits::new(3, time).unwrap(), PLAN, None).unwrap();
+    assert!(matches!(budget.reserve_for(2, 1, time), Err(BudgetError::DeadlineExceeded)));
+    assert_eq!(budget.usage().unwrap().reserved, 0);
+    let pair = shell("printf 'основной\\nсравнение\\n' > \"$1\"", &temp.0.join("пара"));
+    assert!(budget.reserve_for(2, 1, time / 2).unwrap().run(pair).unwrap().success());
+    assert_eq!(fs::read_to_string(temp.0.join("пара")).unwrap(), "основной\nсравнение\n");
+    assert_eq!(budget.usage().unwrap().reserved, 2);
+    assert!(matches!(budget.reserve_for(1, 1, time / 2), Err(BudgetError::QuotaExhausted)));
+    let repeat = shell("printf 'повтор' > \"$1\"", &temp.0.join("повтор"));
+    assert!(budget.reserve().unwrap().run(repeat).unwrap().success());
+    assert_eq!(budget.usage().unwrap().reserved, 3);
 }
 
 #[test]

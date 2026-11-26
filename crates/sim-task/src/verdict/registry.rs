@@ -243,3 +243,31 @@ impl From<ElectricalClass> for HazardClass {
         }
     }
 }
+
+pub(super) fn depth_class(code: &str) -> Option<HazardClass> {
+    DEPTH_REGISTRY
+        .iter()
+        .find(|spec| spec.code == code)
+        .map(|spec| spec.class)
+        .or_else(|| {
+            ELECTRICAL_REGISTRY
+                .iter()
+                .find(|spec| {
+                    spec.id == code
+                        && (spec.class.emc_measurement().is_some()
+                            || spec.class.pcb_measurement().is_some())
+                })
+                .map(|spec| spec.class)
+        })
+}
+
+impl ComponentKind {
+    pub(super) fn depth_codes(self) -> &'static [&'static str] {
+        match self {
+            Self::Battery => &[DEEP_DISCHARGE_CODE, SLEEP_DRAIN_CODE],
+            Self::Protection => &[FUSE_COORDINATION_CODE],
+            Self::ExposedElectricalPath => &["esd_event"],
+            _ => &[],
+        }
+    }
+}

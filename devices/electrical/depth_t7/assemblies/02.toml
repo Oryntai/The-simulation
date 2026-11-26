@@ -1,0 +1,32 @@
+version = 1
+world = "../../../02-cable-assist/world.toml"
+catalog = "../../../../catalog"
+seed = 1 # Зерно из world.toml.
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 116000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 02 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qvel[0]", unit = "rad/s" }, min = -32.46312408709453, max = 32.46312408709453, source = { kind = "estimate", reference = "Оценка диагностической огибающей холостого хода: 310 об/мин при 6 В по паспорту Pololu #2214, приведённому в device.toml. Подтвердить измерением" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 116000000
+max_gap_ns = 100000 # Один такт physics_hz штатного мира.
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический профиль из electrical/acceptance.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Схема и живой путь из electrical-profile.toml" }
+levels = { kind = "path", values = { electric = "electric" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }

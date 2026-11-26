@@ -1135,6 +1135,10 @@ impl<'a> Builder<'a> {
             let device = &input.device;
             if let Some(observed) = evidence.get(placement) {
                 self.absent.extend(observed.inapplicable());
+                for finding in observed.undeclared_depth(device) {
+                    let key = finding.key.clone();
+                    self.add(key).fixed = Some(finding);
+                }
                 for finding in observed.findings() {
                     self.add(finding.key.clone()).fixed = Some(finding.clone());
                     if self.powered_at_participant && finding.outcome == Outcome::Pass {
@@ -1159,6 +1163,19 @@ impl<'a> Builder<'a> {
                     let key = finding.key.clone();
                     self.add(key).fixed = Some(finding);
                 }
+            }
+        }
+        for component in &self.inventory.components {
+            for &code in component.kind.depth_codes() {
+                if evidence.values().any(|observed| observed.depth_declared(code, &component.object)) {
+                    continue;
+                }
+                let class = registry::depth_class(code).expect("код состава из реестра ТЗ-3");
+                let finding = ElectricalEvidence::open_depth(
+                    class, code, component.object.clone(), "позиция инвентаря",
+                );
+                let key = finding.key.clone();
+                self.add(key).fixed.get_or_insert(finding);
             }
         }
         Ok(())

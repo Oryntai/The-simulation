@@ -61,6 +61,11 @@ impl Report {
             if root.get("version").and_then(Value::u64) != Some(1) || status != "completed" {
                 return Err("неподдерживаемая версия или статус отчёта кампании".into());
             }
+            if root.get("historical_open_rows").is_some_and(|history| {
+                history != &Value::Null && history.get("rows").and_then(Value::array).is_none()
+            }) {
+                return Err("неверный реестр открытых строк исходной матрицы".into());
+            }
             let assemblies = assemblies.object().ok_or("неверная таблица сборок")?;
             if assemblies.is_empty() {
                 return Err("пустая таблица сборок".into());
@@ -98,7 +103,13 @@ impl Report {
     }
 
     pub fn readiness(&self, assembly: &str) -> Option<&str> {
-        text(self.root.get("assemblies")?.get(assembly)?, "readiness")
+        let row = self.root.get("assemblies")?.get(assembly)?;
+        if text(row, "verdict") == Some("PassedSimulation")
+            && self.verdict(Some(assembly)) == Verdict::NotProven
+        {
+            return Some("NeedsWork");
+        }
+        text(row, "readiness")
     }
 
     pub fn status(&self) -> &str {
@@ -115,11 +126,50 @@ impl Report {
         if assembly.is_none() && self.outcome() == Some("fail") {
             return Verdict::Rejected;
         }
-        assembly
-            .and_then(|id| self.root.get("assemblies")?.get(id))
-            .and_then(|value| Verdict::from_assembly(value).ok())
-            .unwrap_or(Verdict::NotAnalyzed)
+        let Some((id, row)) =
+            assembly.and_then(|id| Some((id, self.root.get("assemblies")?.get(id)?)))
+        else {
+            return Verdict::NotAnalyzed;
+        };
+        match Verdict::from_assembly(row) {
+            Ok(Verdict::ProvenInSimulation)
+                if self.registry_notice().is_some()
+                    || depth_coverage_open(row)
+                    || self.historical_rows(Some(id)).next().is_some() =>
+            {
+                Verdict::NotProven
+            }
+            Ok(verdict) => verdict,
+            Err(_) => Verdict::NotAnalyzed,
+        }
     }
+
+    pub(crate) fn registry_notice(&self) -> Option<&'static str> {
+        self.root.get("assemblies")?;
+        match self.root.get("registry_version").and_then(Value::u64) {
+            Some(3) => None, // Версия реестра классов ТЗ-3.
+            Some(2) => Some("реестр v2, без глубинных классов — не доказательство по классам ТЗ-3"),
+            _ => Some("версия реестра не подтверждает покрытие классов ТЗ-3"),
+        }
+    }
+
+    fn historical_rows<'a>(&'a self, assembly: Option<&str>) -> impl Iterator<Item = &'a Value> {
+        self.root
+            .get("historical_open_rows")
+            .and_then(|history| history.get("rows"))
+            .and_then(Value::array)
+            .into_iter()
+            .flatten()
+            .filter(move |row| {
+                let owner = row
+                    .get("key")
+                    .and_then(|key| text(key, "station"))
+                    .and_then(|station| station.split_once('/'))
+                    .map(|(owner, _)| owner);
+                assembly.is_none_or(|id| owner.is_none_or(|owner| owner == id))
+            })
+    }
+
     pub fn repeat_key(&self) -> Option<&str> {
         text(&self.root, "repeat")
     }
@@ -158,9 +208,29 @@ impl Report {
         let mut reasons = Vec::new();
         if let Some(record) = record {
             collect_reasons(record, &mut reasons);
+            if depth_coverage_open(record) {
+                reasons.push("глубинное покрытие неполное");
+            }
+        }
+        reasons.extend(self.registry_notice());
+        if assembly.is_some() {
+            for row in self.historical_rows(assembly) {
+                reasons.push(text(row, "reason").unwrap_or("открыта строка исходной матрицы"));
+            }
         }
         reasons
     }
+}
+
+fn depth_coverage_open(assembly: &Value) -> bool {
+    assembly.get("depth_coverage").is_some_and(|coverage| {
+        coverage != &Value::Null
+            && (text(coverage, "status") != Some("completed")
+                || coverage
+                    .get("open_rows")
+                    .and_then(Value::array)
+                    .is_none_or(|rows| !rows.is_empty()))
+    })
 }
 
 fn complete_evidence(assembly: &Value) -> bool {

@@ -575,7 +575,7 @@ fn edited(
 }
 
 #[test]
-fn потеря_входа_оставляет_каждую_опасность_открытой() {
+fn потеря_входа_оставляет_проверку_открытой_или_сохраняет_подтверждённый_отказ() {
     let (_scratch, manifest) = edited("missing", "unsafe", &CASES, |case, scheme, _| {
         let check = &mut scheme["depth_checks"][0];
         if case.code == "fuse_coordination" {
@@ -597,11 +597,9 @@ fn потеря_входа_оставляет_каждую_опасность_о
     });
     let report = campaign(&manifest);
     for case in &CASES {
-        let hit = case.check(
-            &report["assemblies"][case.code],
-            "not_analyzed",
-            "reference",
-        );
+        // tfix1 №5: потеря отметки не снимает доказанное численное нарушение.
+        let expected = if case.code == "fuse_coordination" { "fail" } else { "not_analyzed" };
+        let hit = case.check(&report["assemblies"][case.code], expected, "reference");
         let metrics = &hit["metrics"];
         let metric = match case.code {
             "capacitor_stress" => &metrics["voltage_v"],
@@ -617,7 +615,13 @@ fn потеря_входа_оставляет_каждую_опасность_о
                         .unwrap()
                         .contains("инъекция")
                 );
-                assert!(metrics["clearing_time_s"]["value"].is_array());
+                assert_eq!(hit["diagnostic_only"], false);
+                // Из пары Т3: при 20 А предел I²t = 8–9,2 А²·с
+                // достигается через 20–23 мс, полное отключение занимает 28–30 мс.
+                let current_sq = (12.0_f64 / (0.1 + 0.4 + 0.1)).powi(2);
+                let margin = [8.0 / current_sq - 0.030, 9.2 / current_sq - 0.028];
+                bounds(&metrics["wire_margin_s"], margin, ROUNDING);
+                assert!(metrics["wire_margin_s"][1].as_f64().unwrap() < 0.0);
                 continue;
             }
             _ => unreachable!(),

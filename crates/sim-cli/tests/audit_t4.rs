@@ -167,7 +167,13 @@ rules = "rules.toml"
 #[test]
 fn copper_without_schematic_net_and_real_short_are_input_errors() {
     let block = Block::new("net");
-    assert_eq!(block.report(FIXED, "")["connectivity"]["status"], "pass");
+    let report = block.report(FIXED, "");
+    assert_eq!(report["connectivity"]["status"], "pass");
+    // tfix1 №2: импортированная медь уже открывала оба обязательства без проверок платы.
+    for code in ["creepage_clearance", "ground_bounce"] {
+        assert!(report["open"][code].is_string(), "{report}");
+    }
+    assert_eq!(report["status"], "not_analyzed");
     block.error(UNSAFE, "короткое замыкание");
     // Отдельный от остальных трасс отрезок между координатами x=33…35,
     // y=26 внутри контура эталона. Цепь есть в плате, отсутствует в схеме.

@@ -1,0 +1,120 @@
+version = 1
+world = "../../../07-balance-cart/stage6-world.toml"
+catalog = "../../../../catalog"
+seed = 7 # Зерно из stage6-world.toml.
+
+[stations.electrical]
+experiment = { kind = "scenario" }
+
+[stations.electrical.modes.full]
+horizon_ns = 27000000
+source = { kind = "derived", reference = "Полный электрический опыт сборки 07 из electrical/acceptance.toml" }
+criteria = [{ id = "kinematic_envelope", window = "run", limit = { kind = "range", signal = { name = "qpos[2]", unit = "m" }, min = 0, source = { kind = "estimate", reference = "Нулевая отметка поверхности опоры по stage6-world.toml. Контроль центра свободного основания относительно поверхности в численном опыте" } } }]
+
+[stations.electrical.modes.full.windows.run]
+start_ns = 0
+end_ns = 27000000
+max_gap_ns = 4000 # Один такт physics_hz штатного мира.
+
+# Отдельная постановка из реестра 7.3 сохраняет живой путь и свою инъекцию.
+[stations.linked]
+experiment = { kind = "control", task = "../../../07-balance-cart/tasks/depth-open.toml" }
+
+[stations.linked.modes."удержание"]
+horizon_ns = 700000000
+source = { kind = "derived", reference = "Горизонт из tasks/depth-open.toml" }
+faults = [
+    { fault = { node = "controller:регулятор", kind = "controller_halted" }, at_ns = 300000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+    { fault = { node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" }, at_ns = 300000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+    { fault = { node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" }, at_ns = 300000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+    { fault = { node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }, at_ns = 300000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+    { fault = { node = "sensor:тележка/иму/x", kind = "sensor_unavailable" }, at_ns = 300000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+    { fault = { node = "sensor:тележка/иму/z", kind = "sensor_unavailable" }, at_ns = 300000000, max_lag_ns = 0, window = "injection", source = { kind = "derived", reference = "Запрос на точной отметке из tasks/depth-open.toml" } },
+]
+
+# Границы окна и шаг наблюдения из того же контрольного задания.
+[stations.linked.modes."удержание".windows.injection]
+start_ns = 240000000
+end_ns = 450000000
+max_gap_ns = 1000000
+
+[depth_factors.factors.mode]
+safety = true
+source = { kind = "derived", reference = "Полный электрический опыт и отдельная постановка из tasks/depth-open.toml" }
+levels = { kind = "mode", values = { full = { station = "electrical", mode = "full" }, linked = { station = "linked", mode = "удержание" } } }
+
+[depth_factors.factors.path]
+safety = true
+source = { kind = "derived", reference = "Электрический путь и пути из tasks/depth-open.toml" }
+levels = { kind = "path", values = { electric = "electric", linked_1 = "мост левое", linked_2 = "мост правое" } }
+
+[depth_factors.factors.grid]
+safety = true
+source = { kind = "derived", reference = "Сетка physics_hz из stage6-world.toml" }
+levels = { kind = "grid", values = { native = "native", refined = "refined" } }
+
+[depth_factors.factors.injection]
+safety = true
+source = { kind = "derived", reference = "Одиночные инъекции из tasks/depth-open.toml" }
+[depth_factors.factors.injection.levels]
+kind = "faults"
+[depth_factors.factors.injection.levels.values]
+nominal = []
+fault_1 = [{ node = "controller:регулятор", kind = "controller_halted" }]
+fault_2 = [{ node = "sensor:колесо/скорость левого", kind = "sensor_unavailable" }]
+fault_3 = [{ node = "sensor:колесо/скорость правого", kind = "sensor_unavailable" }]
+fault_4 = [{ node = "sensor:тележка/иму/gy", kind = "sensor_unavailable" }]
+fault_5 = [{ node = "sensor:тележка/иму/x", kind = "sensor_unavailable" }]
+fault_6 = [{ node = "sensor:тележка/иму/z", kind = "sensor_unavailable" }]
+
+[depth_factors.constraints.linked_electric]
+when = { mode = "linked", path = "electric" }
+reason = "Связанный режим исполняется на собственном пути"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+
+[depth_factors.constraints.full_linked_1]
+when = { mode = "full", path = "linked_1" }
+reason = "Электрический режим исполняется на пути электрического профиля"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+
+[depth_factors.constraints.full_linked_2]
+when = { mode = "full", path = "linked_2" }
+reason = "Электрический режим исполняется на пути электрического профиля"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_1]
+when = { path = "electric", injection = "fault_1" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_2]
+when = { path = "electric", injection = "fault_2" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_3]
+when = { path = "electric", injection = "fault_3" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_4]
+when = { path = "electric", injection = "fault_4" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_5]
+when = { path = "electric", injection = "fault_5" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.electric_fault_6]
+when = { path = "electric", injection = "fault_6" }
+reason = "Инъекция задана только на путях связанного контрольного задания"
+source = { kind = "derived", reference = "Топология из electrical-profile.toml и tasks/depth-open.toml" }
+
+[depth_factors.constraints.linked_native]
+when = { mode = "linked", grid = "refined" }
+reason = "Связанный контрольный профиль подтверждён только на штатной сетке"
+source = { kind = "derived", reference = "Сетка задачи tasks/depth-open.toml и её штатного мира" }

@@ -120,11 +120,19 @@ static bool check_ledc(void)
         return false;
     }
     vTaskDelay(pdMS_TO_TICKS(OBSERVE_MS));
-    uint32_t hz = ledc_get_freq(timer.speed_mode, timer.timer_num);
     uint32_t duty = ledc_get_duty(channel.speed_mode, channel.channel);
+    /* Если канал не применил уставку, останавливаем его и фиксируем отказ.
+     * ledc_get_freq обращается к дереву тактов и предполагает настроенный таймер. */
+    if (duty != DUTY_THREE_QUARTERS) {
+        printf("FIXTURE ledc duty mismatch actual=%" PRIu32 " expected=%u\n",
+               duty, DUTY_THREE_QUARTERS);
+        checked("ledc stop", ledc_stop(channel.speed_mode, channel.channel, 0));
+        return false;
+    }
+    uint32_t hz = ledc_get_freq(timer.speed_mode, timer.timer_num);
     printf("FIXTURE ledc readback hz=%" PRIu32 " duty=%" PRIu32 "\n", hz, duty);
     return checked("ledc stop", ledc_stop(channel.speed_mode, channel.channel, 0)) &&
-           hz == PWM_HZ && duty == DUTY_THREE_QUARTERS;
+           hz == PWM_HZ;
 }
 
 static bool check_uart(void)

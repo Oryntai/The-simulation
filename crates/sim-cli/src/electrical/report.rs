@@ -29,7 +29,7 @@ use sim_runtime::{Runtime, control};
 use sim_signal::Time;
 use sim_task::{
     Fingerprint, Outcome,
-    verdict::{ElectricalEvidence, Finding, SimulationVerdict},
+    verdict::{ElectricalEvidence, Finding, HazardClass, SimulationVerdict},
 };
 
 use super::{
@@ -45,6 +45,7 @@ use crate::tasks::processes::{Inputs, capture_world};
 pub(crate) struct Installation {
     files: Inputs,
     schemes: BTreeMap<String, SchematicInput>,
+    devices: BTreeMap<String, sim_world::Device>,
     depth_ratings: DepthRatings,
     missing: BTreeSet<String>,
     profile: Option<Fingerprint>,
@@ -142,12 +143,14 @@ impl Installation {
         let parsed = capture_world(world, &mut files)?;
         let base = dir(world);
         let mut paths = BTreeMap::new();
+        let mut devices = BTreeMap::new();
         let mut missing = BTreeSet::new();
         for instance in parsed.devices {
             let path = base.join(&instance.file);
             let device = sim_world::load_device(&path, &sim_world::LegacyCatalog)?;
-            if let Some(scheme) = device.schematic {
-                paths.insert(instance.name, dir(&path).join(scheme));
+            if let Some(scheme) = &device.schematic {
+                paths.insert(instance.name.clone(), dir(&path).join(scheme));
+                devices.insert(instance.name, device);
             } else if !device.drives.is_empty()
                 || !device.sensors.is_empty()
                 || device
@@ -249,6 +252,7 @@ impl Installation {
         Ok(Self {
             files,
             schemes,
+            devices,
             depth_ratings,
             missing,
             profile: stamp,
@@ -489,6 +493,7 @@ impl Installation {
             findings.extend_from_slice(result.findings());
             let depth = input.record_depth(&self.depth_ratings, &mut result)?;
             depth_outcomes.extend(result.findings()[first_depth..].iter().map(|f| f.outcome));
+            findings.extend(result.undeclared_depth(&self.devices[instance]));
             let assessment = result.assessment();
             assemblies.insert(
                 instance.clone(),
@@ -541,7 +546,11 @@ impl Installation {
                                 .map_or((None, None), |(profile, series, _)| {
                                     (profile.as_ref(), series.as_ref())
                                 });
-                            (id.clone(), solder_report(joint, profile, series))
+                            let finding = result.findings().iter().find(|finding| {
+                                finding.key.class == HazardClass::SolderDefect
+                                    && finding.electrical.as_ref().and_then(|identity| identity.probe.as_deref()) == Some(id)
+                            }).expect("для каждого стыка опубликовано обязательство пайки");
+                            (id.clone(), solder_report(joint, finding, profile, series))
                         })
                         .collect(),
                     pcb,
@@ -1034,7 +1043,7 @@ fn depth_report(finding: &DepthFinding, build: Fingerprint, input: Fingerprint) 
         })),
         "applicability": finding.applicability.as_ref().map(provenance),
         "applicability_gap": finding.applicability_gap,
-        "diagnostic_only": finding.applicability_gap.is_some(),
+        "diagnostic_only": finding.status != Status::Fail && finding.applicability_gap.is_some(),
         "passport": finding.passport,
         "build": build,
         "observation_input": input,
@@ -1096,6 +1105,7 @@ fn solder_status(status: &SolderWindowStatus) -> (&'static str, &str) {
 
 fn solder_report(
     joint: &SolderJointReport,
+    finding: &Finding,
     profile: Option<&SolderJointProfile>,
     series: Option<&SolderControlSeries>,
 ) -> Value {
@@ -1110,11 +1120,18 @@ fn solder_report(
             })
         })
     };
+    let scope = match joint.address.scope {
+        Scope::Assembly => "assembly",
+        Scope::Reference => "reference",
+    };
     json!({
         "code": "solder_defect",
+        "scope": scope,
+        "status": finding.outcome,
+        "reason": finding.reason,
         "address": {
             "schematic": joint.address.schematic,
-            "scope": match joint.address.scope { Scope::Assembly => "assembly", Scope::Reference => "reference" },
+            "scope": scope,
             "connection": joint.address.connection,
             "ends": joint.address.ends.each_ref().map(endpoint),
         },
@@ -1426,6 +1443,15 @@ check = { kind = "cable_flex" }
         let installation = Installation {
             files: Inputs::default(),
             schemes: BTreeMap::from([("блок".into(), input)]),
+            devices: BTreeMap::from([("блок".into(), toml::from_str(r#"
+format = 3
+name = "Блок"
+schematic = "блок.toml"
+[[links]]
+name = "блок"
+joint = { kind = "fixed" }
+mass = { kind = "massless" }
+"#).unwrap())]),
             depth_ratings: catalog.depth_ratings()?,
             missing: BTreeSet::new(),
             profile: None,

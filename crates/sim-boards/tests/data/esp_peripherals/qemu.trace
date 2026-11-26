@@ -8,7 +8,7 @@ FIXTURE gpio out=1 in=0
 FIXTURE gpio out=0 in=0
 FIXTURE uart tx=4 rx=4 55 a6 00 ff match
 FIXTURE ledc begin hz=4000 duty=256,768
-FIXTURE error ledc duty ESP_ERR_INVALID_ARG
+FIXTURE ledc duty mismatch actual=0 expected=768
 FIXTURE i2c begin hz=100000 address=0x50
 FIXTURE i2c probe 0x50 ESP_ERR_TIMEOUT
 FIXTURE i2c probe 0x51 ESP_ERR_TIMEOUT
@@ -21,12 +21,12 @@ GPIO write 0x60004008 0x8 4
 GPIO write 0x6000400c 0x8 4
 UART1 CLKDIV 0x30015b divisor_x16=5555
 LEDC timer 0x600190a0 0x9c40 0xa 0x2000000 0x0 0x800000 0x0 [esp32c3.iomem]
-LEDC duty 0x60019008 0x1000 [esp32c3.iomem]
+LEDC duty 0x60019008 0x1000 0x3000 [esp32c3.iomem]
 I2C FIFO 0x6001301c 0xa0 0xa2 [esp32c3.iomem]
 RTC timer low 0x60008004 0x42659 [misc.esp32c3.rtc_cntl]
 RTC timer high 0x60008008 0x0 0x10000 [misc.esp32c3.rtc_cntl]
 RTC FASTMEM CRC 0x600c0048 write=0x7ff00000 write=0x7ff00100 read=0x0 read=0x0
-PC 0x4201794c rtc_deep_sleep_start: beqz между двумя чтениями CRC
+PC 0x42017662 rtc_deep_sleep_start: beqz между двумя чтениями CRC
 
 [corrupt]
 FIXTURE cold
@@ -35,7 +35,7 @@ FIXTURE gpio out=1 in=0
 FIXTURE gpio out=0 in=0
 FIXTURE uart tx=4 rx=4 55 a6 00 fe fail
 FIXTURE ledc begin hz=4000 duty=256,768
-FIXTURE error ledc duty ESP_ERR_INVALID_ARG
+FIXTURE ledc duty mismatch actual=0 expected=768
 FIXTURE i2c begin hz=100000 address=0x50
 FIXTURE i2c probe 0x50 ESP_ERR_TIMEOUT
 FIXTURE i2c probe 0x51 ESP_ERR_TIMEOUT
@@ -48,12 +48,12 @@ GPIO write 0x60004008 0x8 4
 GPIO write 0x6000400c 0x8 4
 UART1 CLKDIV 0x30015b divisor_x16=5555
 LEDC timer 0x600190a0 0x9c40 0xa 0x2000000 0x0 0x800000 0x0 [esp32c3.iomem]
-LEDC duty 0x60019008 0x1000 [esp32c3.iomem]
+LEDC duty 0x60019008 0x1000 0x3000 [esp32c3.iomem]
 I2C FIFO 0x6001301c 0xa0 0xa2 [esp32c3.iomem]
 RTC timer low 0x60008004 0x42659 [misc.esp32c3.rtc_cntl]
 RTC timer high 0x60008008 0x0 0x10000 [misc.esp32c3.rtc_cntl]
 RTC FASTMEM CRC 0x600c0048 write=0x7ff00000 write=0x7ff00100 read=0x0 read=0x0
-PC 0x4201794c rtc_deep_sleep_start: beqz между двумя чтениями CRC
+PC 0x42017662 rtc_deep_sleep_start: beqz между двумя чтениями CRC
 
 [silent]
 FIXTURE cold
@@ -62,7 +62,7 @@ FIXTURE gpio out=1 in=0
 FIXTURE gpio out=0 in=0
 FIXTURE uart tx=4 rx=0 fail
 FIXTURE ledc begin hz=4000 duty=256,768
-FIXTURE error ledc duty ESP_ERR_INVALID_ARG
+FIXTURE ledc duty mismatch actual=0 expected=768
 FIXTURE i2c begin hz=100000 address=0x50
 FIXTURE i2c probe 0x50 ESP_ERR_TIMEOUT
 FIXTURE i2c probe 0x51 ESP_ERR_TIMEOUT
@@ -75,9 +75,9 @@ GPIO write 0x60004008 0x8 4
 GPIO write 0x6000400c 0x8 4
 UART1 CLKDIV 0x30015b divisor_x16=5555
 LEDC timer 0x600190a0 0x9c40 0xa 0x2000000 0x0 0x800000 0x0 [esp32c3.iomem]
-LEDC duty 0x60019008 0x1000 [esp32c3.iomem]
+LEDC duty 0x60019008 0x1000 0x3000 [esp32c3.iomem]
 I2C FIFO 0x6001301c 0xa0 0xa2 [esp32c3.iomem]
 RTC timer low 0x60008004 0x42659 [misc.esp32c3.rtc_cntl]
 RTC timer high 0x60008008 0x0 0x10000 [misc.esp32c3.rtc_cntl]
 RTC FASTMEM CRC 0x600c0048 write=0x7ff00000 write=0x7ff00100 read=0x0 read=0x0
-PC 0x4201794c rtc_deep_sleep_start: beqz между двумя чтениями CRC
+PC 0x42017662 rtc_deep_sleep_start: beqz между двумя чтениями CRC

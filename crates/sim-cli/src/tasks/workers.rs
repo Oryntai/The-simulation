@@ -60,13 +60,15 @@ impl Workers {
     pub(super) fn map_budgeted(
         &self,
         budget: &DepthBudget,
-        commands: Vec<Command>,
+        commands: Vec<(Command, u32)>,
         local: Option<NonZeroUsize>,
+        keep_runs: u32,
+        keep_time: std::time::Duration,
     ) -> Result<Vec<Result<ExitStatus, BudgetError>>, String> {
         self.map_admitted(
             commands,
             local,
-            |command| (budget.reserve(), command),
+            |(command, runs)| (budget.reserve_for(runs, keep_runs, keep_time), command),
             |(permit, command)| Ok(permit.and_then(|permit| permit.run(command))),
         )
     }

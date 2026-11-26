@@ -246,7 +246,8 @@ def describe(markers, events, pc, reply, elf, work):
     # ESP-IDF components/esp_hal_ledc/esp32c3/include/hal/ledc_ll.h: 4 дробных бита DUTY.
     ledc = writes(LEDC_TIMER)
     require(((40_000_000 * 256 // (4000 * (1 << 10))) << 4) in ledc and 10 in ledc and
-            writes(LEDC_DUTY) == [256 << 4], "В MMIO отсутствует конфигурация LEDC")
+            writes(LEDC_DUTY) == [duty << 4 for duty in (256, 768)],
+            "В MMIO отсутствует запись одного из значений заполнения LEDC")
     # TRM гл. 28: первый байт адреса равен (7-битный адрес << 1) | R/W.
     require(writes(I2C_FIFO) == [0x50 << 1, 0x51 << 1] and
             sum(bool(value & I2C_START) for value in writes(I2C_CONTROL)) == 2,
@@ -265,7 +266,7 @@ def describe(markers, events, pc, reply, elf, work):
         "FIXTURE cold",
         "FIXTURE gpio out=0 in=0", "FIXTURE gpio out=1 in=0", "FIXTURE gpio out=0 in=0",
         uart_line, "FIXTURE ledc begin hz=4000 duty=256,768",
-        "FIXTURE error ledc duty ESP_ERR_INVALID_ARG",
+        "FIXTURE ledc duty mismatch actual=0 expected=768",
         "FIXTURE i2c begin hz=100000 address=0x50",
         "FIXTURE i2c probe 0x50 ESP_ERR_TIMEOUT", "FIXTURE i2c probe 0x51 ESP_ERR_TIMEOUT",
         f"FIXTURE sleep timer us=2000000 failures=0x{failures:x}",
