@@ -2,6 +2,8 @@ format = 1
 
 [spectrum]
 # Т6.5 владеет геометрией, портами, полосами, сетками и запуском openEMS.
+# `audit_t6_intermediate_frequencies` сверяет 33 частоты на стенд.
+# Между отсчётами непрерывная огибающая остаётся открытой.
 # Из корня репозитория:
 # cargo test --locked --offline --target-dir target --manifest-path devices/electrical/depth_t6/loop/Cargo.toml -- --include-ignored --nocapture --test-threads=1
 # Пары и независимый спектр RL:
@@ -10,6 +12,10 @@ reference = "loop/Cargo.toml"
 rl_deck = "loop/rl.cir"
 
 [esd]
+# Из этих данных тест depth_t6 строит мир, схему, каталог и два временных
+# TOML-профиля instances.<экземпляр>.esd_event для штатного sim-run --campaign.
+# Поля профиля: exposed, protected, return, start_ns, exposure, pulse,
+# network.domain, network.protection и limits с источниками диапазонов.
 source = "Синтетический блок Т6.6 для одиночного контактного разряда, IEC 61000-4-2:2008, табл. 3 и рис. 2, уровень 1"
 catalog = '''
 format = 1

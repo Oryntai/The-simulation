@@ -25,6 +25,8 @@ const STORE0: u32 = 0x50;
 const STORE3: u32 = 0x5c;
 const CLK_CONF: u32 = 0x70;
 const SLOW_CLK_CONF: u32 = 0x74;
+const SDIO_CONF: u32 = 0x78; // rtc_cntl_reg.h, RTC_CNTL_SDIO_CONF_REG.
+const BIAS_CONF: u32 = 0x7c; // ESP-IDF rtc_cntl_reg.h, RTC_CNTL_BIAS_CONF_REG.
 const REGULATOR: u32 = 0x80;
 const RTC_PWC: u32 = 0x84;
 const DIG_PWC: u32 = 0x88;
@@ -89,6 +91,23 @@ const SWD_CONF_RESET: u32 = 300 << 18;
 // приведены в заголовке IDF для C3, в регистре 9.29 TRM они зарезервированы.
 const REGULATOR_RW: u32 = (0xf << 28) | (0xff << 14) | (1 << 7);
 const REGULATOR_RESET: u32 = (1 << 31) | (1 << 29);
+// rtc_cntl_reg.h: DBG_ATTEN, BIAS_SLEEP, PD_CUR, BIAS_BUF и DG_VDD_DRV_B_SLP.
+const BIAS_CONF_RW: u32 = (0xffff << 10) | 0x1ff;
+const BIAS_CONF_RESET: u32 = (1 << 16) | (1 << 11);
+// rtc_cntl_reg.h: DREFM/DREFL, TIEH, PD_EN, ENCURLIM, EN_INITI,
+// INITI, DCAP, DTHDRV и TIMER_TARGET. SDK rtc_sleep_init меняет FORCE/PD_EN.
+const SDIO_CONF_RESET: u32 = (1 << 27)
+    | (1 << 25)
+    | (1 << 23)
+    | (1 << 21)
+    | (1 << 20)
+    | (1 << 15)
+    | (1 << 13)
+    | (3 << 11)
+    | (3 << 9)
+    | 10;
+const SDIO_FORCE: u32 = 1 << 22;
+const SDIO_CONF_RW: u32 = SDIO_FORCE | (1 << 21);
 const PAD_FORCE_HOLD: u32 = 1 << 21;
 const DIG_PWC_RW: u32 = (0x1f << 27) | (0xfff << 11) | 0x1f;
 const DIG_PWC_RESET: u32 =
@@ -311,6 +330,8 @@ pub struct EspRtc {
     power_timers: [u32; POWER_TIMERS.len()],
     wakeup_state: u32,
     regulator: u32,
+    bias_conf: u32,
+    sdio_conf: u32,
     rtc_power: u32,
     dig_power: u32,
     dig_iso: u32,
@@ -345,6 +366,8 @@ impl Default for EspRtc {
             power_timers: POWER_TIMERS.map(|(_, reset)| reset),
             wakeup_state: WAKEUP_STATE_RESET,
             regulator: REGULATOR_RESET,
+            bias_conf: BIAS_CONF_RESET,
+            sdio_conf: SDIO_CONF_RESET,
             rtc_power: 0,
             dig_power: DIG_PWC_RESET,
             dig_iso: DIG_ISO_RESET,
@@ -555,6 +578,22 @@ impl EspRtc {
             }
             SLOW_CLK_CONF => rw(&mut self.slow_clk_conf, SLOW_CLK_CONF_RW, value),
             REGULATOR => rw(&mut self.regulator, REGULATOR_RW, value),
+            // Сохраняем конфигурацию RTC. Аналоговое напряжение и ток
+            // от полей смещения в этой цифровой модели не вычисляются.
+            BIAS_CONF => rw(&mut self.bias_conf, BIAS_CONF_RW, value),
+            SDIO_CONF => {
+                if let Some(bits) = value {
+                    if bits & !SDIO_CONF_RW != SDIO_CONF_RESET & !SDIO_CONF_RW
+                        || bits & SDIO_FORCE != 0
+                    {
+                        return Err(unsupported("RTC SDIO_CONF: ручное управление LDO"));
+                    }
+                    self.sdio_conf = bits;
+                    0
+                } else {
+                    self.sdio_conf
+                }
+            }
             RTC_PWC => rw(&mut self.rtc_power, PAD_FORCE_HOLD, value),
             DIG_PWC => {
                 // RTC_CNTL_DIG_PWC: пары FORCE_PU/FORCE_PD и FASTMEM_FORCE_LPU/LPD.

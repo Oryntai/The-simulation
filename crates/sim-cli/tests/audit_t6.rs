@@ -151,7 +151,7 @@ start_ns = 11000
 end_ns = 22000
 bias_v = { min = 3.0, nominal = 3.0, max = 3.0 }
 "#;
-    let run = |profile| stand.command(&scheme, &catalog, profile).output().unwrap();
+    let run = |profile: &str| stand.command(&scheme, &catalog, profile).output().unwrap();
     let output = run(profile);
     assert!(
         output.status.success(),
@@ -174,10 +174,13 @@ bias_v = { min = 3.0, nominal = 3.0, max = 3.0 }
     for bad in ["nan", "inf", "-inf"] {
         let invalid = profile.replace("nominal = 3.0", &format!("nominal = {bad}"));
         let output = run(&invalid);
-        assert!(!output.status.success(), "принято {bad}");
+        assert_eq!(output.status.code(), Some(2), "принято {bad}");
+        let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["status"], "error");
+        let detail = report["detail"].as_str().unwrap();
         assert!(
-            String::from_utf8_lossy(&output.stderr).contains("границ"),
-            "{output:?}"
+            detail.contains("bias_v.nominal") && detail.contains("конечные числа"),
+            "{report:?}"
         );
     }
 }

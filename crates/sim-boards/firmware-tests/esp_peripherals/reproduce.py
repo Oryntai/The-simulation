@@ -162,7 +162,11 @@ def capture(work, reply):
                 while crc_polls < 2 and time.monotonic() < deadline:
                     if select.select([child.stdout], [], [], 0.01)[0]:
                         chunk = os.read(child.stdout.fileno(), 4096)
-                        require(chunk, f"QEMU завершился до проверки, код {child.poll()}")
+                        if not chunk:
+                            code = child.wait(timeout=2)
+                            details = (work / "stderr.raw").read_bytes()[-4000:].decode(errors="replace")
+                            output = console.read_bytes()[-4000:].decode(errors="replace") if console.exists() else ""
+                            raise RuntimeError(f"QEMU завершился до проверки, код {code}\n{details}\n{output}")
                         tx.extend(chunk)
                         require(FRAME.startswith(tx), f"Неверный вывод UART1: {tx.hex(' ')}")
                         if tx == FRAME and reply:

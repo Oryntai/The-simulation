@@ -372,20 +372,31 @@ pub(super) mod calls {
                 // ets_printf, ets_install_uart_printf, SPI wait_idle и config_param.
                 0x4000_0040 | 0x4000_0048 | 0x4000_010c | 0x4000_0134 => Native,
                 // esp32c3.rom.ld: reset reason, APB backup lock, cache boot init,
-                // Cache_{Disable,Enable,Suspend,Resume}_ICache и размер IDROM MMU.
-                0x4000_0018 | 0x4000_0060 | 0x4000_04c8 | 0x4000_051c | 0x4000_0520
-                | 0x4000_0524 | 0x4000_0528 | 0x4000_0548 => Native,
-                // esp32c3.rom.ld: rom_gpio_pad_set_drv, esprv_intc и intr_matrix_set.
-                0x4000_05cc | 0x4000_05e0 | 0x4000_05e4 | 0x4000_05e8 | 0x4000_05ec
-                | 0x4000_05f0 | 0x4000_05f4 => Native,
+                // Cache_Invalidate_Addr, Cache_{Disable,Enable,Suspend,Resume}_ICache,
+                // Freeze и размер IDROM MMU.
+                0x4000_0018 | 0x4000_0060 | 0x4000_04c8 | 0x4000_04d4 | 0x4000_051c
+                | 0x4000_0520 | 0x4000_0524 | 0x4000_0528 | 0x4000_052c | 0x4000_0530
+                | 0x4000_0548 => Native,
+                // esp32c3.rom.ld: rom_gpio_matrix_{in,out}, rom_gpio_pad_select_gpio, rom_gpio_pad_set_drv,
+                // esprv_intc и intr_matrix_set.
+                0x4000_05a0 | 0x4000_05a4 | 0x4000_05c8 | 0x4000_05cc | 0x4000_05e0
+                | 0x4000_05e4 | 0x4000_05e8 | 0x4000_05ec | 0x4000_05f0 | 0x4000_05f4 => Native,
                 // esp32c3.rom.ld: MD5{Init,Update,Final}, ets_sha_{enable,init,update,finish},
                 // ets_efuse_get_{spiconfig,wp_pad}. MMIO функций проходит через шину.
                 0x4000_0614 | 0x4000_0618 | 0x4000_061c | 0x4000_0644 | 0x4000_0650
                 | 0x4000_065c | 0x4000_0660 | 0x4000_071c | 0x4000_072c => Native,
-                // esp32c3.rom.libc.ld: strnlen, div, qsort.
-                // esp32c3.rom.libgcc.ld: __clzsi2, __ffssi2, __udivdi3, __umoddi3.
-                0x4000_0404 | 0x4000_0428 | 0x4000_0434 | 0x4000_079c | 0x4000_07d4
-                | 0x4000_08ac | 0x4000_08bc => Native,
+                // esp32c3.rom.libc.ld: strlen, strnlen, div, qsort.
+                // esp32c3.rom.libgcc.ld: __ashldi3, __ashrdi3, __clzsi2, __ffssi2,
+                // __lshrdi3, __udivdi3, __umoddi3.
+                0x4000_0374 | 0x4000_0404 | 0x4000_0428 | 0x4000_0434 | 0x4000_077c
+                | 0x4000_0780 | 0x4000_079c | 0x4000_07d4 | 0x4000_0830 | 0x4000_08ac
+                | 0x4000_08bc => Native,
+                // ESP-IDF esp32c3.rom.libc.ld и esp_libc/src/locks.c:
+                // esp_rom_newlib_init_common_mutexes, инициализация блокировок ROM.
+                0x4000_0350 => Native,
+                // ESP-IDF esp32c3.rom.ld: esp_coex_rom_version_get
+                // возвращает строку версии из ROM. Обмен через RF не моделируется.
+                0x4000_18ac => Native,
                 // ESP-IDF esp_hal_regi2c/esp32c3/rom.regi2c.ld:6–9.
                 // ROM выполняет чтение и запись, в том числе с маской, через MMIO.
                 0x4000_1954 | 0x4000_1958 | 0x4000_195c | 0x4000_1960 => Native,

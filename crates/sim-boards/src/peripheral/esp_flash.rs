@@ -840,11 +840,11 @@ impl Cache {
             PRELOAD_CTRL if val.is_none() => Ok(PRELOAD_DONE),
             CACHE_FREEZE => {
                 if let Some(bits) = val {
-                    // Cache_Freeze_ICache в ROM замораживает уже отключённый
-                    // кэш. У активного кэша обработка промахов пока открыта.
-                    if bits & !(FREEZE_ENABLE | FREEZE_DONE) != 0
-                        || (self.enabled && bits & FREEZE_ENABLE != 0)
-                    {
+                    // extmem_reg.h, EXTMEM_ICACHE_FREEZE_REG: режим 0
+                    // без пополнения кэша. Пока он заморожен, проверенный
+                    // доступ возможен только из ROM/IRAM: read_cached отклоняет
+                    // оба flash-окна, так как состав строк кэша неизвестен.
+                    if bits & !(FREEZE_ENABLE | FREEZE_DONE) != 0 {
                         return Err(unknown);
                     }
                     self.frozen = bits & FREEZE_ENABLE != 0;

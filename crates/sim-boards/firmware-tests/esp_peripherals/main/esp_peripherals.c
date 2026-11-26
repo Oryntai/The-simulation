@@ -113,8 +113,10 @@ static bool check_ledc(void)
         return false;
     }
     vTaskDelay(pdMS_TO_TICKS(OBSERVE_MS));
-    if (!checked("ledc duty", ledc_set_duty_and_update(channel.speed_mode, channel.channel,
-                                                      DUTY_THREE_QUARTERS, channel.hpoint))) {
+    /* ESP-IDF driver/ledc.h: запись duty и её применение без fade-сервиса. */
+    if (!checked("ledc set duty", ledc_set_duty(channel.speed_mode, channel.channel,
+                                               DUTY_THREE_QUARTERS)) ||
+        !checked("ledc update duty", ledc_update_duty(channel.speed_mode, channel.channel))) {
         return false;
     }
     vTaskDelay(pdMS_TO_TICKS(OBSERVE_MS));

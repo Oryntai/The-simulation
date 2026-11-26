@@ -14,6 +14,7 @@ use sim_process::{
     schematic::{
         AssemblySheet, DepthEvidence, DepthFinding, Endpoint, Expected, Parameter, ResetProfile,
         Scope, Section, Stage, Status,
+        emi_reset::EmiTrial,
         solder_joint::{
             SolderControlSeries, SolderJointAddress, SolderJointProfile, SolderJointReport,
             SolderSeriesApplicability, SolderSeriesMeasurement,
@@ -49,11 +50,14 @@ pub(crate) struct Installation {
     profile: Option<Fingerprint>,
     installed: Option<control::RunIdentity>,
     resets: BTreeMap<String, ResetProfile>,
+    live_boards: BTreeMap<String, BTreeSet<String>>,
     loads: BTreeMap<String, BTreeMap<String, BoundLoad>>,
     emc: Option<(Fingerprint, EmcProfile)>,
     solder: BTreeMap<String, SolderJointInputs>,
     pcbs: BTreeMap<String, BoardInput>,
 }
+
+type EmiPairs = BTreeMap<String, (Runtime, Runtime)>;
 
 type SolderJointInputs = BTreeMap<
     String,
@@ -162,6 +166,7 @@ impl Installation {
             .as_ref()
             .map(|profile| Fingerprint::of(&profile.bytes));
         let mut resets = BTreeMap::new();
+        let mut live_boards = BTreeMap::new();
         if let Some(profile) = &inputs {
             let (control_path, bytes) = profile.control(&mut files)?;
             let wiring: Wiring = parse(&control_path, &bytes)?;
@@ -213,6 +218,18 @@ impl Installation {
                 let scheme = SchematicInput::parse(&path, bytes, parts)?;
                 if let Some(profile) = &inputs {
                     let cfg = &profile.data.circuits[&instance];
+                    live_boards.insert(
+                        instance.clone(),
+                        cfg.boards
+                            .iter()
+                            .filter(|(_, board)| {
+                                scheme.compiled.depth_scope() == Scope::Reference
+                                    || cfg.diagnostic_connections.is_none()
+                                    || board.reference_reset.is_none()
+                            })
+                            .map(|(name, _)| name.clone())
+                            .collect(),
+                    );
                     if !cfg.loads.is_empty() {
                         let net = scheme.live_netlist(
                             parts,
@@ -237,6 +254,7 @@ impl Installation {
             profile: stamp,
             installed: None,
             resets,
+            live_boards,
             loads,
             emc: None,
             solder: BTreeMap::new(),
@@ -252,6 +270,25 @@ impl Installation {
         }
         self.emc = Some((Fingerprint::of(bytes), profile));
         Ok(())
+    }
+
+    fn emi_trials(&self, horizon: Time) -> Result<Vec<(String, EmiTrial)>, String> {
+        let mut trials = Vec::new();
+        if let Some((_, profile)) = &self.emc {
+            for (instance, checks) in &profile.instances {
+                let scope = self.schemes[instance].compiled.depth_scope();
+                if let Some(trial) = checks.emi_trial(scope)?
+                    && trial.input().end <= horizon
+                    && self
+                        .live_boards
+                        .get(instance)
+                        .is_some_and(|boards| boards.contains(&trial.input().board))
+                {
+                    trials.push((instance.clone(), trial));
+                }
+            }
+        }
+        Ok(trials)
     }
 
     fn load_solder(&mut self, path: &Path) -> Result<(), String> {
@@ -362,6 +399,16 @@ impl Installation {
         runtime: Option<&Runtime>,
         horizon: Option<Time>,
     ) -> Result<Evaluated, String> {
+        self.evaluate_with_emi(build, runtime, horizon, &BTreeMap::new())
+    }
+
+    fn evaluate_with_emi(
+        &self,
+        build: Fingerprint,
+        runtime: Option<&Runtime>,
+        horizon: Option<Time>,
+        pairs: &EmiPairs,
+    ) -> Result<Evaluated, String> {
         let live = match (runtime, self.profile, horizon) {
             (None, _, _) => None,
             (Some(rt), Some(profile), Some(horizon)) => {
@@ -422,7 +469,8 @@ impl Installation {
             let emc_checks = if let Some((profile, cases)) = &self.emc
                 && let Some(cases) = cases.instances.get(instance)
             {
-                emc::evaluate(cases, *profile, input, &mut result, None)?
+                let pair = pairs.get(instance).map(|(active, baseline)| (active, baseline));
+                emc::evaluate(cases, *profile, input, &mut result, pair)?
             } else {
                 BTreeMap::new()
             };
@@ -900,19 +948,39 @@ impl Campaign {
             if installation.is_empty() {
                 installation.missing.insert(id.clone());
             }
+            let mut pairs = BTreeMap::new();
             let runtime = match (profile, horizon) {
                 (Some(profile), Some(end)) if end > Time::ZERO => {
-                    let mut run = LiveExperiment::load(
-                        &world,
-                        &profile,
-                        &catalog,
-                        None,
-                        end,
-                        LivePath::Full,
-                    )?;
-                    installation.bind_live(&run.runtime, end)?;
-                    run.run_until(end)?;
-                    Some(run.runtime)
+                    for (instance, trial) in installation.emi_trials(end)? {
+                        let mut active = LiveExperiment::load_emi(
+                            &world, &profile, &catalog, end, &trial, true,
+                        )?;
+                        // Внешние контроллеры не дают воспроизводимой пары для оценщика ЭМС.
+                        if control::run(&active.runtime)
+                            .is_some_and(|run| run.has_external_processes())
+                        {
+                            break;
+                        }
+                        let mut baseline = LiveExperiment::load_emi(
+                            &world, &profile, &catalog, end, &trial, false,
+                        )?;
+                        if pairs.is_empty() {
+                            installation.bind_live(&active.runtime, end)?;
+                        }
+                        active.run_until(end)?;
+                        baseline.run_until(end)?;
+                        pairs.insert(instance, (active.runtime, baseline.runtime));
+                    }
+                    if pairs.is_empty() {
+                        let mut run = LiveExperiment::load(
+                            &world, &profile, &catalog, None, end, LivePath::Full,
+                        )?;
+                        installation.bind_live(&run.runtime, end)?;
+                        run.run_until(end)?;
+                        Some(run.runtime)
+                    } else {
+                        None
+                    }
                 }
                 (None, None) => None,
                 _ => {
@@ -921,7 +989,15 @@ impl Campaign {
                     ));
                 }
             };
-            let result = installation.evaluate(build(&installation)?, runtime.as_ref(), horizon)?;
+            // Первый опыт с воздействием остаётся основным живым журналом сборки.
+            // Каждая проверка ЭМС получает пару именно своего экземпляра.
+            let live = pairs
+                .values()
+                .next()
+                .map(|(active, _)| active)
+                .or(runtime.as_ref());
+            let result =
+                installation.evaluate_with_emi(build(&installation)?, live, horizon, &pairs)?;
             reports.insert(id, result.report);
         }
         if options.json {
@@ -1355,6 +1431,7 @@ check = { kind = "cable_flex" }
             profile: None,
             installed: None,
             resets: BTreeMap::new(),
+            live_boards: BTreeMap::new(),
             loads: BTreeMap::new(),
             emc: emc.map(|bytes| {
                 EmcProfile::parse(Path::new("блок-эмс.toml"), bytes)

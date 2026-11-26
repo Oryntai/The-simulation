@@ -1268,6 +1268,7 @@ fn build(
         stimulus_integrated: BTreeMap::new(),
         stimulus_pending: Vec::new(),
         boards,
+        external_boards,
         board_actions,
         routes,
         faults,

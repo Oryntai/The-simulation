@@ -37,5 +37,6 @@ fn identifier(value: &str) -> bool {
 }
 
 pub mod emi_reset;
+pub mod esd_event;
 
 pub mod solder_joint;

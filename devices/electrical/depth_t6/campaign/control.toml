@@ -1,0 +1,22 @@
+version = 1
+
+[[board]]
+name = "fixture"
+catalog = "vmcu-c3"
+image = "../../../../crates/sim-boards/testdata/vmcu_ports.elf"
+# Контракт фикстуры vmcu_ports: баннер R, сторож выключен, ШИМ 1 кГц.
+config = "ports.bin"
+rate_hz = 50000 # Шаг платы 20 мкс, сетка живого стенда Т6.7.
+source = "Образ виртуальной платы из стенда Т6.7"
+
+[[board_input]]
+name = "Постоянный вход образа"
+board = "fixture"
+signal = "rail"
+unit = "V"
+kind = "adc"
+port = 0 # Канал ADC0 из контракта образа vmcu_ports.
+max_age_ns = 10000 # Один шаг измерителя шины.
+scale = 0.5 # Половина шины 3,3 В, как в контрольном стенде Т6.7.
+offset = 0
+source = "Вход образа питается от половины шины и отделён от дифференциального входа сброса"

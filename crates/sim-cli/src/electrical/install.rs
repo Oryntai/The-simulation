@@ -11,6 +11,7 @@ use sim_process::{
         BindingTarget, BoardContact, Catalog, Endpoint, ExpandedNetlist, Mode, Parameter,
         PinFunction, PinPhase, PinRole, Primitive, PrimitiveKind, ResetProfile, Schematic, Scope,
         Section,
+        emi_reset::EmiTrial,
         sim_circuit::netlist::{Analysis as NetAnalysis, Element, ElementKind, Netlist, Waveform},
     },
 };
@@ -40,6 +41,12 @@ pub enum LivePath {
 
 pub struct LiveExperiment {
     pub runtime: Runtime,
+}
+
+enum LiveControl<'a> {
+    Ordinary,
+    Replay(ControlRecording),
+    EmiReset { trial: &'a EmiTrial, coupled: bool },
 }
 
 #[derive(Serialize, Default)]
@@ -910,7 +917,15 @@ impl LiveExperiment {
         until: Time,
         path: LivePath,
     ) -> Result<Self, String> {
-        Self::assemble(world_path, profile_path, catalog, seed, until, path, None)
+        Self::assemble(
+            world_path,
+            profile_path,
+            catalog,
+            seed,
+            until,
+            path,
+            LiveControl::Ordinary,
+        )
     }
 
     pub fn load_replay(
@@ -928,7 +943,26 @@ impl LiveExperiment {
             seed,
             until,
             LivePath::Full,
-            Some(recording),
+            LiveControl::Replay(recording),
+        )
+    }
+
+    pub(super) fn load_emi(
+        world_path: &Path,
+        profile_path: &Path,
+        catalog: &Path,
+        until: Time,
+        trial: &EmiTrial,
+        coupled: bool,
+    ) -> Result<Self, String> {
+        Self::assemble(
+            world_path,
+            profile_path,
+            catalog,
+            None,
+            until,
+            LivePath::Full,
+            LiveControl::EmiReset { trial, coupled },
         )
     }
 
@@ -939,7 +973,7 @@ impl LiveExperiment {
         seed: Option<u64>,
         until: Time,
         path: LivePath,
-        recording: Option<ControlRecording>,
+        control: LiveControl<'_>,
     ) -> Result<Self, String> {
         let WorldWithSchematics {
             mut world,
@@ -1143,7 +1177,10 @@ impl LiveExperiment {
             horizon: until,
             model_ports: &ports,
         };
-        if let Some(recording) = recording {
+        if let LiveControl::EmiReset { trial, coupled } = &control {
+            rt.bind_emi_reset((*trial).clone(), *coupled)?;
+        }
+        if let LiveControl::Replay(recording) = control {
             control::install_replay(&mut rt, &config, &assets, spec, recording)?;
         } else {
             control::install(&mut rt, &config, &assets, spec)?;

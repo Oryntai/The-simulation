@@ -4,6 +4,7 @@ pub(super) mod installation;
 mod native;
 mod bench;
 pub(super) mod playback;
+mod depth_report;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -33,6 +34,7 @@ const VERSION: u32 = 1;
 #[serde(deny_unknown_fields)]
 struct Manifest {
     version: u32,
+    open_rows: Option<PathBuf>,
     assemblies: BTreeMap<String, Assembly>,
 }
 
@@ -71,6 +73,10 @@ struct Report {
     repeat: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     view_unavailable: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    depth_repeat: Option<depth_report::RepeatStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    historical_open_rows: Option<depth_report::HistoricalRows>,
     worst_run_key: Option<String>,
     resumed: usize,
     assemblies: BTreeMap<String, AssemblyReport>,
@@ -82,6 +88,8 @@ struct AssemblyReport {
     verdict: SimulationVerdict,
     readiness: Readiness,
     coverage: Coverage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    depth_coverage: Option<depth_report::Summary>,
     worst_run_key: Option<String>,
     runs: BTreeMap<String, RowReport>,
     statistics: BTreeMap<String, sim_task::metrics::CampaignStats>,
@@ -1038,6 +1046,7 @@ fn run_assembly(
         |(name, experiment)| {
             let prefix = format!("{id}/{name}");
             let is_task = matches!(experiment, Experiment::Task { .. });
+            let mut depth_coverage = None;
             let result = match experiment {
                 Experiment::Task {
                     world,
@@ -1179,16 +1188,27 @@ fn run_assembly(
                 Experiment::Scenario {
                     campaign,
                     installation,
-                } => native::run(
-                    &prefix,
-                    &base.join(campaign),
-                    &base.join(installation),
-                    options,
-                    checkpoint,
-                    bench,
-                ),
+                } => {
+                    let path = base.join(campaign);
+                    let result = native::run(
+                        &prefix,
+                        &path,
+                        &base.join(installation),
+                        options,
+                        checkpoint,
+                        bench,
+                    )?;
+                    if depth_report::is_planned(&result.rows) {
+                        let campaign = sim_task::campaign::Campaign::load(&path)
+                            .map_err(|e| e.to_string())?;
+                        let factors = campaign.depth_factors()
+                            .ok_or("факторы покрытия пропали после выполнения плана")?;
+                        depth_coverage = Some(depth_report::summarize(factors, &result.rows, options.repeat.is_some())?);
+                    }
+                    Ok(result)
+                }
             }?;
-            Ok((name, is_task, result))
+            Ok((name, is_task, result, depth_coverage))
         },
     )?;
 
@@ -1198,7 +1218,11 @@ fn run_assembly(
     let mut readiness = Readiness::Passed;
     let mut resumed = 0;
     let mut view = None;
-    for (name, is_task, result) in experiments {
+    let mut depth_coverage = None;
+    for (name, is_task, result, depth) in experiments {
+        if depth.is_some() {
+            depth_coverage = depth;
+        }
         if let Some(archive) = result.view {
             view = Some(archive);
         }
@@ -1241,7 +1265,16 @@ fn run_assembly(
             }
         }
     }
-    let outcome = covered_outcome(&coverage, runs.values().map(|r| r.outcome));
+    if let Some(depth) = &depth_coverage {
+        assembly_worst = depth.worst.as_ref().map(|worst| {
+            let key = &worst.run_key;
+            ((runs[key].outcome, false), key.clone())
+        });
+    }
+    let mut outcome = covered_outcome(&coverage, runs.values().map(|r| r.outcome));
+    if depth_coverage.as_ref().is_some_and(|depth| !depth.complete()) {
+        outcome = outcome.max(Outcome::NotAnalyzed);
+    }
     let verdict = match outcome {
         Outcome::Fail => SimulationVerdict::Rejected,
         Outcome::NotAnalyzed => SimulationVerdict::NotProven,
@@ -1256,6 +1289,7 @@ fn run_assembly(
             Outcome::Pass => readiness,
         },
         coverage,
+        depth_coverage,
         worst_run_key: assembly_worst.as_ref().map(|(_, key)| key.clone()),
         runs,
         statistics,
@@ -1304,7 +1338,10 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         }
     }
     let engine = sim_runtime::Runtime::physics_engine_identity()?;
-    let identity = if options.checkpoint.is_some() && options.repeat.is_none() {
+    let historical_open_rows = manifest.open_rows
+        .map(|path| depth_report::HistoricalRows::load(base, path, &mut files))
+        .transpose()?;
+    let identity = if options.checkpoint.is_some() {
         let binary = std::env::current_exe().map_err(|e| e.to_string())?;
         Some(encode((
             VERSION,
@@ -1320,7 +1357,13 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         .checkpoint
         .as_deref()
         .zip(identity.as_deref())
-        .map(|(root, identity)| Checkpoint::with_identity(root, identity))
+        .map(|(root, identity)| {
+            if options.repeat.is_some() {
+                Ok(Checkpoint::at_identity(root, identity))
+            } else {
+                Checkpoint::with_identity(root, identity)
+            }
+        })
         .transpose()?;
     let mut report = Report {
         version: VERSION,
@@ -1329,6 +1372,8 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         scope: "модели и постановки из манифеста исполнения",
         repeat: options.repeat.clone(),
         view_unavailable: None,
+        depth_repeat: None,
+        historical_open_rows,
         worst_run_key: None,
         resumed: 0,
         assemblies: BTreeMap::new(),
@@ -1352,7 +1397,7 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
                 assembly,
                 base,
                 &engine,
-                checkpoint.as_ref(),
+                checkpoint.as_ref().filter(|_| options.repeat.is_none()),
                 &bench,
                 &options,
                 &workers,
@@ -1360,7 +1405,7 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
             Ok((id, result))
         },
     )?;
-    for (id, (assembly, assembly_worst, resumed, archive)) in assemblies {
+    for (id, (mut assembly, assembly_worst, resumed, archive)) in assemblies {
         for key in assembly.runs.keys() {
             if !all_keys.insert(key.clone()) {
                 return Err("повтор глобального ключа прогона".into());
@@ -1375,6 +1420,12 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         if let Some(archive) = archive {
             view = Some(archive);
         }
+        if report.historical_open_rows.as_ref().is_some_and(|history| history.contains_assembly(&id))
+            && assembly.verdict == SimulationVerdict::PassedSimulation
+        {
+            assembly.verdict = SimulationVerdict::NotProven;
+            assembly.readiness = Readiness::NeedsWork;
+        }
         report.assemblies.insert(id, assembly);
     }
     if options
@@ -1388,33 +1439,39 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
     if sim_runtime::Runtime::physics_engine_identity()? != engine {
         return Err("образ MuJoCo изменился во время кампании".into());
     }
-    if let Some((path, key)) = options.view.as_ref().or(options.log.as_ref()).zip(options.repeat.as_ref()) {
+    if let Some(key) = &options.repeat {
         let assembly = &report.assemblies[key.split_once('/').ok_or("неверный ключ строки")?.0];
         let row = &assembly.runs[key];
-        if let Some(playback) = &row.playback {
-            let bytes = view.ok_or("для исполненной строки отсутствует журнал повтора")?;
-            if options.log.is_some() {
-                let log = sim_runtime::Log::read_binary(bytes.as_slice()).map_err(|error| error.to_string())?;
-                if log.fingerprint() != playback.journal {
-                    return Err("журнал повтора расходится с отчётом".into());
-                }
-                crate::export(path, |file| file.write_all(&bytes))?;
+        let depth = assembly.depth_coverage.is_some();
+        let destination = options.view.as_ref().or(options.log.as_ref());
+        if let Some(binding) = campaign_binding(assembly, key, row) {
+            let binding = if depth {
+                let (binding, status) = depth_report::repeat(checkpoint.as_ref(), binding, row)?;
+                report.depth_repeat = Some(status);
+                binding
             } else {
-                crate::view::bind_campaign(
-                    &bytes,
-                    CampaignBinding {
-                        key: key.clone(),
-                        input: row.input,
-                        playback: playback.clone(),
-                        verdict: assembly.verdict,
-                        readiness: assembly.readiness,
-                        coverage: assembly.coverage,
-                    },
-                    path,
-                )?;
+                binding
+            };
+            if let Some(path) = destination {
+                let bytes = view.ok_or("для исполненной строки отсутствует журнал повтора")?;
+                playback::publish(&bytes, binding, path, options.log.is_some())?;
             }
         } else {
-            report.view_unavailable = Some(unavailable_reason(row));
+            let reason = unavailable_reason(row);
+            if depth {
+                report.depth_repeat = Some(depth_report::RepeatStatus::NotAnalyzed { reason: reason.clone() });
+            }
+            if destination.is_some() {
+                report.view_unavailable = Some(reason);
+            }
+        }
+    } else if let Some(checkpoint) = &checkpoint {
+        for assembly in report.assemblies.values().filter(|a| a.depth_coverage.is_some()) {
+            for (key, row) in &assembly.runs {
+                if let Some(binding) = campaign_binding(assembly, key, row) {
+                    depth_report::record(checkpoint, binding, row)?;
+                }
+            }
         }
     }
     report.worst_run_key = worst.map(|(_, key)| key);
@@ -1425,6 +1482,9 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
         if let Some(reason) = &report.view_unavailable {
             writeln!(out, "Просмотр недоступен · {reason}").map_err(|e| e.to_string())?;
         }
+        if let Some(history) = &report.historical_open_rows {
+            history.write(out).map_err(|e| e.to_string())?;
+        }
         for (id, assembly) in report.assemblies {
             writeln!(
                 out,
@@ -1432,19 +1492,34 @@ pub(super) fn run(path: &Path, options: &Options, out: &mut impl Write) -> Resul
                 assembly.verdict, assembly.coverage.executed, assembly.coverage.required
             )
             .map_err(|e| e.to_string())?;
+            if let Some(depth) = assembly.depth_coverage {
+                depth.write(out).map_err(|e| e.to_string())?;
+            }
         }
     }
     Ok(0)
 }
 
+fn campaign_binding(assembly: &AssemblyReport, key: &str, row: &RowReport) -> Option<CampaignBinding> {
+    Some(CampaignBinding {
+        key: key.into(),
+        input: row.input,
+        playback: row.playback.clone()?,
+        verdict: assembly.verdict,
+        readiness: assembly.readiness,
+        coverage: assembly.coverage,
+    })
+}
+
 fn unavailable_reason(row: &RowReport) -> String {
-    if let Some(reason) = row.detail.as_str()
-        .or_else(|| row.detail.get("reason").and_then(serde_json::Value::as_str))
-        .or_else(|| row.detail.get(0).and_then(serde_json::Value::as_str))
+    let detail = row.detail.get("scenario").unwrap_or(&row.detail);
+    if let Some(reason) = detail.as_str()
+        .or_else(|| detail.get("reason").and_then(serde_json::Value::as_str))
+        .or_else(|| detail.get(0).and_then(serde_json::Value::as_str))
     {
         return reason.to_owned();
     }
-    if let Some(reasons) = row.detail.get("reasons").and_then(serde_json::Value::as_array) {
+    if let Some(reasons) = detail.get("reasons").and_then(serde_json::Value::as_array) {
         let reasons: Vec<_> = reasons.iter().filter_map(serde_json::Value::as_str).collect();
         if !reasons.is_empty() {
             return reasons.join(" · ");

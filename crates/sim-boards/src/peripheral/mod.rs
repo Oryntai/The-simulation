@@ -28,7 +28,8 @@ use crate::{
 type Access = Result<Option<u32>, BoardFault>;
 
 pub(crate) fn supports_reset_value(address: u32, field: &str, value: u32) -> bool {
-    esp_regi2c::supports_reset_value(address, field, value)
+    esp::supports_reset_value(address, field, value)
+        || esp_regi2c::supports_reset_value(address, field, value)
         || esp_flash::supports_profile_byte(address, field, value)
         || esp_sleep_regs::supports_reset_value(address, field, value)
 }

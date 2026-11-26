@@ -1,0 +1,30 @@
+format = 1
+
+# Значения детектора, геометрии и воздействия из acceptance.toml, стенд Т6.7.
+[instances.block.emi_reset]
+source = "sender"
+source_kind = "switch"
+board = "fixture"
+input = "board/io"
+reference = "board/g"
+binding = { kind = "derived", reference = "Адреса дифференциального входа и источника коммутации стенда Т6.7" }
+start_ns = 11000
+end_ns = 22000
+bias_v = { min = 3.0, nominal = 3.0, max = 3.0, source = { kind = "derived", reference = "Смещение в стенде Т6.7" } }
+
+[instances.block.emi_reset.detector]
+falling_v = { min = 2.0, nominal = 2.0, max = 2.0, source = { kind = "derived", reference = "Порог сброса стенда Т6.7" } }
+rising_v = { min = 2.5, nominal = 2.5, max = 2.5, source = { kind = "derived", reference = "Порог отпускания стенда Т6.7" } }
+assert_delay_s = { min = 8e-6, nominal = 8e-6, max = 8e-6, source = { kind = "derived", reference = "Выдержка сброса стенда Т6.7" } }
+release_delay_s = { min = 3e-6, nominal = 3e-6, max = 3e-6, source = { kind = "derived", reference = "Выдержка отпускания стенда Т6.7" } }
+
+[instances.block.emi_reset.transfer]
+kind = "shared_return"
+geometry = "Один резистивный общий возврат блока"
+domain = { max_frequency_hz = 2e6, longest_path_m = 0.1, min_wave_speed_m_s = 2e8, max_wavelength_fraction = 0.01 }
+resistance_ohm = 0.6
+inductance_h = 0.0 # Явный резистивный эквивалент стенда Т6.7.
+highest_frequency_hz = 1e6
+model_source = { kind = "derived", reference = "Резистивный общий возврат стенда Т6.7" }
+remainder_v = { min = 0.0, nominal = 0.0, max = 0.0, source = { kind = "derived", reference = "Точный резистивный эквивалент синтетического стенда Т6.7" } }
+intervals = [{ end_ns = 22000, current_a = [2.0, 2.0, 2.0], slope_a_s = [0.0, 0.0, 0.0] }]

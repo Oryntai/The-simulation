@@ -7,10 +7,15 @@ use serde_json::{Value, json};
 use sim_process::{
     Analysis, SourcedRange,
     schematic::{
-        Endpoint, Parameter, ResetProfile, Scope,
+        Endpoint, Finding, Parameter, ResetProfile, Scope, Status,
         emi_reset::{
             EmiBand, EmiCriterion, EmiEvidence, EmiInput, EmiInterval, EmiOutcome, EmiPacketProbe,
-            EmiReturn, EmiSourceKind, EmiTransfer,
+            EmiReturn, EmiSourceKind, EmiTransfer, EmiTrial, prepare_emi_reset,
+        },
+        esd_event::{
+            EsdCriterion, EsdDomain, EsdEvidence, EsdInput, EsdLevel, EsdMargin, EsdNetwork,
+            EsdPinLimits, EsdPolarity, EsdPort, EsdProtection, EsdPulse, EsdSample, EsdTvs,
+            assess_esd_event,
         },
         sim_circuit::emc::loop_model::{LumpedDomain, SeriesRl},
     },
@@ -41,6 +46,20 @@ pub struct EmcProfile {
 #[serde(deny_unknown_fields)]
 pub(super) struct Checks {
     emi_reset: Option<ResetCase>,
+    esd_event: Option<EsdCase>,
+}
+
+impl Checks {
+    pub(super) fn emi_trial(&self, scope: Scope) -> Result<Option<EmiTrial>, String> {
+        let Some(case) = &self.emi_reset else {
+            return Ok(None);
+        };
+        let (input, _) = case.clone().resolve(scope)?;
+        match prepare_emi_reset(input).map_err(|err| err.to_string())? {
+            Analysis::Analyzed { value, .. } => Ok(Some(value)),
+            Analysis::NotAnalyzed { .. } => Ok(None),
+        }
+    }
 }
 
 impl EmcProfile {
@@ -105,24 +124,25 @@ impl ResetCase {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Range {
-    min: f64,
-    nominal: f64,
-    max: f64,
+    min: Option<f64>,
+    nominal: Option<f64>,
+    max: Option<f64>,
     source: Option<Source>,
 }
 
 impl Range {
     fn resolve(self) -> Result<Option<SourcedRange>, String> {
-        if ![self.min, self.nominal, self.max].into_iter().all(f64::is_finite) {
-            return Err("границы диапазона ЭМС должны быть конечными".into());
-        }
-        if self.min > self.nominal || self.nominal > self.max {
+        let source = provenance(self.source)?;
+        let (Some(min), Some(nominal), Some(max)) = (self.min, self.nominal, self.max) else {
+            return Ok(None);
+        };
+        if min > nominal || nominal > max {
             return Err("нарушен порядок границ диапазона ЭМС".into());
         }
-        Ok(provenance(self.source)?.map(|provenance| SourcedRange {
-            min: self.min,
-            nominal: self.nominal,
-            max: self.max,
+        Ok(source.map(|provenance| SourcedRange {
+            min,
+            nominal,
+            max,
             provenance,
         }))
     }
@@ -301,6 +321,307 @@ impl Packet {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EsdCase {
+    exposed: Option<String>,
+    protected: Option<String>,
+    #[serde(rename = "return")]
+    return_: Option<String>,
+    start_ns: Option<u64>,
+    exposure: Option<Source>,
+    pulse: Option<EsdPulseProfile>,
+    network: Option<EsdNetworkProfile>,
+    limits: Option<EsdLimitsProfile>,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "EsdLevel", rename_all = "snake_case")]
+enum Level {
+    Kv2,
+    Kv4,
+    Kv6,
+    Kv8,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "EsdPolarity", rename_all = "snake_case")]
+enum Polarity {
+    Positive,
+    Negative,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EsdPulseProfile {
+    #[serde(default, deserialize_with = "optional_level")]
+    level: Option<EsdLevel>,
+    #[serde(default, deserialize_with = "optional_polarity")]
+    polarity: Option<EsdPolarity>,
+    #[serde(default)]
+    samples_ns_a: Vec<[f64; 2]>,
+    bandwidth_hz: Option<f64>,
+    source: Option<Source>,
+}
+
+fn optional_level<'de, D: serde::Deserializer<'de>>(
+    input: D,
+) -> Result<Option<EsdLevel>, D::Error> {
+    Level::deserialize(input).map(Some)
+}
+
+fn optional_polarity<'de, D: serde::Deserializer<'de>>(
+    input: D,
+) -> Result<Option<EsdPolarity>, D::Error> {
+    Polarity::deserialize(input).map(Some)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EsdNetworkProfile {
+    series_ohm: Option<f64>,
+    pin_ohm: Option<f64>,
+    domain: Option<EsdDomainProfile>,
+    protection: Option<EsdProtectionProfile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EsdDomainProfile {
+    bandwidth_hz: Option<f64>,
+    length_m: Option<f64>,
+    wave_speed_m_s: Option<f64>,
+    max_length_wavelengths: Option<f64>,
+    max_terminal_abs_v: Option<f64>,
+    voltage_error_v: Option<f64>,
+    current_error_a: Option<f64>,
+    source: Option<Source>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum EsdProtectionProfile {
+    Absent {
+        source: Option<Source>,
+    },
+    Tvs {
+        #[serde(default, deserialize_with = "optional_polarity")]
+        polarity: Option<EsdPolarity>,
+        knee_v: Option<f64>,
+        dynamic_ohm: Option<f64>,
+        max_injected_peak_a: Option<f64>,
+        min_rise_ns: Option<f64>,
+        max_pulse_ns: Option<f64>,
+        datasheet: Option<Source>,
+    },
+}
+
+impl EsdProtectionProfile {
+    fn resolve<'a>(&self, source: &'a Option<Provenance>) -> Option<EsdProtection<'a>> {
+        match *self {
+            Self::Absent { .. } => source.as_ref().map(EsdProtection::Absent),
+            Self::Tvs {
+                polarity,
+                knee_v,
+                dynamic_ohm,
+                max_injected_peak_a,
+                min_rise_ns,
+                max_pulse_ns,
+                ..
+            } => Some(EsdProtection::Tvs(EsdTvs {
+                polarity: polarity?,
+                knee_v: knee_v?,
+                dynamic_ohm: dynamic_ohm?,
+                max_injected_peak_a: max_injected_peak_a?,
+                min_rise_s: min_rise_ns? * SECONDS_PER_NS,
+                max_pulse_s: max_pulse_ns? * SECONDS_PER_NS,
+                datasheet: source.as_ref(),
+            })),
+        }
+    }
+
+    fn source(&self) -> Option<Source> {
+        match self {
+            Self::Absent { source } => source.clone(),
+            Self::Tvs { datasheet, .. } => datasheet.clone(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EsdLimitsProfile {
+    voltage_abs_v: Option<Range>,
+    current_abs_a: Option<Range>,
+}
+
+impl EsdLimitsProfile {
+    fn resolve(&self) -> Result<Option<EsdPinLimits>, String> {
+        let voltage = self
+            .voltage_abs_v
+            .clone()
+            .map(Range::resolve)
+            .transpose()?
+            .flatten();
+        let current = self
+            .current_abs_a
+            .clone()
+            .map(Range::resolve)
+            .transpose()?
+            .flatten();
+        Ok(voltage
+            .zip(current)
+            .map(|(voltage_abs_v, current_abs_a)| EsdPinLimits {
+                voltage_abs_v,
+                current_abs_a,
+            }))
+    }
+}
+
+// Перевод дробных наносекунд в секунды без округления до целого такта.
+const SECONDS_PER_NS: f64 = 1e-9;
+
+impl EsdCase {
+    fn evaluate(
+        &self,
+        profile: Fingerprint,
+        scheme: &SchematicInput,
+        evidence: &mut ElectricalEvidence,
+    ) -> Result<Value, String> {
+        let [exposed, protected, return_] = [&self.exposed, &self.protected, &self.return_]
+            .map(|address| address.as_deref().map(endpoint).transpose());
+        let [exposed, protected, return_] = [exposed?, protected?, return_?];
+        for end in [&exposed, &protected, &return_].into_iter().flatten() {
+            if !scheme.compiled.pins().any(|pin| pin == end) {
+                return Err(format!("неизвестный вывод ESD «{end}»"));
+            }
+        }
+        let (Some(exposed), Some(protected), Some(return_), Some(start_ns)) =
+            (exposed, protected, return_, self.start_ns)
+        else {
+            let reason = "нужны адреса трёх клемм и метка начала контактного разряда";
+            evidence
+                .record_emc_open(HazardClass::EsdEvent, "esd_event", profile, reason)
+                .map_err(|err| err.to_string())?;
+            return Ok(open(reason, profile, ESD_MEASUREMENT));
+        };
+        let port = EsdPort {
+            exposed,
+            protected,
+            return_,
+        };
+        let exposure = provenance(self.exposure.clone())?;
+        let pulse_source = provenance(self.pulse.as_ref().and_then(|pulse| pulse.source.clone()))?;
+        let samples: Vec<_> = self
+            .pulse
+            .iter()
+            .flat_map(|pulse| &pulse.samples_ns_a)
+            .map(|&[offset_ns, current_abs_a]| EsdSample {
+                offset_s: offset_ns * SECONDS_PER_NS,
+                current_abs_a,
+            })
+            .collect();
+        let pulse = self.pulse.as_ref().and_then(|pulse| {
+            Some(EsdPulse {
+                level: pulse.level?,
+                polarity: pulse.polarity?,
+                samples: &samples,
+                bandwidth_hz: pulse.bandwidth_hz?,
+                source: pulse_source.as_ref(),
+            })
+        });
+        let domain_source = provenance(
+            self.network
+                .as_ref()
+                .and_then(|network| network.domain.as_ref())
+                .and_then(|domain| domain.source.clone()),
+        )?;
+        let protection = self
+            .network
+            .as_ref()
+            .and_then(|network| network.protection.as_ref());
+        let protection_source = provenance(protection.and_then(EsdProtectionProfile::source))?;
+        let network = self.network.as_ref().and_then(|network| {
+            let domain = network.domain.as_ref()?;
+            Some(EsdNetwork {
+                series_ohm: network.series_ohm?,
+                pin_ohm: network.pin_ohm?,
+                domain: EsdDomain {
+                    bandwidth_hz: domain.bandwidth_hz?,
+                    length_m: domain.length_m?,
+                    wave_speed_m_s: domain.wave_speed_m_s?,
+                    max_length_wavelengths: domain.max_length_wavelengths?,
+                    max_terminal_abs_v: domain.max_terminal_abs_v?,
+                    voltage_error_v: domain.voltage_error_v?,
+                    current_error_a: domain.current_error_a?,
+                    source: domain_source.as_ref(),
+                },
+                protection: protection.and_then(|profile| profile.resolve(&protection_source)),
+            })
+        });
+        let limits = self
+            .limits
+            .as_ref()
+            .map(EsdLimitsProfile::resolve)
+            .transpose()?
+            .flatten();
+        let input = EsdInput {
+            port: &port,
+            start: Time(start_ns),
+            exposure: exposure.as_ref(),
+            pulse,
+            network,
+            limits: limits.as_ref(),
+        };
+        let result = evidence
+            .record_esd_event(
+                &scheme.compiled,
+                &scheme.modes,
+                "esd_event",
+                profile,
+                |compiled| assess_esd_event(compiled, &input),
+            )
+            .map_err(|err| err.to_string())?;
+        Ok(esd_report(result, profile))
+    }
+}
+
+fn esd_report(result: Finding<EsdEvidence>, profile: Fingerprint) -> Value {
+    let evidence = result.evidence;
+    let (response, scope) = match evidence.response {
+        Analysis::Analyzed { value, scope } => (
+            Some(json!({
+                "terminal_v": value.peak.terminal_v, "pin_v": value.peak.pin_v,
+                "pin_a": value.peak.pin_a, "tvs_a": value.peak.tvs_a,
+                "peak_offset_s": value.peak_offset_s,
+                "electrical_length_wavelengths": value.electrical_length_wavelengths,
+            })),
+            Some(scope),
+        ),
+        Analysis::NotAnalyzed { .. } => (None, None),
+    };
+    let margin = |range: EsdMargin| [range.lower, range.nominal, range.upper];
+    let (voltage, current) = match evidence.margins {
+        Analysis::Analyzed { value, .. } => {
+            (Some(margin(value.voltage_v)), Some(margin(value.current_a)))
+        }
+        Analysis::NotAnalyzed { .. } => (None, None),
+    };
+    json!({
+        "status": if result.status == Status::Fail { "fail" } else { "not_analyzed" },
+        "reason": result.reason, "profile": profile, "required_measurement": ESD_MEASUREMENT,
+        "model_scope": scope, "start_ns": evidence.start.0,
+        "exposed": evidence.port.exposed.to_string(), "protected": evidence.port.protected.to_string(),
+        "return": evidence.port.return_.to_string(), "response": response,
+        "voltage_margin_v": voltage, "current_margin_a": current,
+        "bench_criterion": evidence.criterion.map(|criterion| match criterion {
+            EsdCriterion::Exceeded => "exceeded",
+            EsdCriterion::WithinBench => "within_bench",
+            EsdCriterion::Overlap => "overlap",
+        }),
+    })
+}
+
 pub(super) fn evaluate(
     checks: &Checks,
     profile: Fingerprint,
@@ -315,12 +636,16 @@ pub(super) fn evaluate(
                 .map_err(|err| err.to_string())?;
             Ok::<_, String>(open(reason, profile, measurement))
         };
-    let esd = open_finding(
-        evidence,
-        HazardClass::EsdEvent,
-        "нужны адресованный контактный импульс, применимый эквивалент защиты и стендовые U/I",
-        ESD_MEASUREMENT,
-    )?;
+    let esd = if let Some(case) = &checks.esd_event {
+        case.evaluate(profile, scheme, evidence)?
+    } else {
+        open_finding(
+            evidence,
+            HazardClass::EsdEvent,
+            "нужны адресованный контактный импульс, применимый эквивалент защиты и стендовые U/I",
+            ESD_MEASUREMENT,
+        )?
+    };
     let emi = if let Some(case) = &checks.emi_reset {
         let (input, packet) = case.clone().resolve(scheme.compiled.depth_scope())?;
         let result = evidence

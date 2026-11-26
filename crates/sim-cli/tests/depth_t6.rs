@@ -5,21 +5,21 @@ use std::{
     process::Command,
 };
 
-use esd_event::*;
 use serde::Deserialize;
 use serde_json::Value;
 use sim_cli::electrical::{SchematicInput, load_catalog, load_schematic, parse_catalog};
 use sim_process::{
-    Analysis, ProcessError, SourcedRange, schematic,
+    Analysis, SourcedRange, schematic,
     schematic::{
         Endpoint, Parameter, ResetProfile, Scope, Status,
         emi_reset::{
             EmiBand, EmiCriterion, EmiInput, EmiInterval, EmiOutcome, EmiReturn, EmiSourceKind,
             EmiTransfer, EmiTrial, prepare_emi_reset,
         },
+        esd_event::*,
         sim_circuit::{
             emc::loop_model::{LumpedDomain, SeriesRl},
-            netlist,
+            netlist, ngspice,
         },
     },
 };
@@ -34,15 +34,6 @@ use sim_task::{
     verdict::{Finding, SimulationVerdict, VerdictReport},
 };
 use sim_world::{CompiledWorld, Provenance};
-
-// До экспорта модуля Т6.6 используется тот же компилируемый оценщик,
-// что и в sim-process/tests/esd_event.rs.
-extern crate self as sim_circuit;
-pub use sim_process::schematic::sim_circuit::ngspice;
-#[allow(dead_code)]
-// Остальные уровни контактного импульса покрывает Т6.6.
-#[path = "../../sim-process/src/schematic/esd_event.rs"]
-mod esd_event;
 
 mod verdict {
     include!("fixtures/electrical_verdict.rs");
@@ -72,17 +63,17 @@ mod verdict {
             assess_campaign(&requirements, &CampaignEvidence::new(&requirements)).unwrap()
         }
 
-        pub(super) fn cli(
+        pub(super) fn emc_manifest(
             &self,
             scheme: &SchematicInput,
-            catalog: &std::path::Path,
+            catalog: &[u8],
             profile: Option<&str>,
-        ) -> serde_json::Value {
+        ) -> PathBuf {
             let dir = &self.directory.0;
             fs::write(dir.join("scheme.toml"), &scheme.bytes).unwrap();
             let parts = dir.join("catalog/electrical");
             fs::create_dir_all(&parts).unwrap();
-            fs::copy(catalog.join("reference.toml"), parts.join("reference.toml")).unwrap();
+            fs::write(parts.join("reference.toml"), catalog).unwrap();
             if let Some(profile) = profile {
                 fs::write(dir.join("emc.toml"), profile).unwrap();
             }
@@ -95,21 +86,11 @@ mod verdict {
                 ),
             )
             .unwrap();
-            let output = std::process::Command::new(env!("CARGO_BIN_EXE_sim-run"))
-                .arg("--campaign")
-                .arg(manifest)
-                .arg("--json")
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-            assert_eq!(report["version"], 1);
-            report["assemblies"]["block"].clone()
+            manifest
+        }
+
+        pub(super) fn root(&self) -> &std::path::Path {
+            &self.directory.0
         }
     }
 }
@@ -203,6 +184,25 @@ fn acceptance() -> Acceptance {
 
 fn data_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../devices/electrical/depth_t6")
+}
+
+fn campaign(manifest: &Path) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_sim-run"))
+        .arg("--campaign")
+        .arg(manifest)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    report
 }
 
 fn exact(value: f64, source: &Provenance) -> SourcedRange {
@@ -976,12 +976,16 @@ fn отчёт_cli_оставляет_проверку_без_журналов_о
     let setup = acceptance().reset;
     let scheme = setup.scheme();
     let stand = ElectricalStand::new("t69-cli");
-    let catalog = data_dir().join(&setup.catalog);
-    let old = stand.cli(&scheme, &catalog, None);
+    let catalog = std::fs::read(data_dir().join(&setup.catalog).join("reference.toml")).unwrap();
+    let report = |profile| {
+        campaign(&stand.emc_manifest(&scheme, &catalog, profile))["assemblies"]["block"].clone()
+    };
+    let old = report(None);
     assert!(old["assemblies"]["блок"].get("emc_checks").is_none());
     let profile = setup.profile();
-    let report = stand.cli(&scheme, &catalog, Some(&profile));
-    assert_eq!(report, stand.cli(&scheme, &catalog, Some(&profile)));
+    let repeat = report(Some(&profile));
+    let report = report(Some(&profile));
+    assert_eq!(report, repeat);
     assert_eq!(report["simulation"], "NotProven");
     let checks = &report["assemblies"]["блок"]["emc_checks"];
     assert_eq!(checks.as_object().unwrap().len(), 2);
@@ -1011,6 +1015,341 @@ fn отчёт_cli_оставляет_проверку_без_журналов_о
         ROUNDING,
     );
     assert_eq!(reset["dwell_margin_ns"][1], "-3000");
+}
+
+#[test]
+fn кампания_cli_публикует_остаточные_ui_и_вердикт_esd() {
+    // Баланс резистивного стенда Т6.6 при 7,5 А: без защиты 15 В и 7,5 А.
+    // С TVS: 7,5 = Uкл/5 + (Uкл−6,5)/0,5, откуда Uвх = 41/11 В и Iвх = 41/22 А.
+    // Пределы 4 В и 3 А дают запасы −11 В/−4,5 А и +3/11 В/+25/22 А.
+    use serde_json::json;
+
+    let setup = acceptance().esd;
+    let stand = ElectricalStand::new("t69-esd-cli");
+    let path = Path::new("блок-контакт.toml");
+    let catalog = setup.catalog.as_bytes();
+    let parts = parse_catalog(path, catalog).unwrap();
+    let scheme = SchematicInput::parse(path, setup.scheme.into_bytes(), &parts).unwrap();
+    let source = json!({"kind": "derived", "reference": setup.source});
+    let range = |v| json!({"min": v, "nominal": v, "max": v, "source": source});
+    let mut case = json!({
+        "exposed": setup.ports[0], "protected": setup.ports[1], "return": setup.ports[2],
+        "start_ns": setup.start_ns, "exposure": source,
+        "pulse": {"level": "kv2", "polarity": "positive", "samples_ns_a": setup.samples_ns_a,
+                  "bandwidth_hz": setup.bandwidth_hz, "source": source},
+        "network": {"series_ohm": setup.series_ohm, "pin_ohm": setup.pin_ohm,
+            "domain": {"bandwidth_hz": setup.bandwidth_hz, "length_m": setup.length_m,
+                       "wave_speed_m_s": setup.wave_speed_m_s,
+                       "max_length_wavelengths": setup.max_length_wavelengths,
+                       "max_terminal_abs_v": setup.max_terminal_v,
+                       // Синтетический резистивный эквивалент задаётся точно.
+                       "voltage_error_v": 0.0, "current_error_a": 0.0, "source": source},
+            "protection": {"kind": "absent", "source": source}},
+        "limits": {"voltage_abs_v": range(setup.voltage_limit_v),
+                   "current_abs_a": range(setup.current_limit_a)},
+    });
+    let manifest = |case: &Value| {
+        let profile = toml::to_string(&json!({
+            "format": 1, "instances": {"блок": {"esd_event": case}},
+        }))
+        .unwrap();
+        stand.emc_manifest(&scheme, catalog, Some(&profile))
+    };
+    let run = |case: &Value| campaign(&manifest(case))["assemblies"]["block"].clone();
+    for (fixed, [volts, amps, margin_v, margin_a], status, verdict, criterion) in [
+        (
+            false,
+            [15.0, 7.5, -11.0, -4.5],
+            "fail",
+            "Rejected",
+            "exceeded",
+        ),
+        (
+            true,
+            [41.0 / 11.0, 41.0 / 22.0, 3.0 / 11.0, 25.0 / 22.0],
+            "not_analyzed",
+            "NotProven",
+            "within_bench",
+        ),
+    ] {
+        if fixed {
+            case["network"]["protection"] = json!({
+                "kind": "tvs", "polarity": "positive", "knee_v": setup.tvs.knee_v,
+                "dynamic_ohm": setup.tvs.dynamic_ohm, "max_injected_peak_a": setup.tvs.max_injected_peak_a,
+                "min_rise_ns": setup.tvs.min_rise_ns, "max_pulse_ns": setup.tvs.max_pulse_ns,
+                "datasheet": {"kind": "derived", "reference": setup.tvs.source},
+            });
+        }
+        let report = run(&case);
+        assert_eq!(report["simulation"], verdict);
+        let check = &report["assemblies"]["блок"]["emc_checks"]["esd_event"];
+        assert_eq!(check["status"], status);
+        assert_eq!(check["bench_criterion"], criterion);
+        assert_eq!(check["exposed"], setup.ports[0]);
+        assert_eq!(check["protected"], setup.ports[1]);
+        assert_eq!(check["return"], setup.ports[2]);
+        assert_eq!(check["start_ns"], setup.start_ns);
+        close(
+            check["response"]["pin_v"].as_f64().unwrap(),
+            volts,
+            ROUNDING,
+        );
+        close(check["response"]["pin_a"].as_f64().unwrap(), amps, ROUNDING);
+        for (field, expected) in [
+            ("voltage_margin_v", margin_v),
+            ("current_margin_a", margin_a),
+        ] {
+            let bounds = check[field].as_array().unwrap();
+            assert_eq!(bounds.len(), 3);
+            for bound in bounds {
+                close(bound.as_f64().unwrap(), expected, ROUNDING);
+            }
+        }
+        assert!(!check["required_measurement"].as_str().unwrap().is_empty());
+        let findings = report["findings"].as_array().unwrap();
+        let esd: Vec<_> = findings
+            .iter()
+            .filter(|item| item["code"] == "esd_event")
+            .collect();
+        assert_eq!(esd.len(), 1);
+        assert_eq!(esd[0]["outcome"], status);
+        assert_eq!(esd[0]["confirmed_hazard"], !fixed);
+        assert!(
+            findings
+                .iter()
+                .all(|item| item["code"] == "esd_event" || item["outcome"] != "fail")
+        );
+    }
+
+    for (parents, field) in [
+        (&[][..], "pulse"),
+        (&[][..], "limits"),
+        (&["pulse"][..], "bandwidth_hz"),
+        (&["network", "domain"][..], "current_error_a"),
+        (&["network", "protection"][..], "dynamic_ohm"),
+        (&["limits", "voltage_abs_v"][..], "max"),
+    ] {
+        let mut incomplete = case.clone();
+        let parent = parents
+            .iter()
+            .fold(&mut incomplete, |value, key| &mut value[*key]);
+        assert!(parent.as_object_mut().unwrap().remove(field).is_some());
+        let report = run(&incomplete);
+        assert_eq!(report["simulation"], "NotProven");
+        let check = &report["assemblies"]["блок"]["emc_checks"]["esd_event"];
+        assert_eq!(check["status"], "not_analyzed");
+        assert!(check["bench_criterion"].is_null());
+        assert!(check["voltage_margin_v"].is_null());
+    }
+    case["limits"]["voltage_abs_v"]
+        .as_object_mut()
+        .unwrap()
+        .remove("source");
+    let report = run(&case);
+    let check = &report["assemblies"]["блок"]["emc_checks"]["esd_event"];
+    assert_eq!(check["status"], "not_analyzed");
+    assert!(check["voltage_margin_v"].is_null());
+    assert!(check["response"]["pin_v"].is_f64());
+
+    let mut outside = case.clone();
+    // Удвоенная верхняя частота выходит за исходные 2 ГГц эквивалента Т6.6.
+    outside["pulse"]["bandwidth_hz"] = json!(setup.bandwidth_hz * 2.0);
+    let report = run(&outside);
+    let check = &report["assemblies"]["блок"]["emc_checks"]["esd_event"];
+    assert_eq!(check["status"], "not_analyzed");
+    assert!(check["response"].is_null());
+    assert!(check["reason"].as_str().unwrap().contains("полоса"));
+
+    let path = manifest(&case);
+    let profile = path.with_file_name("emc.toml");
+    let bytes = std::fs::read_to_string(&profile).unwrap();
+    for nonfinite in ["nan", "inf", "-inf"] {
+        let text = bytes.replace("pin_ohm = 2.0", &format!("pin_ohm = {nonfinite}"));
+        assert_ne!(text, bytes);
+        std::fs::write(&profile, text).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_sim-run"))
+            .arg("--campaign")
+            .arg(&path)
+            .arg("--json")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        let error: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(
+            error["detail"]
+                .as_str()
+                .unwrap()
+                .contains("network.pin_ohm: допустимы только конечные числа")
+        );
+    }
+}
+
+#[test]
+fn кампания_cli_считает_обе_стороны_порога_сброса() {
+    let setup = acceptance().reset;
+    let report = campaign(&data_dir().join("manifest.toml"));
+    for (variant, resistance, dwell) in [
+        ("unsafe", setup.unsafe_ohm, "-3000"),
+        ("fixed", setup.fixed_ohm, "8000"),
+    ] {
+        let row = &report["assemblies"][format!("emi_reset_{variant}")];
+        let check = &row["assemblies"]["block"]["emc_checks"]["emi_reset"];
+        let live = &row["live"];
+        let margin = setup.bias_v - setup.current_a * resistance - setup.falling_v;
+        for value in check["voltage_margin_v"].as_array().unwrap() {
+            close(value.as_f64().unwrap(), margin, ROUNDING);
+        }
+        assert_eq!(check["voltage_margin_v"].as_array().unwrap().len(), 3);
+        assert_eq!(check["dwell_margin_ns"], Value::from([dwell; 3].to_vec()));
+        assert_eq!(live["complete"], true);
+        assert_eq!(live["observed_ns"], setup.horizon_ns);
+        assert!(live["journal"].is_u64());
+        assert_eq!(row["assemblies"]["block"]["journal"], live["journal"]);
+        // Шина живой установки остаётся на 3,3 В по постановке Т6.7.
+        close(
+            live["summary"]["board_min_v"]["fixture"].as_f64().unwrap(),
+            3.3,
+            ROUNDING,
+        );
+        assert!(matches!(
+            row["simulation"].as_str(),
+            Some("Rejected" | "NotProven")
+        ));
+        assert!(
+            row["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|item| item["code"] == "emi_reset" || item["outcome"] != "fail")
+        );
+    }
+}
+
+#[test]
+fn кампания_cli_публикует_нарушение_и_контроль_сброса() {
+    // Ручной расчёт стенда Т6.7. 3 В − 2 А × (0,6 / 0,4 Ом) = 1,8 / 2,2 В.
+    // Запасы относительно 2 В: −0,2 / +0,2 В. Для окна [11, 22) мкс
+    // при выдержке 8 мкс получаем −3 / +8 мкс. Сброс в 11 + 8 = 19 мкс.
+    let report = campaign(&data_dir().join("manifest.toml"));
+    assert_eq!(report, campaign(&data_dir().join("manifest.toml")));
+    for (variant, status, verdict, margin, dwell, event) in [
+        (
+            "unsafe",
+            "fail",
+            "Rejected",
+            -0.2,
+            "-3000",
+            Some(19_000_u64),
+        ),
+        ("fixed", "not_analyzed", "NotProven", 0.2, "8000", None),
+    ] {
+        let row = &report["assemblies"][format!("emi_reset_{variant}")];
+        let check = &row["assemblies"]["block"]["emc_checks"]["emi_reset"];
+        let findings = row["findings"].as_array().unwrap();
+        let target: Vec<_> = findings
+            .iter()
+            .filter(|item| item["code"] == "emi_reset")
+            .collect();
+        assert_eq!(target.len(), 1);
+        let item = target[0];
+        close(
+            check["voltage_margin_v"][1].as_f64().unwrap(),
+            margin,
+            ROUNDING,
+        );
+        assert_eq!(check["dwell_margin_ns"][1], dwell);
+        assert_eq!(check["status"], status, "{variant}: {check}");
+        assert_eq!(item["outcome"], status);
+        assert_eq!(item["confirmed_hazard"], event.is_some());
+        assert_eq!(row["simulation"], verdict);
+        assert!(
+            findings
+                .iter()
+                .all(|f| f["code"] == "emi_reset" || f["outcome"] != "fail")
+        );
+        assert_eq!(check["event_ns"].as_u64(), event);
+        assert_eq!(item["event_ns"].as_u64(), event);
+        let obs = &check["observation"];
+        assert_eq!(obs["complete"], true);
+        assert_eq!(obs["observed_until_ns"], acceptance().reset.horizon_ns);
+        assert_eq!(obs["reset_ns"].as_u64(), event);
+        assert_eq!(obs["external_asserted_ns"].as_u64(), event);
+        assert_eq!(obs["baseline_reset_ns"], Value::Null);
+        assert_eq!(item["journal"], row["live"]["journal"]);
+        let active = item["journal"].as_u64().unwrap();
+        let baseline = item["measurement_sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|source| source.as_str()?.strip_prefix("контрольный журнал "))
+            .unwrap();
+        assert_ne!(u64::from_str_radix(baseline, 16).unwrap(), active);
+        assert_eq!(
+            check["bench_criterion"],
+            if event.is_some() {
+                "violated"
+            } else {
+                "within_bench"
+            }
+        );
+        assert!(!check["required_measurement"].as_str().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn кампания_cli_оставляет_неполный_опыт_сброса_открытым() {
+    use serde_json::json;
+
+    let setup = acceptance().reset;
+    let stand = ElectricalStand::new("t69-emi-incomplete");
+    let data = data_dir().canonicalize().unwrap();
+    let manifest = stand.root().join("electrical.toml");
+    let profile = stand.root().join("emc.toml");
+    let emc = std::fs::read_to_string(data.join("campaign/reset-unsafe.toml")).unwrap();
+    let mut unsourced = emc.parse::<toml::Table>().unwrap();
+    unsourced["instances"]["block"]["emi_reset"]["transfer"]
+        .as_table_mut()
+        .unwrap()
+        .remove("model_source")
+        .unwrap();
+    for (text, end, reason, has_margin) in [
+        (
+            toml::to_string(&unsourced).unwrap(),
+            setup.horizon_ns,
+            "огибающая",
+            false,
+        ),
+        // Конец в начале воздействия, до накопления выдержки Т6.7.
+        (emc, setup.start_ns, "связанный опыт", true),
+    ] {
+        std::fs::write(&profile, text).unwrap();
+        std::fs::write(&manifest, toml::to_string(&json!({
+            "electrical_format": 1, "catalog": data.join("../../../catalog"),
+            "assemblies": { "block": {
+                "world": data.join("campaign/world.toml"), "profile": data.join("campaign/live.toml"),
+                "emc": "emc.toml", "horizon_ns": end,
+            }},
+        })).unwrap()).unwrap();
+        let report = campaign(&manifest);
+        let row = &report["assemblies"]["block"];
+        let check = &row["assemblies"]["block"]["emc_checks"]["emi_reset"];
+        assert_eq!(row["simulation"], "NotProven");
+        assert_eq!(row["live"]["observed_ns"], end);
+        assert_eq!(check["status"], "not_analyzed");
+        assert!(check["bench_criterion"].is_null());
+        assert!(check["event_ns"].is_null());
+        assert!(check["observation"].is_null());
+        assert!(check["reason"].as_str().unwrap().contains(reason));
+        assert_eq!(check["voltage_margin_v"].is_array(), has_margin);
+        if has_margin {
+            // До отсечения окна аналитический запас остаётся −0,2 В (Т6.7).
+            close(
+                check["voltage_margin_v"][1].as_f64().unwrap(),
+                -0.2,
+                ROUNDING,
+            );
+        }
+    }
 }
 
 #[test]

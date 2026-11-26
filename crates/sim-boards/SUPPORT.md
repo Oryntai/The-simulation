@@ -8,7 +8,7 @@
 
 ## Исполнение прошивки
 
-`load` принимает ELF32 little-endian с исполняемыми сегментами `PT_LOAD`, а для AVR также Intel HEX. Старт ARM идёт через таблицу векторов, AVR — с адреса 0, RISC-V — через точку входа ELF. У Pico ищутся таблицы в начале XIP и после стандартного отступа boot2. Образы запускаются в фиксированных профилях тактирования. Загрузочные ROM, код boot2, фьюзы, загрузчики Arduino и ESP-IDF не моделируются. `load` применяет входы хоста и заменяет образ. При ошибке загрузки предыдущий образ недоступен. `reset` повторно выполняет старт CPU и возвращает периферию в исходное состояние профиля, сохраняя подключения. Аппаратные профили сохраняют SRAM, VMCU-C3 восстанавливает ОЗУ по правилам `Mcu::reset`.
+`load` принимает ELF32 little-endian с исполняемыми сегментами `PT_LOAD`, а для AVR также Intel HEX. Старт ARM идёт через таблицу векторов, AVR — с адреса 0, RISC-V — через точку входа ELF. У Pico ищутся таблицы в начале XIP и после стандартного отступа boot2. В этом режиме образы запускаются в фиксированных профилях тактирования. Загрузка начинается со входа образа или таблицы векторов. У ESP32-C3 для старта из ROM применяется отдельный вход raw flash ниже. `load` применяет входы хоста и заменяет образ. При ошибке загрузки предыдущий образ недоступен. `reset` повторно выполняет старт CPU и возвращает периферию в исходное состояние профиля, сохраняя подключения. Прежние аппаратные профили ELF/HEX сохраняют SRAM. VMCU-C3 восстанавливает ОЗУ по правилам `Mcu::reset`.
 
 `set_adc_volts` ожидает вольты. `run_for` получает секунды. Для конечного нулевого интервала такты не начисляются. Дробные такты переносятся в следующий вызов. После ошибки исполнения `pin_output` и `pwm_duty` возвращают `None`. В штатном режиме `None` означает отсутствие активного драйвера или ШИМ на выводе. `uart_take` потребляет переданные к моменту чтения байты. Их можно читать для диагностики после ошибки.
 
@@ -17,7 +17,7 @@
 - **RP2040.** 16-битные Thumb ADD/ADC/SUB/SBC/RSB, CMP/CMN/TST, MOV/MVN, AND/ORR/EOR/BIC, LSL/LSR/ASR/ROR, MUL, SXTB/SXTH/UXTB/UXTH, REV/REV16/REVSH, ADR, LDR/STR с байтовыми, полусловными и знаковыми загрузками, LDM/STM, PUSH/POP. Переходы B/Bcc/BX/BL/BLX-регистр, CPS, SVC из Thread, BKPT, NOP/YIELD/WFI, DSB/DMB/ISB, часть MRS/MSR. Деление на Cortex-M0+ выполняет скомпилированная программная процедура. WFE/SEV, MPU, PSP, выключение ядра и второе ядро не моделируются.
 - **STM32F103C8.** Перечисленная основа Thumb, IT, CBZ/CBNZ, B.W и Bcc.W, MOVW/MOVT, ADR.W, ADDW/SUBW, выборка простых 32-битных операций с модифицированной константой и сдвинутым регистром, LDR/STR.W, LDRD/STRD, MUL/MLA, SDIV/UDIV. Охвачены MSP, PRIMASK, вложенные прерывания с разными приоритетами и EXC_RETURN на MSP. Остальные кодировки, включая LDREX/STREX, TBB/TBH, широкие LDM/STM, битовые поля, насыщение, PSP, BASEPRI/FAULTMASK, MPU и обработку аппаратных BusFault/UsageFault, дают ошибку или недоступны.
 - **ATmega328P.** LDI, MOV/MOVW, ADD/ADC, SUB/SUBI/SBC/SBCI, ADIW/SBIW, MUL/MULS, AND/ANDI/OR/ORI/EOR, COM/NEG/INC/DEC, ASR/LSR/ROR/SWAP, CP/CPI/CPC/CPSE, BSET/BCLR/BST/BLD, SBIC/SBIS/SBRC/SBRS, SBI/CBI, IN/OUT. Поддержаны LDS/STS, LD/ST через X/Y/Z, LDD/STD, LPM, PUSH/POP, JMP/RJMP/IJMP, CALL/RCALL/ICALL, BRBS/BRBC, RET/RETI, WDR, NOP и BREAK. Деление программное. SPM, SLEEP и дробные умножения не реализованы.
-- **ESP32-C3.** Декодер RV32I/M/C из `sim-mcu`. Реализованы целочисленные и сжатые операции, переходы, загрузка и запись, MUL/MULH/MULHSU/MULHU/DIV/DIVU/REM/REMU, FENCE/FENCE.I, ECALL, EBREAK, WFI, MRET и операции CSR. Поддержаны `mstatus`, `misa`, `mtvec`, `mscratch`, `mepc`, `mcause`, чтение `mtval`, `mhartid`, счётчиков `cycle`/`instret` и их старших половин. Исполняется M-mode. Остальные CSR, атомики, PMP, другие уровни привилегий и вызовы ROM не реализованы.
+- **ESP32-C3.** Декодер RV32I/M/C из `sim-mcu`. Реализованы целочисленные и сжатые операции, переходы, загрузка и запись, MUL/MULH/MULHSU/MULHU/DIV/DIVU/REM/REMU, FENCE/FENCE.I, ECALL, EBREAK, WFI, MRET и операции CSR. Поддержаны `mstatus`, `misa`, `mtvec`, `mscratch`, `mepc`, `mcause`, чтение `mtval`, `mhartid`, счётчиков `cycle`/`instret` и их старших половин. Исполняется M-mode. Для ELF набор CPU ограничен указанными режимами. В raw flash перечисленные в `esp_rom.rs` входы ROM переходят в предоставленный дамп. Остальные входы дают явный отказ.
 
 ### Карта периферии
 
@@ -43,7 +43,7 @@
 
 `take_events` и `uart_take` потребляют одну очередь переданных UART-байтов. Прежний `run_for` проходит интервал целиком, шины при этом не получают ответы от хоста. Обесточивание отключает выходы и отменяет незавершённые обмены. Такты обесточенной платы можно продвигать целочисленным методом. Возврат питания загружает состояние холодного старта. При `Execution { enabled: false }` ядро стоит, аппаратные таймеры и сторож продолжаются. Чтение АЦП без заданного напряжения даёт ошибку. Если схема задаёт уровень при обрыве, его подают в вольтах обычным входом.
 
-## Матрица программных портов
+## Матрица регистровых стендов ELF/HEX
 
 | Профиль | CPU · АЦП · PWM | UART | I²C | SPI | Пакеты |
 |---|---|---|---|---|---|
@@ -70,6 +70,85 @@
 Циклы ядра ARM и RISC-V оценочные. Времена ожидания шины, джиттер, режимы сна и переходные процессы при включении не сверены с чипами. Тайм-ауты AVR WDT и STM IWDG используют типовые частоты внутренних генераторов. АЦП имеет идеальную передаточную функцию. Для ESP32-C3 дополнительно оценены raw-код и время преобразования, индивидуальная калибровка отсутствует. Для входа без внешнего сигнала и подтяжки цифровая модель использует низкий уровень. Стенд запускался в эмуляторе. Проверка на физических платах не проводилась.
 
 `sh crates/sim-boards/firmware-tests/build_ports.sh` воспроизводит три ELF регистровых стендов. Тест `ports` проверяет времена линии ручным расчётом, результаты прямого `Mcu`, отрицательные ответы, несогласованные входы и копирование транзакции. Все профили публикуют `blocks_hardware_proof`.
+
+## Приёмка Т2.23 · штатный raw flash ESP32-C3
+
+`load_esp_flash_with_profile` принимает объединённый flash, смещение таблицы разделов, ROM, слова eFuse, уровни strap, фазу SYSTIMER и ответы внешней flash. Старт идёт из ROM. `run_until_quarter_ns` ведёт абсолютную шкалу при смене частоты. `take_events` отдаёт кадры, запросы, события шины и сброса. `esp_boot_position` показывает PC первой непройденной инструкции даже после остановки. `esp_reset_value_uses` и `esp_virtual_rng_use` показывают фактическое применение профиля и виртуального RNG. Старые ELF и Intel HEX остаются на входе `load`.
+
+### Фактические опыты
+
+| Программа и контур | BoardSim и независимая сверка | Открыто |
+|---|---|---|
+| ESP-IDF v6.1.1, `hello_world` | PC `0x42006bda` на шаге 23 126 662 от единицы. UART0 передал `Hello world!\r\n`, строка зафиксирована к опросу на 233 мс. QEMU 9.2.2 исполнил тот же PC (`-d in_asm`) и выдал те же байты. Повреждённая таблица отсекается в BoardSim и в загрузчике QEMU. Для eFuse `SPI_BOOT_CRYPT_CNT=0b001` BoardSim отклоняет шифрованную загрузку, `espefuse --virt` подтверждает значение Enable. Без профиля остановка на первом чтении `0x6000e044`. | Абсолютное время холодного старта на плате `NotAnalyzed`. TRM §6.2.4.1 задаёт XTAL/2, QEMU стартует от PLL. |
+| Arduino ESP32 4.0.0, Blink на GPIO3 | Четыре логических уровня 1/0/1/0. Между фронтами 1000/1005/1000 тиков FreeRTOS при 1000 Гц. Добавка 5 тиков соответствует `yieldIfNecessary` в `cores/esp32/main.cpp`. QEMU подтвердил записи W1TS/W1TC и интервалы SYSTIMER 999 925/1 005 000/1 000 000 мкс. Допуск от `vTaskDelay` и сравнения временных шкал — 1 мс на фазу каждого прогона и 1 мкс на квант метки. Измерение вывода добавляет шаг опроса 1 мс и интервал между двумя отметками вокруг `digitalWrite`. | Драйвер вывода, электрические фронты и уровень на кремнии `NotAnalyzed`. GPIO в QEMU наблюдался на MMIO. |
+| 2.21, GPIO3 → GPIO10 | Вход повторил 0/1/0. Высокий уровень 20,000 мс, `vTaskDelay(2)` при 100 Гц. Допуск — один тик и 5 мкс опроса. QEMU подтвердил последовательность записей, его GPIO10 читался как 0. | Электрическая петля и пороги входа `NotAnalyzed`. |
+| 2.21, UART1 | BoardSim и QEMU передали и приняли `55 a6 00 ff`. ESP-IDF обработал приём через IRQ, в BoardSim неполный порог ведёт к IRQ тайм-аута RX. TRM гл. 26 и `uart_ll_set_baudrate`: 8N1, XTAL 40 МГц, делитель 5555/16, 86 796,875 нс на кадр. Интервалы 86 793,750 / 86 800,000 / 86 793,750 нс, допуск 1 такт CPU (6,25 нс). QEMU подтвердил байты и делитель. Парный тест `uart_raw_flash_уровневый_irq_входит_в_вектор_только_с_маской` различает поднятый статус и вход в trap при маске CPU. | Такты входа IRQ именно 2.21, проводные фронты и ошибки уровня `NotAnalyzed`. |
+| 2.21, LEDC на GPIO5 | XTAL 40 МГц, делитель 2500/256, 10 бит. Исходное заполнение 256/1024 даёт 250 мкс и высокий уровень 62,5 мкс. Трасса GPIO сверена с точностью шага 5 мкс плюс 1 такт CPU. QEMU зафиксировал `0x9c40`, разрядность 10 и `DUTY=0x1000` без фронтов. | Заполнение 768/1024 в образе 2.21 `NotAnalyzed`. ESP-IDF возвращает `ESP_FAIL` из-за отсутствия `ledc_fade_func_install`. Смена заполнения отдельно проверяется регистровым тестом `ledc_уставка_sdk_защёлкивается_на_переполнении`. |
+| 2.21, I²C0 | По `i2c_ll_master_cal_bus_clk` и TRM гл. 28 длительность SCL 10 мкс, START 5 мкс, девять тактов на кадр. Адресный ACK/NACK в 95 мкс. Положительная проба завершилась в 105 мкс, комбинированная запись `10` / чтение `5a a5` с repeated START — в 475 мкс. Гость различил `ESP_OK` и `ESP_ERR_NOT_FOUND`. Снимок без ответа дал только `NoResponse` через 26,2144 мс после ACK-слота (2²⁰ / 40 МГц), поздний ответ отвергнут. Сравнение на целых тактах CPU без процентного допуска. | QEMU C3 не моделирует I²C. Там видны только команды FIFO `a0/a2` и тайм-аут. Аналитика подтверждает пакетную модель, времена ACK/RSTART/STOP на реальных выводах `NotAnalyzed`. |
+| 2.21, deep sleep | Гость запрашивает таймер 2 000 000 мкс. BoardSim останавливает запуск CRC RTC FAST на PC `0x42017938`, запись в `0x600c0048`. QEMU дошёл до ожидания `CRC_FINISH`, дважды вернул 0 и остался на ветке `0x4201794c`. `FIXTURE done` отсутствует. | Оба сквозных wake `NotAnalyzed`. TRM §§9.6, 16.4 описывает поля CRC и проверку результата, полином, начальное состояние, порядок данных и время вычисления открыты. |
+| Регистровый RTC, `esp_sleep` | Таймер проверен на тике 272 000 (2 с при 136 кГц), GPIO на тике 272 013 после подачи уровня на тике 272 010. Синтетический ROM подтверждает два цифровых пробуждения, удержание RTC FAST, отсутствие пробуждения до события и при коротком импульсе. | Разброс RC_SLOW, задержка аналоговых доменов и штатный wake stub `NotAnalyzed`. |
+| Прежние ELF/Intel HEX | `testdata/esp.elf` останавливается по EBREAK `0x403801d2` за 75 тактов. Оба AVR-образа дают UART `02 00` и duty 0,25. Тесты `boards` и `ports` сверяют остальные старые образы. | Аппаратное время ядра, электрические уровни и погрешность платы `NotAnalyzed`. |
+
+В Т2.23 UART ведётся по байтам после целого кадра, а GPIO и LEDC — по дискретным уровням. АЦП и его калибровка, DMA/SPI2, RF и потребление не участвовали в опытах штатных образов. Для этих контуров сквозной результат `NotAnalyzed`. `blocks_hardware_proof` сохраняется у всех опытов.
+
+### Профиль QEMU
+
+Таблица перечисляет входы из [базового профиля](firmware-tests/esp_sdk/reference/esp32c3-qemu-reset.toml) и [дополнения приёмки](tests/data/esp_sdk_acceptance/io-reset.toml). У каждого поля `kind = "qemu"` и ссылка на конкретный исходник QEMU. Наличие поля в профиле означает доступность подстановки. Фактическое использование возвращает `esp_reset_value_uses()`. Для переноса на кремний нужны данные той же ревизии и трассы платы.
+
+| Адрес | Поля и значения |
+|---|---|
+| `0x6000e044`, `0x6000e048` | `ANA_CONFIG_REG` и `ANA_CONFIG2_REG` = `0x00ffffff`. |
+| `0x6000e040` | `BBPLL_STOP_FORCE_HIGH/LOW` = `0x0c`. |
+| `0x6000e000` | `I2C_MST0_COMMAND` = `0x00ffffff`. Байты `BBPLL.5`, `BBPLL.9`, `SARADC.7`, `DIG_REG.4/.5/.6/.7/.13`, `ULP_BOD.0/.3/.5` = `0xff`. |
+| `0x60002058` | `SFDP.0x10` и `RDSR2` = 0. |
+| `0x6001d054`, `0x6001ccd4`, `0x60006090`, `0x600050f0` | `BBPD_CTRL`, `NRXPD_CTRL`, `FE_GEN_CTRL`, `FE2_TX_INTERP_CTRL` = 0. |
+| `0x3fc80000`, `0x50000000` | `SRAM1_COLD_FILL` и `RTC_FAST_COLD_FILL` = 0 по снимкам QEMU. |
+| `0x60004008`, `0x6000400c`, `0x60004024`, `0x60004028`, `0x6000404c` | Чтение `GPIO_OUT_W1TS/W1TC`, `GPIO_ENABLE_W1TS/W1TC`, `GPIO_STATUS_W1TC` = 0. Эффекты WT при записи следуют TRM. |
+| `0x60023000` | `SYSTIMER_WFI_STALL` = 0. Это наблюдаемая связь счётчика с затвором CPU при WFI. TRM §10.4 и рег. 16.8 не определяют эту связь. В QEMU счётчик работает от виртуального времени. |
+
+### ESP32-S3 в отдельном процессе
+
+В `sim-runtime --test external_board` QEMU Espressif 9.2.2 дважды дал побайтово равный UART0 ROM, включая SLIP SYNC 46 байт → 14 байт. Ввод в этом опыте диагностический. Привязка к виртуальному такту и полный снимок остаются `NotAnalyzed`.
+
+| Область | Статус |
+|---|---|
+| SDMMC, LEDC, Wi-Fi, Bluetooth, USB, RMT, SPI, I²C, I²S, ULP, GPIO Matrix, IO MUX, direct boot, Secure Boot | Каждый блок `NotAnalyzed`. См. [таблицу возможностей Espressif](https://github.com/espressif/esp-toolchain-docs/blob/main/qemu/README.md#supported-features). |
+| ADC, калибровка ADC, PCNT, MCPWM, датчик температуры, touch, камера, LCD, GPIO, RTC, RTC WDT, дерево часов, modem/light/deep sleep, timer/GPIO wake, brownout, питание, ESP-NOW, USB Serial/JTAG | Каждый блок или режим `NotAnalyzed`. Покрытие конкретного режима не подтверждено. |
+| Остальные документированные блоки QEMU, кроме проверенного UART0 ROM | Здесь `NotAnalyzed`. Адаптер Т2.20 подключает UART0, отдельные опыты этих блоков в Т2.23 не выполнены. |
+
+### Повтор приёмки
+
+Нужны готовый ESP32-C3 ROM rev. 3 из QEMU Espressif 9.2.2 (`share/qemu/esp32c3-rom.bin`, SHA-256 `0de1e65020e803bea0d7443dca149d61895e01fca3bb9c82d073234eebd73f99`) и [проверяемые фикстуры](tests/data/esp_sdk_acceptance/SHA256SUMS). Без внешнего ROM штатные опыты `NotAnalyzed`. Снимок eFuse снят с профиля SDK v6.1.1 через QEMU Monitor `pmemsave 0x6000882c 336 "readback.bin"` до `cont`. Для 2 и 4 МиБ соответственно использованы JEDEC w25x16 и gd25q32 из `hw/riscv/esp32c3.c` и `hw/block/m25p80.c`.
+
+Из корня репозитория
+
+```sh
+(cd crates/sim-boards/tests/data/esp_sdk_acceptance && shasum -a 256 -c SHA256SUMS)
+(cd crates/sim-boards/tests/data/esp_peripherals && shasum -a 256 -c SHA256SUMS)
+SIM_ESP_ACCEPTANCE_ROM=/путь/к/esp32c3-rom.bin \
+  cargo test --offline -p sim-boards --test esp_sdk_acceptance -- --include-ignored --nocapture --test-threads=1
+```
+
+Для Blink команда ниже использует `arduino-cli 1.6.0` и установленное ядро `esp32:esp32 4.0.0`. Параметр `-ffile-prefix-map` заменяет абсолютные пути в строках исходников. `SOURCE_DATE_EPOCH=0` фиксирует дату и время служебного отчёта GCC в начале эпохи Unix. `--strip-all` убирает из ELF отладочные секции и символы до записи отпечатка ELF в образ. Две сборки в разных каталогах дали один `Blink.ino.merged.bin` на 4 МиБ, его SHA-256 записана в `SHA256SUMS`. `esptool --chip esp32c3 image-info` подтвердил XOR и SHA-256 загрузчика и приложения.
+
+```sh
+(
+  work=$(mktemp -d /tmp/esp-t223-blink.XXXXXX)
+  trap 'rm -rf "$work"' EXIT
+  cp -R crates/sim-boards/firmware-tests/esp_sdk/Blink "$work/"
+  cd "$work"
+  export SOURCE_DATE_EPOCH=0 ARDUINO_BUILD_CACHE_PATH="$work/cache" ARDUINO_UPDATER_ENABLE_NOTIFICATION=false
+  flags="-ffile-prefix-map=/$HOME=. -ffile-prefix-map=$HOME=. -ffile-prefix-map=$(pwd -P)=."
+  arduino-cli compile -j 4 --fqbn 'esp32:esp32:esp32c3:CDCOnBoot=default,FlashMode=dio' \
+    --build-path "$(pwd -P)/build" \
+    --build-property "compiler.c.extra_flags=$flags" \
+    --build-property "compiler.cpp.extra_flags=$flags" \
+    --build-property 'compiler.c.elf.extra_flags=-Wl,--strip-all' Blink
+  shasum -a 256 build/Blink.ino.merged.bin
+)
+```
+
+Для `hello_world` использована сборка из [команд ESP-IDF и QEMU](firmware-tests/esp_sdk/SOURCES.md). Сохранённый образ заканчивается на конце приложения, QEMU использует его с дополнением `0xff` до 2 МиБ. Для 2.21 команда [reproduce.sh](firmware-tests/esp_peripherals/reproduce.sh) пересобирает и сравнивает пять исходных артефактов. Опорные параметры модели и адреса относятся к [TRM ESP32-C3 v1.4](https://documentation.espressif.com/esp32-c3_technical_reference_manual_en.pdf).
 
 ## Источники
 

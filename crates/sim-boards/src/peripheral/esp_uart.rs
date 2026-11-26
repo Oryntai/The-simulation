@@ -361,7 +361,11 @@ impl EspUart {
                 0x1c => (self.tx_fifo_count() as u32) << 16 | self.rx.len() as u32, // UART_STATUS: счётчики.
                 0x20 => self.shadow.format,                                         // UART_CONF0
                 0x24 => self.shadow.thresholds,                                     // UART_CONF1
-                0x48 => self.idle,                      // UART_IDLE_CONF
+                0x48 => self.idle, // UART_IDLE_CONF
+                0x4c => 0,         // UART_RS485_CONF: все поля сброшены.
+                // uart_rx_intr_handler_default читает пару даже при выключенном
+                // IRQ шаблона. UART_CHAR_NUM=3, UART_AT_CMD_CHAR=0x2b при сбросе.
+                0x5c => 0x032b,
                 0x60 => self.shadow.memory,             // UART_MEM_CONF
                 0x6c => u32::from(self.tx_busy()) << 4, // UART_FSM_STATUS: форма занятости для uart_ll_is_tx_idle.
                 0x78 => self.shadow.clock,              // UART_CLK_CONF
@@ -415,6 +419,9 @@ impl EspUart {
                     byte: value as u8,
                 });
             }
+            // uart_hal_init и TRM гл. 26, UART_RS485_CONF. Поддержана
+            // очистка полей при инициализации обычного UART.
+            0x4c => allowed(0)?,
             0x0c => {
                 allowed(DRIVER_IRQ)?;
                 self.enable = value;

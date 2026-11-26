@@ -8,7 +8,7 @@ use sim_world::Provenance;
 use crate::{Analysis, Interval, ProcessError};
 
 use super::sleep_drain::{SleepDrainEvidence, SleepDrainInput, assess_sleep_drain};
-use super::{Finding, Scope, Status, identifier, invalid, open, supports_source, validate_source};
+use super::{Finding, Scope, identifier, invalid, open, supports_source, validate_source};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum McuCurrentKind {
@@ -102,17 +102,8 @@ pub fn assess_mcu_energy(
     power: Option<&McuPowerProfile>,
     input: &SleepDrainInput<'_>,
 ) -> Result<McuEnergyReport, ProcessError> {
-    let mut sleep_drain = assess_sleep_drain(input)?;
+    let sleep_drain = assess_sleep_drain(input)?;
     let chip_charge = integrate(power, input)?;
-    if sleep_drain.status == Status::Pass
-        && input.scope == Scope::Assembly
-        && !input
-            .profile
-            .is_some_and(|p| matches!(p.source, Provenance::Measured(_)))
-    {
-        sleep_drain.status = Status::NotAnalyzed;
-        sleep_drain.reason = "нужен замер профиля тока всей платы с регулятором и утечками".into();
-    }
     Ok(McuEnergyReport {
         chip_charge,
         sleep_drain,

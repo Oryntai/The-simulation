@@ -436,8 +436,8 @@ fn assembly_requires_a_measured_load_profile_for_a_positive_result() {
 
     let paper = Provenance::Paper("Тестовая запись расчётного режима".into());
     input.profile.as_mut().unwrap().source = &paper;
-    assert_eq!(assess_sleep_drain(&input).unwrap().status, Status::Pass);
     let result = assess_mcu_energy(Some(&power), &input).unwrap();
+    assert_eq!(result.sleep_drain, assess_sleep_drain(&input).unwrap());
     assert_eq!(result.sleep_drain.status, Status::NotAnalyzed);
     assert!(result.sleep_drain.reason.contains("замер"));
 }

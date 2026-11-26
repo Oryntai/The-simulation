@@ -210,10 +210,17 @@ pub fn assess_sleep_drain(
             "под нагрузкой отсечка достигается раньше заявленного срока".into(),
         )
     } else if reserve.min >= 0.0 && margin.min > 0.0 {
-        (
-            Status::Pass,
-            "заряда хватает и отсечка не достигается во всём заявленном окне".into(),
-        )
+        if scope == Scope::Assembly && !matches!(profile.source, Provenance::Measured(_)) {
+            (
+                Status::NotAnalyzed,
+                "нужен замер профиля тока всей платы с регулятором и утечками".into(),
+            )
+        } else {
+            (
+                Status::Pass,
+                "заряда хватает и отсечка не достигается во всём заявленном окне".into(),
+            )
+        }
     } else {
         (
             Status::NotAnalyzed,

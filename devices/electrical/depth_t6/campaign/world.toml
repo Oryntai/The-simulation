@@ -1,0 +1,12 @@
+format = 3
+name = "Блок"
+seed = 0 # Зерно живого стенда Т6.7 без разброса.
+physics_hz = 100000 # Шаг 10 мкс живого стенда Т6.7.
+gravity_m_s2 = [0.0, 0.0, 0.0] # Неподвижный носитель схемы.
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+[[devices]]
+name = "block"
+file = "device.toml"

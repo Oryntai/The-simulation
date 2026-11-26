@@ -245,11 +245,13 @@ fn неконечный_вход_отклоняется_до_запуска() {
     let stand = Stand::new("infinity", 2, "");
     let path = stand.0.join("world.toml");
     let input = fs::read_to_string(&path).unwrap();
-    stand.write(
-        "world.toml",
-        &input.replace("[1.0, 0.0, 0.0]", "[inf, 0.0, 0.0]"),
-    );
-    assert_eq!(stand.run(&[], 2)["status"], "error");
+    for invalid in ["nan", "inf", "-inf"] {
+        stand.write(
+            "world.toml",
+            &input.replace("[1.0, 0.0, 0.0]", &format!("[{invalid}, 0.0, 0.0]")),
+        );
+        assert_eq!(stand.run(&[], 2)["status"], "error");
+    }
 }
 
 #[test]
@@ -265,9 +267,18 @@ fn электрический_путь_сохраняет_знак_напряж�
             "catalog = \"catalog.toml\"",
             &format!("catalog = '{}'", root.join("catalog").display()),
         )
-        // Для этой пары движение служит независимой проверкой сетки, разбирается полярность.
-        .replace("max = 0.00000275", "max = 0.000004");
-    stand.write("campaign.toml", &campaign);
+        // Порог 4 мкм лежит выше ручного хода 3 мкм на сетке 1 кГц.
+        .replace("max = 0.00000275", "max = 0.000004")
+        .replace(
+            "values = { base = \"base\", fine = \"fine\" }",
+            "values = { base = 'base' }",
+        );
+    stand.write("campaign.toml", &format!(r#"{campaign}
+[depth_factors.factors.mass]
+safety = false
+source = {{ kind = "measured", reference = "единичный куб из block.toml и куб удвоенной плотности" }}
+levels = {{ kind = "axis", parameter = {{ kind = "mass", body = "блок/каретка" }}, unit = "kg", nominal = 6.0, values = {{ base = 6.0, heavy = 12.0 }} }}
+"#));
     let device = fs::read_to_string(stand.0.join("block.toml")).unwrap();
     stand.write(
         "block.toml",
@@ -304,6 +315,12 @@ ends = ["capacitor/plus", "capacitor/minus"]
         );
         for (key, row) in assembly["runs"].as_object().unwrap() {
             let result = &row["detail"]["scenario"];
+            let mass = match row["detail"]["coverage"]["selection"]["mass"].as_str() {
+                Some("base") => 6.0,
+                Some("heavy") => 12.0,
+                selection => panic!("неизвестный уровень массы {selection:?}"),
+            };
+            assert_eq!(result["installation"]["values"]["mass"], mass);
             assert_eq!(result["electrical"]["live"]["required_ns"], 2_000_000);
             assert_eq!(
                 result["electrical"]["live"]["seed"],
@@ -343,8 +360,7 @@ ends = ["capacitor/plus", "capacitor/minus"]
     let modified = campaign
         .replace("criteria = [", &format!(
             "faults = [{{ fault = {fault}, at_ns = 1000000, max_lag_ns = 0, window = 'whole', source = {{ kind = 'measured', reference = 'разрыв на середине опыта' }} }}]\ncriteria = ["
-        ))
-        .replace("values = { base = \"base\", fine = \"fine\" }", "values = { base = 'base' }");
+        ));
     stand.write(
         "campaign.toml",
         &format!(

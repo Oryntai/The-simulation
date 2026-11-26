@@ -303,10 +303,14 @@ impl Checkpoint {
     }
 
     pub(super) fn with_identity(root: &Path, identity: &[u8]) -> Result<Self, String> {
-        let directory = root.join(format!("{:016x}", fnv1a(identity.iter().copied())));
-        std::fs::create_dir_all(&directory)
-            .map_err(|error| format!("{}: {error}", directory.display()))?;
-        Ok(Self { directory })
+        let checkpoint = Self::at_identity(root, identity);
+        std::fs::create_dir_all(&checkpoint.directory)
+            .map_err(|error| format!("{}: {error}", checkpoint.directory.display()))?;
+        Ok(checkpoint)
+    }
+
+    pub(super) fn at_identity(root: &Path, identity: &[u8]) -> Self {
+        Self { directory: root.join(format!("{:016x}", fnv1a(identity.iter().copied()))) }
     }
 
     fn load(&self, index: usize, case: &Case) -> Result<Option<Row>, String> {

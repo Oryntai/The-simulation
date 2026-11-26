@@ -19,6 +19,7 @@ const SYSTIMER_CONTROL: u32 = 1 << 29;
 
 // TRM таблица 10.6-1 и ESP-IDF soc/esp32c3/register/soc/systimer_reg.h.
 const CONF: u32 = 0x00;
+pub(super) const WFI_STALL_PROFILE: (u32, &str) = (SYSTIMER + CONF, "SYSTIMER_WFI_STALL");
 const UNIT_OP: u32 = 0x04;
 const UNIT_LOAD_VALUE: u32 = 0x0c;
 const TARGET_VALUE: u32 = 0x1c;

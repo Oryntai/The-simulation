@@ -988,6 +988,16 @@ impl Runtime {
     }
 
     fn snapshot_processes(&self) -> Result<ProcessSnapshots, String> {
+        if let Some(board) = self
+            .state
+            .control
+            .as_ref()
+            .and_then(|control| control.external_boards.first())
+        {
+            return Err(format!(
+                "внешняя плата «{board}»: нет снимка QEMU для восстановления контура"
+            ));
+        }
         self.processes
             .iter()
             .map(|(&id, process)| {

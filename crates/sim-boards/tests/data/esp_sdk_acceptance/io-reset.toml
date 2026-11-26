@@ -1,0 +1,60 @@
+# TRM рег. 5.3, 5.4, 5.6, 5.7, 5.12 задают импульсы записи, чтение не определено.
+
+[[reset]]
+address = 0x60004008
+field = "GPIO_OUT_W1TS"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/gpio/esp32_gpio.c#L23-L34"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000400c
+field = "GPIO_OUT_W1TC"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/gpio/esp32_gpio.c#L23-L34"
+kind = "qemu"
+
+[[reset]]
+address = 0x60004024
+field = "GPIO_ENABLE_W1TS"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/gpio/esp32_gpio.c#L23-L34"
+kind = "qemu"
+
+[[reset]]
+address = 0x60004028
+field = "GPIO_ENABLE_W1TC"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/gpio/esp32_gpio.c#L23-L34"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000404c
+field = "GPIO_STATUS_W1TC"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/gpio/esp32_gpio.c#L23-L34"
+kind = "qemu"
+
+# Связь затвора WFI (рег. 16.8) с остановкой счётчиков (TRM §10.4).
+# В QEMU счётчик и компаратор работают по виртуальному времени и в WFI.
+[[reset]]
+address = 0x60023000
+field = "SYSTIMER_WFI_STALL"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/timer/esp_systimer.c#L28-L36"
+kind = "qemu"
+
+# regi2c_dig_reg.h: EXT_RTC_DREG_SLEEP и EXT_DIG_DREG_SLEEP, без значений сброса.
+[[reset]]
+address = 0x6000e000
+field = "DIG_REG.5"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"
+
+[[reset]]
+address = 0x6000e000
+field = "DIG_REG.7"
+value = 0xff
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/riscv/esp32c3.c#L135-L164"
+kind = "qemu"

@@ -47,7 +47,9 @@ const BYTE_FIELDS: &[(u8, u8, &str)] = &[
     (SAR, 7, "SARADC.7"),        // regi2c_saradc.h: DTEST, ENT, ENCAL_REF.
     (DIG_REG, 13, "DIG_REG.13"), // regi2c_dig_reg.h: настройки цифрового регулятора.
     (DIG_REG, 4, "DIG_REG.4"),   // regi2c_dig_reg.h: RTC_DREG и ENX.
+    (DIG_REG, 5, "DIG_REG.5"),   // regi2c_dig_reg.h: EXT_RTC_DREG_SLEEP.
     (DIG_REG, 6, "DIG_REG.6"),   // regi2c_dig_reg.h: DIG_DREG и ENX.
+    (DIG_REG, 7, "DIG_REG.7"),   // regi2c_dig_reg.h: EXT_DIG_DREG_SLEEP.
     (ULP_BOD, 0, "ULP_BOD.0"),   // regi2c_lp_bias.h: ULP_IR_FORCE_XPD_IPH.
     (ULP_BOD, 5, "ULP_BOD.5"),   // regi2c_brownout.h: I2C_BOD_THRESHOLD.
 ];

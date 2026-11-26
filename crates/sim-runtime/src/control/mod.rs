@@ -168,6 +168,7 @@ pub(crate) struct Engine {
     stimulus_integrated: BTreeMap<ChannelId, u64>,
     stimulus_pending: Vec<(ChannelId, String, TimedCommand)>,
     boards: Vec<Board>,
+    pub(crate) external_boards: BTreeSet<String>,
     board_actions: Vec<ScheduledBoardAction>,
     routes: Vec<Route>,
     faults: Vec<FaultSpec>,

@@ -24,6 +24,24 @@ use std::collections::VecDeque;
 use super::{Access, Adc, Pins, Uart, checked_rw, command, invalid, ro, rw, unsupported};
 
 const GPIO_MASK: u32 = (1 << 22) - 1;
+// TRM рег. 5.3, 5.4, 5.6, 5.7, 5.12: WT задаёт эффект записи, чтение не описано.
+// gpio_ll.h задаёт эти поля через RMW. Для такого чтения нужен явный профиль.
+pub(super) fn gpio_write_trigger_field(address: u32) -> Option<&'static str> {
+    match address {
+        0x6000_4008 => Some("GPIO_OUT_W1TS"),
+        0x6000_400c => Some("GPIO_OUT_W1TC"),
+        0x6000_4024 => Some("GPIO_ENABLE_W1TS"),
+        0x6000_4028 => Some("GPIO_ENABLE_W1TC"),
+        0x6000_404c => Some("GPIO_STATUS_W1TC"),
+        _ => None,
+    }
+}
+
+pub(super) fn supports_reset_value(address: u32, field: &str, value: u32) -> bool {
+    gpio_write_trigger_field(address) == Some(field) && value & !GPIO_MASK == 0
+        || (address, field) == super::esp_system::WFI_STALL_PROFILE && value <= 1
+}
+
 const TIMER_MASK: u64 = (1 << 54) - 1;
 const WDT_KEY: u32 = 0x50d8_3aa1;
 
@@ -105,6 +123,10 @@ const SYSTIMER_WINDOW: std::ops::Range<u32> = 0x6002_3000..0x6002_4000;
 // ESP-IDF usb_serial_jtag_reg.h, TRM §30.3.2 и рег. 30.11.
 const USB_EP1_FIFO: u32 = 0x6004_3000;
 const USB_EP1_CONF: u32 = USB_EP1_FIFO + 4;
+const USB_INT_RAW: u32 = USB_EP1_FIFO + 0x08;
+const USB_INT_CLR: u32 = USB_EP1_FIFO + 0x14;
+const USB_SOF_INT: u32 = 1 << 1;
+const USB_SERIAL_IN_EMPTY: u32 = 1 << 3;
 const USB_WR_DONE: u32 = 1 << 0;
 const USB_IN_FREE: u32 = 1 << 1;
 const USB_CDC_PACKET: u8 = 64;
@@ -475,6 +497,7 @@ pub(crate) struct BootPeripherals {
     has_systimer_phase: bool,
     usb_ep1_bytes: u8,
     assist: EspAssist,
+    systimer_wfi_stall: Option<bool>,
 }
 
 impl BootPeripherals {
@@ -505,6 +528,7 @@ impl BootPeripherals {
             sha: EspSha::default(),
             usb_ep1_bytes: 0,
             assist: EspAssist::default(),
+            systimer_wfi_stall: None,
         }
     }
 
@@ -532,6 +556,19 @@ impl BootPeripherals {
         self.assist.observe(pc, sp);
     }
 
+    pub(crate) fn systimer_wfi_stall(&mut self) -> Result<bool, BoardFault> {
+        if let Some(stall) = self.systimer_wfi_stall {
+            return Ok(stall);
+        }
+        let (address, field) = super::esp_system::WFI_STALL_PROFILE;
+        // TRM §10.4 и рег. 16.8 не связывают CPU stall с затвором WFI.
+        // Сохраняем прежнюю модель без явного профиля. QEMU считает
+        // QEMU_CLOCK_VIRTUAL независимо от затвора (hw/timer/esp_systimer.c).
+        let stall = self.reset_values.read(address, field)? != Some(0);
+        self.systimer_wfi_stall = Some(stall);
+        Ok(stall)
+    }
+
     pub(crate) fn systimer_interrupt_status(&self) -> Option<u32> {
         self.has_systimer_phase
             .then(|| self.system.interrupt_status())
@@ -546,6 +583,20 @@ impl BootPeripherals {
         size: u8,
         value: Option<u32>,
     ) -> Access {
+        if value.is_none()
+            && size as usize == size_of::<u32>()
+            && let Some(field) = gpio_write_trigger_field(addr)
+        {
+            return self.reset_values.read(addr, field)?.map(Some).ok_or(
+                BoardFault::UnsupportedRegister {
+                    pc: self.pc,
+                    addr,
+                    size,
+                    write: false,
+                    block: "GPIO: чтение WT не задокументировано",
+                },
+            );
+        }
         if let Some(word) =
             self.sleep_regs
                 .access(self.pc, addr, size, value, &mut self.reset_values)?
@@ -606,7 +657,10 @@ impl BootPeripherals {
         if let Some(result) = self.sha.access(self.pc, addr, size, value, sha_enabled)? {
             return Ok(Some(result));
         }
-        if matches!(addr, USB_EP1_FIFO | USB_EP1_CONF) {
+        if matches!(
+            addr,
+            USB_EP1_FIFO | USB_EP1_CONF | USB_INT_RAW | USB_INT_CLR
+        ) {
             return self.usb_ep1_access(addr, size, value);
         }
         if !self.has_systimer_phase && SYSTIMER_WINDOW.contains(&addr) {
@@ -731,6 +785,10 @@ impl BootPeripherals {
         // освобождает буфер. Пакет готов после WR_DONE или заполнения 64 байт.
         if size as usize == size_of::<u32>() {
             match (addr, value) {
+                // usb_serial_jtag_reg.h: IN_EMPTY защёлкнут при сбросе.
+                // Без хоста нет SOF и пакетов, а очистка SOF не меняет IN_EMPTY.
+                (USB_INT_RAW, None) => return Ok(Some(USB_SERIAL_IN_EMPTY)),
+                (USB_INT_CLR, Some(USB_SOF_INT)) => return Ok(Some(0)),
                 (USB_EP1_CONF, None) => {
                     return Ok(Some(
                         u32::from(self.usb_ep1_bytes < USB_CDC_PACKET) * USB_IN_FREE,
@@ -1322,6 +1380,10 @@ impl Esp {
                 0x20 => rw(v, &mut self.pins.enable, GPIO_MASK),
                 0x24 => command(v, |v| self.pins.enable |= v & GPIO_MASK),
                 0x28 => command(v, |v| self.pins.enable &= !v),
+                // TRM рег. 5.12: очистка защёлок GPIO_STATUS. Цифровые
+                // прерывания GPIO_PINn.INT_ENA здесь выключены: запись в
+                // INT_ENA пока отклоняется, поэтому очищать нечего.
+                0x4c if boot.is_some() => command(v, |_| {}),
                 0x3c => ro(
                     v,
                     (0..22).fold(0, |all, i| {
@@ -1633,6 +1695,23 @@ impl Esp {
                         return ro(v, 0);
                     }
                     if !boot.enabled(UART_GATE[i] | UART_MEM) {
+                        // ESP-IDF esp_driver_uart/src/uart.c, uart_module_enable:
+                        // сначала открывает APB, читает исходный CLK_CONF и
+                        // снимает override питания в MEM_CONF, потом снимает
+                        // сброс ядра. FIFO и состояние IRQ требуют рабочего UART.
+                        // Смещения и значения сброса — uart_reg.h, гл. 26 TRM.
+                        if boot.clk_io & (UART_GATE[i] | UART_MEM) == (UART_GATE[i] | UART_MEM)
+                            && boot.rst_io & UART_GATE[i] != 0
+                        {
+                            let at = self.uart_time[i];
+                            let serial = &mut self.sdk_uart[i];
+                            if matches!(o, 0x60 | 0x78) && v.is_none() {
+                                return serial.access(o, None, at);
+                            }
+                            if o == 0x60 && serial.access(o, None, at)? == v {
+                                return Ok(Some(0));
+                            }
+                        }
                         return Err(invalid("UART: нет тактов SYSREG или активен сброс"));
                     }
                     let at = self.uart_time[i];

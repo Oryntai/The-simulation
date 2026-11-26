@@ -523,9 +523,10 @@ impl Machine {
                 self.remaining -= spend;
             }
             if let Some(rates) = rates {
-                let system = &self.bus.hw.esp_boot.as_ref().unwrap().system;
+                let boot = self.bus.hw.esp_boot.as_mut().unwrap();
                 let stalled = !executing
-                    || matches!(&self.cpu, Cpu::Riscv(cpu) if cpu.clock_stalled(system.wait_gate_cycles()));
+                    || (matches!(&self.cpu, Cpu::Riscv(cpu) if cpu.clock_stalled(boot.system.wait_gate_cycles()))
+                        && boot.systimer_wfi_stall()?);
                 self.bus.hw.advance_esp_boot(spend, rates, stalled)?;
             }
             self.bus.hw.tick(spend);
