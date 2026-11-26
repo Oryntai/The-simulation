@@ -1,0 +1,105 @@
+version = 1
+required_modes = ["обход"]
+
+[[readouts]]
+signal = { name = "угол поворот", unit = "rad" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Истинная координата сустава из MuJoCo." }
+formula = { kind = "position", index = 0 }
+
+[[readouts]]
+signal = { name = "угол плечо", unit = "rad" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Истинная координата сустава из MuJoCo." }
+formula = { kind = "position", index = 1 }
+
+[[readouts]]
+signal = { name = "угол локоть", unit = "rad" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Истинная координата сустава из MuJoCo." }
+formula = { kind = "position", index = 2 }
+
+[[readouts]]
+signal = { name = "угол запястье", unit = "rad" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Истинная координата сустава из MuJoCo." }
+formula = { kind = "position", index = 3 }
+
+[[readouts]]
+signal = { name = "угол вращение", unit = "rad" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Истинная координата сустава из MuJoCo." }
+formula = { kind = "position", index = 4 }
+
+[[readouts]]
+signal = { name = "кончик x", unit = "m" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Центр фланца из позы тела кисти MuJoCo." }
+formula = { kind = "body_point", body = "рука/кисть", local_m = [0.0, 0.0, 0.03], axis = 0 }
+
+[[readouts]]
+signal = { name = "кончик y", unit = "m" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Центр фланца из позы тела кисти MuJoCo." }
+formula = { kind = "body_point", body = "рука/кисть", local_m = [0.0, 0.0, 0.03], axis = 1 }
+
+[[readouts]]
+signal = { name = "кончик z", unit = "m" }
+rate_hz = 1000
+source = { kind = "derived", reference = "Центр фланца из позы тела кисти MuJoCo." }
+formula = { kind = "body_point", body = "рука/кисть", local_m = [0.0, 0.0, 0.03], axis = 2 }
+
+[paths."поворот"]
+observation = { name = "рука/энкодер-поворота/value", unit = "rad" }
+physical_response = [{ name = "угол поворот", unit = "rad" }]
+command_delta = 0.01
+max_observation_age_ns = 20000000
+source = { kind = "derived", reference = "0.01 рад больше шага энкодера 0.0015 рад." }
+hops = [
+  { target = "transport:компьютер/request", direction = "input", delay_ns = 2000000, jitter_ns = 500000, receiver_tick_ns = 1000000, source = { kind = "derived", reference = "control.toml, такт получателя 1 кГц" } },
+  { target = "transport:компьютер/response", direction = "output", delay_ns = 1000000, jitter_ns = 500000, receiver_tick_ns = 10000000, source = { kind = "derived", reference = "control.toml, такт получателя 100 Гц" } },
+]
+
+[paths."плечо"]
+observation = { name = "рука/энкодер-плеча/value", unit = "rad" }
+physical_response = [{ name = "угол плечо", unit = "rad" }]
+command_delta = 0.01
+max_observation_age_ns = 20000000
+source = { kind = "derived", reference = "0.01 рад больше шага энкодера 0.0015 рад." }
+hops = [
+  { target = "transport:компьютер/request", direction = "input", delay_ns = 2000000, jitter_ns = 500000, receiver_tick_ns = 1000000, source = { kind = "derived", reference = "control.toml, такт получателя 1 кГц" } },
+  { target = "transport:компьютер/response", direction = "output", delay_ns = 1000000, jitter_ns = 500000, receiver_tick_ns = 10000000, source = { kind = "derived", reference = "control.toml, такт получателя 100 Гц" } },
+]
+
+[paths."локоть"]
+observation = { name = "рука/энкодер-локтя/value", unit = "rad" }
+physical_response = [{ name = "угол локоть", unit = "rad" }]
+command_delta = 0.01
+max_observation_age_ns = 20000000
+source = { kind = "derived", reference = "0.01 рад больше шага энкодера 0.0015 рад." }
+hops = [
+  { target = "transport:компьютер/request", direction = "input", delay_ns = 2000000, jitter_ns = 500000, receiver_tick_ns = 1000000, source = { kind = "derived", reference = "control.toml, такт получателя 1 кГц" } },
+  { target = "transport:компьютер/response", direction = "output", delay_ns = 1000000, jitter_ns = 500000, receiver_tick_ns = 10000000, source = { kind = "derived", reference = "control.toml, такт получателя 100 Гц" } },
+]
+
+[paths."запястье"]
+observation = { name = "рука/энкодер-запястья/value", unit = "rad" }
+physical_response = [{ name = "угол запястье", unit = "rad" }]
+command_delta = 0.01
+max_observation_age_ns = 20000000
+source = { kind = "derived", reference = "0.01 рад больше шага энкодера 0.0015 рад." }
+hops = [
+  { target = "transport:компьютер/request", direction = "input", delay_ns = 2000000, jitter_ns = 500000, receiver_tick_ns = 1000000, source = { kind = "derived", reference = "control.toml, такт получателя 1 кГц" } },
+  { target = "transport:компьютер/response", direction = "output", delay_ns = 1000000, jitter_ns = 500000, receiver_tick_ns = 10000000, source = { kind = "derived", reference = "control.toml, такт получателя 100 Гц" } },
+]
+
+[paths."вращение"]
+observation = { name = "рука/энкодер-вращения/value", unit = "rad" }
+physical_response = [{ name = "угол вращение", unit = "rad" }]
+command_delta = 0.01
+max_observation_age_ns = 20000000
+source = { kind = "derived", reference = "0.01 рад больше шага энкодера 0.0015 рад." }
+hops = [
+  { target = "transport:компьютер/request", direction = "input", delay_ns = 2000000, jitter_ns = 500000, receiver_tick_ns = 1000000, source = { kind = "derived", reference = "control.toml, такт получателя 1 кГц" } },
+  { target = "transport:компьютер/response", direction = "output", delay_ns = 1000000, jitter_ns = 500000, receiver_tick_ns = 10000000, source = { kind = "derived", reference = "control.toml, такт получателя 100 Гц" } },
+]

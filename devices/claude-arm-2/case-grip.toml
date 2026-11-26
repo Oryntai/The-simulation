@@ -1,0 +1,4128 @@
+# Физика режима «хват»: вода в бутылке и кружке. Пишет tools/make_task.py.
+window_ns = [0, 24000000000]
+source = "Полный горизонт режима «налив»."
+
+[models."вода"]
+kind = "liquid"
+gravity_m_s2 = [0.0, 0.0, -9.80665]
+source = "Квазистатическая жидкость (crates/sim-cli/src/tasks/processes/models/liquid.rs): плоская поверхность по эффективной тяжести, Торричелли через срез горла, баллистическая струя, эффект чайника. Волны, брызги, капли на стенках и инерция перетекающей воды не посчитаны."
+
+[models."вода".fluid]
+density_kg_m3 = { value = 998.2, source = { datasheet = "Вода при 20 °C, справочная плотность." } }
+discharge = { value = 0.6, source = { estimate = "Коэффициент расхода острой кромки около 0.6–0.62; кромка горла ПЭТ не замерена." } }
+detach_m_s = { value = 0.15, source = { estimate = "Порог отрыва струи от кромки (эффект чайника) — порядок величины, не замер на этом горле." } }
+slosh_s = { value = 0.047, source = { estimate = "1/ω первой моды плеска в цилиндре R = 39.5 мм: ω² = 1.841·g/R." } }
+
+[models."вода".vessels."бутылка"]
+body = "\u0431\u0443\u0442\u044b\u043b\u043a\u0430/\u043a\u043e\u0440\u043f\u0443\u0441"
+bottom_m = [0.0, 0.0, 0.001]
+axis = [0.0, 0.0, 1.0]
+profile_m = [[0.0, 0.0395], [0.194, 0.0395], [0.234, 0.01085], [0.269, 0.01085]]
+initial_ml = 1000.0
+rigid_initial = true
+glug_ml_s = { value = 100.0, source = { estimate = "Перевёрнутая литровая бутылка опорожняется толчками около 10 с; не замер." } }
+
+[models."вода".vessels."кружка"]
+body = "\u043a\u0440\u0443\u0436\u043a\u0430/\u043a\u043e\u0440\u043f\u0443\u0441"
+bottom_m = [0.0, 0.0, 0.006]
+axis = [0.0, 0.0, 1.0]
+profile_m = [[0.0, 0.037], [0.089, 0.037]]
+initial_ml = 0.0
+
+# Решатель контактов: noslip убирает численную ползучесть мягкого трения MuJoCo — бутылка
+# под постоянным весом сползала в схвате на 5 мм/с при шестикратном запасе по трению.
+[contacts]
+table = "contact-materials.toml"
+
+[contacts.solver]
+method = "newton"
+elliptic = true
+impratio = 1.0
+tolerance = 1e-8
+iterations = 100
+line_search_tolerance = 0.01
+line_search_iterations = 50
+noslip_tolerance = 1e-6
+noslip_iterations = 20
+ccd_tolerance = 1e-6
+ccd_iterations = 50
+
+[contacts.assignments]
+"environment/collision/0" = "дерево"
+"рука/стойка/collision/0" = "сталь"
+"рука/стойка/collision/1" = "сталь"
+"рука/башня/collision/0" = "алюминий"
+"рука/башня/collision/1" = "алюминий"
+"рука/плечо/collision/0" = "алюминий"
+"рука/плечо/collision/1" = "алюминий"
+"рука/предплечье/collision/0" = "алюминий"
+"рука/предплечье/collision/1" = "алюминий"
+"рука/рукав/collision/0" = "алюминий"
+"рука/рукав/collision/1" = "алюминий"
+"рука/запястье/collision/0" = "алюминий"
+"рука/кисть/collision/0" = "алюминий"
+"рука/ладонь/collision/0" = "алюминий"
+"рука/ладонь/collision/1" = "алюминий"
+"рука/ладонь/collision/2" = "алюминий"
+"рука/ладонь/collision/3" = "резина"
+"рука/ладонь/collision/4" = "резина"
+"рука/ладонь/collision/5" = "резина"
+"рука/ладонь/collision/6" = "резина"
+"рука/ладонь/collision/7" = "алюминий"
+"рука/губа/collision/0" = "алюминий"
+"рука/губа/collision/1" = "резина"
+"рука/губа/collision/2" = "резина"
+"рука/губа/collision/3" = "резина"
+"рука/губа/collision/4" = "резина"
+"бутылка/корпус/collision/0" = "ПЭТ"
+"бутылка/корпус/collision/1" = "ПЭТ"
+"бутылка/корпус/collision/2" = "ПЭТ"
+"кружка/корпус/collision/0" = "керамика"
+"кружка/корпус/collision/1" = "керамика"
+"кружка/корпус/collision/2" = "керамика"
+"кружка/корпус/collision/3" = "керамика"
+"кружка/корпус/collision/4" = "керамика"
+"кружка/корпус/collision/5" = "керамика"
+"кружка/корпус/collision/6" = "керамика"
+"кружка/корпус/collision/7" = "керамика"
+"кружка/корпус/collision/8" = "керамика"
+"кружка/корпус/collision/9" = "керамика"
+"кружка/корпус/collision/10" = "керамика"
+"кружка/корпус/collision/11" = "керамика"
+"кружка/корпус/collision/12" = "керамика"
+"кружка/корпус/collision/13" = "керамика"
+"кружка/корпус/collision/14" = "керамика"
+"кружка/корпус/collision/15" = "керамика"
+"кружка/корпус/collision/16" = "керамика"
+"кружка/корпус/collision/17" = "керамика"
+
+# Калибровки всех пар, которые MuJoCo может столкнуть (пример contact_candidates): импеданс — оценка.
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/башня/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/башня/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/плечо/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/плечо/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/предплечье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/предплечье/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["environment/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/башня/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/башня/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/плечо/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/плечо/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/предплечье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/предплечье/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/башня/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/башня/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/плечо/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/плечо/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/предплечье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/предплечье/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/стойка/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/предплечье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/предплечье/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/предплечье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/предплечье/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/башня/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/рукав/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/рукав/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/плечо/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/запястье/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/предплечье/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/кисть/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/ладонь/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/рукав/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "рука/губа/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "рука/губа/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "рука/губа/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "рука/губа/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "рука/губа/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/запястье/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/кисть/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/2", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/3", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/4", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/5", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/6", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/ладонь/collision/7", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/2", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/3", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "бутылка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "бутылка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "бутылка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["рука/губа/collision/4", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/0", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/1", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/0"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/1"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/2"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/3"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/4"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/5"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/6"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/7"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/8"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/9"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/10"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/11"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/12"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/13"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/14"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/15"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/16"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+[[contacts.pairs]]
+geometries = ["бутылка/корпус/collision/2", "кружка/корпус/collision/17"]
+solimp = [0.95, 0.99, 0.001, 0.5, 2.0]
+source = { estimate = "Импеданс близок к жёсткому контакту; пара не идентифицирована." }
+
+# Свидетель режима: бутылка поднята над столом.
+[[criteria]]
+name = "бутылка/подъём"
+unit = "m"
+series = { position = 9 }
+statistic = "maximum"
+tolerance = { value = 0.001, source = { estimate = "Проектный допуск численного опыта." } }
+remainder = [{ value = 0.0, source = { estimate = "Остаток за пределами двух наблюдаемых разностей не оценён." } }, { value = 0.0, source = { estimate = "Остаток проверки решателя не оценён." } }, { value = 0.0, source = { estimate = "Разброс материалов требует стенда." } }]
+lower = { value = 0.05, source = { estimate = "Бутылка поднята для налива." } }

@@ -1,0 +1,39 @@
+# Рука Claude на столе. Столешница — верх на z = 0.
+format = 3
+name = "Рука Claude со схватом и кубиком"
+seed = 8
+# Приводам хватает 120 кГц. Толчок по руке, стоящей в мёртвой зоне сервы, проба привода
+# узнаёт только со следующего шага; сверка этого шага проходит с 240 кГц (DEFECTS.md, Д5).
+physics_hz = 240000
+gravity_m_s2 = [0.0, 0.0, -9.80665]
+
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [1.2, 0.8, 0.04] }
+pose = { position_m = [0.15, 0.0, -0.02] }
+friction = [0.8, 0.005, 0.0001]
+
+# вид: tools/make_visuals.py
+[[environment.visual]]
+shape = { kind = "box", size_m = [1.2, 0.8, 0.04] }
+pose = { position_m = [0.15, 0.0, -0.02] }
+rgba = [0.8, 0.74, 0.64, 1.0]
+
+[[devices]]
+name = "рука"
+file = "device-gripper.toml"
+pose = { position_m = [0.0, 0.0, 0.0] }
+
+# Кубик 25 мм, 20 г, лежит на столе под схватом.
+[[objects]]
+name = "кубик"
+pose = { position_m = [0.16, 0.06, 0.0125] }
+mass = { kind = "explicit", mass_kg = 0.02, com_m = [0.0, 0.0, 0.0], inertia_kg_m2 = [2.083e-6, 2.083e-6, 2.083e-6, 0.0, 0.0, 0.0], provenance = { estimate = "кубик PLA 25 мм, около 20 г" } }
+
+[[objects.collision]]
+shape = { kind = "box", size_m = [0.025, 0.025, 0.025] }
+friction = [0.8, 0.005, 0.0001]

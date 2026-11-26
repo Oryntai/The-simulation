@@ -1,0 +1,43 @@
+id = "intel-realsense-d405-depth"
+kind = "depth_camera"
+name = "Intel RealSense D405, поток глубины"
+
+# Близкая стереокамера глубины: 42 × 42 × 23 мм, 60 г, глобальный затвор, обзор глубины 87° × 58°,
+# идеальная дальность 7–50 см, точность ±2 % на 50 см, глубина до 1280 × 720 и до 90 кадров/с.
+# Источник паспортных чисел — страница изделия: https://www.realsenseai.com/products/stereo-depth-camera-d405/
+# Режим 424 × 240 и все шумы ниже — оценки до замера экземпляра.
+
+[model]
+rate_hz = { value = 30.0, provenance = "estimate", source = "Выбран режим 30 кадров/с из паспортного «до 90»." }
+latency_s = { value = 0.03, provenance = "estimate", source = "Сборка стереопары и доставка по USB около 30 мс; не замерено." }
+width = { value = 424.0, provenance = "estimate", source = "Прореженный режим 424 × 240: в паспорте не найден, проверить на изделии." }
+height = { value = 240.0, provenance = "estimate", source = "Прореженный режим 424 × 240: в паспорте не найден, проверить на изделии." }
+fx = { value = 223.4, provenance = "derived", source = "212 / tan(87°/2): паспортный горизонтальный обзор глубины 87° на ширине 424." }
+fy = { value = 223.4, provenance = "derived", source = "Квадратный пиксель, fy = fx; вертикальный обзор 2·atan(120/223.4) = 56.5° при паспортных 58°." }
+cx = { value = 212.0, provenance = "derived", source = "Главная точка в центре ширины 424; на изделии — из калибровки." }
+cy = { value = 120.0, provenance = "derived", source = "Главная точка в центре высоты 240; на изделии — из калибровки." }
+k1 = { value = 0.0, provenance = "estimate", source = "Поток глубины выпрямлен на камере; остаточная дисторсия не замерена." }
+k2 = { value = 0.0, provenance = "estimate", source = "Поток глубины выпрямлен на камере; остаточная дисторсия не замерена." }
+k3 = { value = 0.0, provenance = "estimate", source = "Поток глубины выпрямлен на камере; остаточная дисторсия не замерена." }
+p1 = { value = 0.0, provenance = "estimate", source = "Поток глубины выпрямлен на камере; остаточная дисторсия не замерена." }
+p2 = { value = 0.0, provenance = "estimate", source = "Поток глубины выпрямлен на камере; остаточная дисторсия не замерена." }
+near_m = { value = 0.01, provenance = "estimate", source = "Ближе паспортных 7 см камера не даёт глубины, но предмет там всё равно загораживает обзор: граница 1 см оставляет загораживание, а отсчёты ближе 7 см отбрасывает контроллер." }
+far_m = { value = 0.8, provenance = "estimate", source = "Дальше идеальных 50 см ошибка растёт квадратично; дальше 0.8 м стол не рассматривается." }
+exposure_s = { value = 0.008, provenance = "estimate", source = "Автоэкспозиция при комнатном свете около 8 мс; не замерено." }
+readout_s = { value = 0.0, provenance = "datasheet", source = "Глобальный затвор: все строки экспонируются одновременно." }
+exposure_samples = { value = 2.0, provenance = "estimate", source = "Две пробы по времени на 8 мс экспозиции: смаз при движении руки." }
+hole_probability = { value = 0.01, provenance = "estimate", source = "Доля пикселей без глубины на матовых поверхностях; на прозрачном ПЭТ и бликах дыр больше." }
+bias = { value = 0.002, provenance = "estimate", source = "Остаточное смещение глубины после заводской калибровки, 2 мм; паспортный предел ±2 % на 50 см — 10 мм." }
+noise_std = { value = 0.0008, provenance = "estimate", source = "СКО глубины на 0.2–0.5 м около 0.8 мм; не замерено на экземпляре." }
+drift_per_s = { value = 0.0, provenance = "estimate", source = "Тепловой дрейф за минуту прогона не учитывается." }
+drift_rw_std = { value = 0.0, provenance = "estimate", source = "Тепловой дрейф за минуту прогона не учитывается." }
+quantum = { value = 0.0, provenance = "estimate", source = "Округление до 1 мм делает формат DepthMm16; у D405 шаг 0.1 мм, формат платформы грубее." }
+saturation = { value = 0.0, provenance = "estimate", source = "Без насыщения поверх дальнего предела." }
+drop_probability = { value = 0.0, provenance = "estimate", source = "Потери кадров USB не учитываются." }
+fault = { value = 0.0, provenance = "estimate", source = "Штатная работа." }
+mount_dx_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление; ошибку экземпляра задаёт описание устройства." }
+mount_dy_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление; ошибку экземпляра задаёт описание устройства." }
+mount_dz_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление; ошибку экземпляра задаёт описание устройства." }
+mount_roll_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление; ошибку экземпляра задаёт описание устройства." }
+mount_pitch_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление; ошибку экземпляра задаёт описание устройства." }
+mount_yaw_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление; ошибку экземпляра задаёт описание устройства." }

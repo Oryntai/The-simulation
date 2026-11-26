@@ -137,7 +137,8 @@ pub struct PhysicsFrame {
     pub engine_step: ContactStep,
     pub equality_reactions: BTreeMap<String, Option<Vec<f64>>>,
     pub weld_reactions: BTreeMap<String, Option<WeldReaction>>,
-    pub contact_gaps: Vec<String>,
+    /// Причины недоказанности контактов шага. Общий список, пока набор пар в контакте не меняется.
+    pub contact_gaps: Rc<Vec<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -399,6 +400,9 @@ struct Slot {
     model: Box<dyn SlotModel>,
 }
 
+/// Пары геометрий в контакте и их список пробелов.
+type GapCache = (Vec<[String; 2]>, Rc<Vec<String>>);
+
 #[derive(Clone, Default)]
 pub(crate) struct Processes {
     models: Vec<Slot>,
@@ -409,6 +413,9 @@ pub(crate) struct Processes {
     welds: BTreeSet<String>,
     completed: Option<PhysicsFrame>,
     uncataloged: Vec<String>,
+    /// Пары в контакте прошлого шага и их список пробелов: на сотнях килогерц
+    /// пересборка и сортировка строк на каждом шаге занимала треть времени прогона.
+    gap_cache: Option<GapCache>,
     pub(crate) journal: Rc<Vec<ProcessTick>>,
     pub(crate) efforts: Vec<(ChannelId, f64)>,
     pub(crate) scalar_hold: bool,
@@ -418,11 +425,50 @@ pub(crate) struct Processes {
     last: Time,
     interaction: Option<interaction::RegisteredInteraction>,
     publications: BTreeMap<TruthId, (String, String)>,
+    /// Период хранения журнала, нс. Без него журнал хранит каждую границу физики.
+    journal_period_ns: Option<u64>,
 }
 
 impl Processes {
     pub(crate) fn last_tick(&self) -> Option<&ProcessTick> {
         self.journal.last()
+    }
+
+    /// Добавляет строку журнала. С периодом хранения прошлая строка того же окна
+    /// сливается с новой: интервал новой строки начинается там, где начиналась
+    /// слитая, журнал остаётся сплошным. Строки с событиями, блокерами, опасностями
+    /// и пропусками моделей, начальная строка и последняя строка не сливаются.
+    fn push_tick(&mut self, mut tick: ProcessTick) {
+        let journal = Rc::make_mut(&mut self.journal);
+        if let Some(period) = self.journal_period_ns
+            && let Some(last) = journal.last()
+            && last.at != Time::ZERO
+            && last.at.0 / period == tick.at.0 / period
+            && last.missing_models.is_empty()
+            && last.outputs.values().all(|out| {
+                out.events.is_empty() && out.blockers.is_empty() && out.hazards.is_empty()
+            })
+            && last.completed.is_some()
+            && tick.completed.is_some()
+        {
+            let dropped = journal.pop().and_then(|row| row.completed).expect("проверена строка");
+            let frame = tick.completed.as_mut().expect("проверен интервал");
+            frame.interval.start = dropped.interval.start;
+            frame.engine_step.start_s = dropped.engine_step.start_s;
+            // Реакции и контакты одного шага не описывают слитый интервал.
+            frame.reactions.contacts.clear();
+            frame.engine_step.contacts.clear();
+            frame.equality_reactions.clear();
+            frame.weld_reactions.clear();
+            if !Rc::ptr_eq(&dropped.contact_gaps, &frame.contact_gaps)
+                && dropped.contact_gaps != frame.contact_gaps
+            {
+                let mut gaps: BTreeSet<String> = dropped.contact_gaps.iter().cloned().collect();
+                gaps.extend(frame.contact_gaps.iter().cloned());
+                frame.contact_gaps = Rc::new(gaps.into_iter().collect());
+            }
+        }
+        journal.push(tick);
     }
 
     pub(crate) fn owns_publication(&self, id: TruthId) -> bool {
@@ -573,6 +619,19 @@ impl Runtime {
         } else {
             Err("удержание требует единственной скалярной оси без контактов и связей".into())
         }
+    }
+
+    /// Хранить журнал процессов строками не чаще одной на `period_ns`: строки внутри
+    /// окна сливаются в одну со сплошным интервалом, без контактов и реакций шага.
+    /// Модели по-прежнему видят каждую границу физики. Нужен длинным прогонам на
+    /// высокой частоте физики: на каждой границе строка весит килобайты.
+    pub fn set_process_journal_period(&mut self, period_ns: u64) -> Result<(), String> {
+        self.ensure_configurable()?;
+        if period_ns == 0 {
+            return Err("период журнала процессов должен быть положительным".into());
+        }
+        self.state.work.journal_period_ns = Some(period_ns);
+        Ok(())
     }
 
     pub fn register_process(
@@ -846,29 +905,49 @@ impl Runtime {
             .iter()
             .map(|id| Ok((id.clone(), self.sim.weld_reaction(id)?)))
             .collect::<Result<_, String>>()?;
-        let mut gaps: BTreeSet<_> = work.uncataloged.iter().cloned().collect();
-        for contact in &engine_step.contacts {
-            let names = key(contact.geometries.clone());
-            let Some(pair) = work.pairs.as_ref().and_then(|map| map.get(&names)) else {
-                gaps.insert(format!("неизвестная пара контактных материалов {names:?}"));
-                continue;
-            };
-            if !contact.matches_settings(pair.pair.settings) {
-                gaps.insert(format!(
-                    "фактические параметры контакта {names:?} расходятся с калибровкой"
-                ));
+        let mut present: Vec<[String; 2]> = engine_step
+            .contacts
+            .iter()
+            .map(|contact| key(contact.geometries.clone()))
+            .collect();
+        present.sort();
+        present.dedup();
+        let cached = work
+            .gap_cache
+            .as_ref()
+            .filter(|(pairs, _)| *pairs == present)
+            .map(|(_, gaps)| Rc::clone(gaps));
+        let contact_gaps = match cached {
+            Some(gaps) => gaps,
+            None => {
+                let mut gaps: BTreeSet<_> = work.uncataloged.iter().cloned().collect();
+                for contact in &engine_step.contacts {
+                    let names = key(contact.geometries.clone());
+                    let Some(pair) = work.pairs.as_ref().and_then(|map| map.get(&names)) else {
+                        gaps.insert(format!("неизвестная пара контактных материалов {names:?}"));
+                        continue;
+                    };
+                    if !contact.matches_settings(pair.pair.settings) {
+                        gaps.insert(format!(
+                            "фактические параметры контакта {names:?} расходятся с калибровкой"
+                        ));
+                    }
+                    if let Analysis::NotAnalyzed { reason } = &pair.nominal_coverage {
+                        gaps.insert(format!("{names:?}: {reason}"));
+                    }
+                }
+                let gaps = Rc::new(gaps.into_iter().collect::<Vec<_>>());
+                work.gap_cache = Some((present, Rc::clone(&gaps)));
+                gaps
             }
-            if let Analysis::NotAnalyzed { reason } = &pair.nominal_coverage {
-                gaps.insert(format!("{names:?}: {reason}"));
-            }
-        }
+        };
         work.completed = Some(PhysicsFrame {
             interval,
             reactions,
             engine_step,
             equality_reactions,
             weld_reactions,
-            contact_gaps: gaps.into_iter().collect(),
+            contact_gaps,
         });
         Ok(())
     }
@@ -897,6 +976,7 @@ impl Runtime {
                         .map(|pair| format!("исключена потенциально сталкивающаяся пара {pair:?}")),
                 )
                 .collect();
+            self.state.work.gap_cache = None;
         }
         let work = &self.state.work;
         let frame = ProcessFrame {
@@ -1101,7 +1181,7 @@ impl Runtime {
                 ),
             );
         }
-        Rc::make_mut(&mut work.journal).push(tick);
+        work.push_tick(tick);
         if let Some(error) = prepared.stop_after_record {
             return Err(error);
         }

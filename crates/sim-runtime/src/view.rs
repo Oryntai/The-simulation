@@ -59,6 +59,8 @@ pub struct ViewRecording {
     pub(crate) contacts: Rc<Vec<ViewContacts>>,
     pub(crate) contact_gap: Option<String>,
     pub(crate) equality: Rc<Vec<ViewEquality>>,
+    /// Окно прореживания, в котором последний раз записаны контакты.
+    pub(crate) contact_window: Option<u64>,
 }
 
 impl ViewRecording {
@@ -101,9 +103,19 @@ impl Runtime {
         let previous_step = self.state.log.end.steps;
         // Шкала Clock и предыдущая граница, включая нулевой интервал.
         let start = self.physics_rate().tick(previous_step);
+        let period = self.state.log.truth_period();
         let Some(view) = &mut self.state.view else {
             return;
         };
+        // С прореживанием истины (truth_hz) контакты для просмотра пишутся раз в окно:
+        // на десятках килогерц запись каждого шага не помещается в память.
+        if let Some(period) = period {
+            let window = at.0 / period;
+            if view.contact_window == Some(window) {
+                return;
+            }
+            view.contact_window = Some(window);
+        }
         if view.contact_gap.is_some() {
             return;
         }

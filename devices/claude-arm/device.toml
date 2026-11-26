@@ -1,0 +1,724 @@
+# Рука Claude, эскиз 1. Пять суставов на Feetech STS3215-C018 12 В.
+# Плечо через ремень 1:3, локоть через ремень 1:2 с сервой у плеча (масса сервы в звене «плечо»), запястье и вращение напрямую.
+# Ось поворота в начале устройства, ось плеча на 0.10 м выше. Все размеры — эскиз, не чертёж.
+format = 3
+name = "Рука Claude"
+
+[[links]]
+name = "башня"
+pose = { position_m = [0.0, 0.0, 0.0] }
+
+[links.joint]
+kind = "hinge"
+name = "поворот"
+axis = [0.0, 0.0, 1.0]
+limits_deg = [-150, 150]
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "поворот", dof = 0 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.165
+com_m = [0.0, 0.0, 0.05]
+inertia_kg_m2 = [0.0001288, 0.00014208, 6.8759e-05, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA-брусок и сервы 55 г по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.05, length_m = 0.01 }
+pose = { position_m = [0.0, 0.0, 0.005] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.042, length_m = 0.006 }
+pose = { position_m = [0.0, 0.0, 0.013] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.035, 0.025, 0.045] }
+pose = { position_m = [-0.012, 0.0, 0.045] }
+rgba = [0.12, 0.12, 0.14, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.009, length_m = 0.006 }
+pose = { position_m = [-0.012, 0.042, 0.045], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.0015, 0.005, 0.05533] }
+pose = { position_m = [-0.024, 0.042, 0.0725], rpy_deg = [0.0, -6.226, 0.0] }
+rgba = [0.08, 0.08, 0.08, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.0015, 0.005, 0.06265] }
+pose = { position_m = [0.012, 0.042, 0.0725], rpy_deg = [0.0, 28.61, 0.0] }
+rgba = [0.08, 0.08, 0.08, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.03, 0.004, 0.095] }
+pose = { position_m = [0.0, -0.032, 0.0635] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.03, 0.004, 0.095] }
+pose = { position_m = [0.0, 0.032, 0.0635] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.015, length_m = 0.004 }
+pose = { position_m = [0.0, -0.032, 0.1], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.015, length_m = 0.004 }
+pose = { position_m = [0.0, 0.032, 0.1], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.035, length_m = 0.08 }
+pose = { position_m = [0.0, 0.0, 0.05] }
+
+[[links]]
+name = "плечо"
+parent = "башня"
+pose = { position_m = [0.0, 0.0, 0.10] }
+
+[links.joint]
+kind = "hinge"
+name = "плечо"
+axis = [0.0, 1.0, 0.0]
+limits_deg = [-15, 95]
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+# Второе усилие на той же оси: внешнее воздействие на руку в опытах, свободно от сервы.
+efforts = [{ name = "плечо", dof = 0 }, { name = "толчок-плеча", dof = 0 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.1
+com_m = [0.0, 0.0, 0.038]
+inertia_kg_m2 = [0.00010523, 0.00011187, 1.8671e-05, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA-брусок и сервы 55 г по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.027, length_m = 0.005 }
+pose = { position_m = [0.0, 0.042, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.024, 0.004, 0.12] }
+pose = { position_m = [0.0, 0.022, 0.06] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.012, length_m = 0.004 }
+pose = { position_m = [0.0, 0.022, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.012, length_m = 0.004 }
+pose = { position_m = [0.0, 0.022, 0.12], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.024, 0.004, 0.12] }
+pose = { position_m = [0.0, -0.022, 0.06] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.012, length_m = 0.004 }
+pose = { position_m = [0.0, -0.022, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.012, length_m = 0.004 }
+pose = { position_m = [0.0, -0.022, 0.12], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.034, 0.025, 0.042] }
+pose = { position_m = [0.0, 0.0, 0.045] }
+rgba = [0.12, 0.12, 0.14, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.008, length_m = 0.005 }
+pose = { position_m = [0.0, -0.032, 0.045], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.0015, 0.005, 0.07543] }
+pose = { position_m = [-0.012, -0.032, 0.0825], rpy_deg = [0.0, -6.089, 0.0] }
+rgba = [0.08, 0.08, 0.08, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.0015, 0.005, 0.07543] }
+pose = { position_m = [0.012, -0.032, 0.0825], rpy_deg = [0.0, 6.089, 0.0] }
+rgba = [0.08, 0.08, 0.08, 1.0]
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.03, 0.03, 0.10] }
+pose = { position_m = [0.0, 0.0, 0.06] }
+
+[[links]]
+name = "предплечье"
+parent = "плечо"
+pose = { position_m = [0.0, 0.0, 0.12] }
+
+[links.joint]
+kind = "hinge"
+name = "локоть"
+axis = [0.0, 1.0, 0.0]
+limits_deg = [-20, 150]
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "локоть", dof = 0 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.09
+com_m = [0.0, 0.0, 0.09667]
+inertia_kg_m2 = [0.00012908, 0.00013572, 1.5567e-05, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA-брусок и сервы 55 г по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.016, length_m = 0.005 }
+pose = { position_m = [0.0, -0.032, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.013, length_m = 0.04 }
+pose = { position_m = [0.0, 0.0, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "capsule", radius_m = 0.011, length_m = 0.07 }
+pose = { position_m = [0.0, 0.0, 0.055] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.032, 0.025, 0.04] }
+pose = { position_m = [0.0, 0.0, 0.098] }
+rgba = [0.12, 0.12, 0.14, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.011, length_m = 0.003 }
+pose = { position_m = [0.0, 0.014, 0.12], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.025, 0.025, 0.09] }
+pose = { position_m = [0.0, 0.0, 0.06] }
+
+[[links]]
+name = "запястье"
+parent = "предплечье"
+pose = { position_m = [0.0, 0.0, 0.12] }
+
+[links.joint]
+kind = "hinge"
+name = "запястье"
+axis = [0.0, 1.0, 0.0]
+limits_deg = [-110, 110]
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "запястье", dof = 0 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.07
+com_m = [0.0, 0.0, 0.02786]
+inertia_kg_m2 = [1.2558e-05, 1.9199e-05, 1.4171e-05, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA-брусок и сервы 55 г по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.02, 0.003, 0.03] }
+pose = { position_m = [0.0, -0.0175, 0.005] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.02, 0.003, 0.03] }
+pose = { position_m = [0.0, 0.0175, 0.005] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.01, length_m = 0.003 }
+pose = { position_m = [0.0, -0.0175, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.01, length_m = 0.003 }
+pose = { position_m = [0.0, 0.0175, 0.0], rpy_deg = [90.0, 0.0, 0.0] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "box", size_m = [0.024, 0.032, 0.028] }
+pose = { position_m = [0.0, 0.0, 0.024] }
+rgba = [0.12, 0.12, 0.14, 1.0]
+
+[[links.collision]]
+shape = { kind = "box", size_m = [0.03, 0.03, 0.03] }
+pose = { position_m = [0.0, 0.0, 0.02] }
+
+[[links]]
+name = "кисть"
+parent = "запястье"
+pose = { position_m = [0.0, 0.0, 0.04] }
+
+[links.joint]
+kind = "hinge"
+name = "вращение"
+axis = [0.0, 0.0, 1.0]
+limits_deg = [-170, 170]
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+efforts = [{ name = "вращение", dof = 0 }]
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.02
+com_m = [0.0, 0.0, 0.015]
+inertia_kg_m2 = [4.1667e-06, 4.1667e-06, 5.3333e-06, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA-брусок и сервы 55 г по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.012, length_m = 0.003 }
+pose = { position_m = [0.0, 0.0, 0.0015] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.018, length_m = 0.022 }
+pose = { position_m = [0.0, 0.0, 0.014] }
+rgba = [0.85, 0.46, 0.33, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.02, length_m = 0.004 }
+pose = { position_m = [0.0, 0.0, 0.028] }
+rgba = [0.66, 0.68, 0.72, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0022, length_m = 0.0012 }
+pose = { position_m = [-0.0088, -0.0088, 0.0302] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0022, length_m = 0.0012 }
+pose = { position_m = [-0.0088, 0.0088, 0.0302] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0022, length_m = 0.0012 }
+pose = { position_m = [0.0088, -0.0088, 0.0302] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0022, length_m = 0.0012 }
+pose = { position_m = [0.0088, 0.0088, 0.0302] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.02, length_m = 0.03 }
+pose = { position_m = [0.0, 0.0, 0.015] }
+
+[[links.mounts]]
+name = "фланец"
+kind = "mechanical"
+interface = "эскизный фланец инструмента, 4 винта M3 на окружности 25 мм"
+pose = { position_m = [0.0, 0.0, 0.03] }
+
+
+[[drives]]
+name = "серва-поворота"
+part = "feetech-sts3215-12v-c018"
+effort = "поворот"
+
+[drives.params]
+# Поворот основания напрямую, ±150°.
+# Паспорт C018 (catalog/drives/feetech-sts3215-12v-c018.toml): U=12 В, Istall=2.7 А,
+# Tstall=2.941995 Н·м, 45 об/мин без нагрузки. Мост без падения: R=U/Istall.
+resistance_ohm = 4.444444444444444
+# Ток защиты штатной прошивки неизвестен, предел опыта равен Istall.
+current_limit_a = 2.7
+# Индуктивность не следует из паспорта. Оценка: L/R = 0.1 мс, нужен LCR-метр.
+inductance_h = 0.000444444444444
+# Передаточное число 1:345 по маркировке C018 в заметках владельца (ARM.md), не по паспорту.
+gear_ratio = 345.0
+# I0 ≈ Istall·0.066/0.91 (та же гипотеза, что у MG90S), k=(U−R·I0)/(N·ω0).
+motor_constant = 0.006845766368889806
+# η=Tstall/(Istall·k·N). Обратный КПД принят равным прямому, это допущение.
+gear_efficiency = 0.46135687586652463
+backward_efficiency = 0.46135687586652463
+# B=k·I0/(N·ω0). Сухое трение не выделить из двух паспортных точек.
+viscous_nm_per_rad_s = 8.245711849345113e-7
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 1625.774198232718
+friction_band_rad_s = 1625.774198232718
+# Инерция ротора — оценка 3e-8 кг·м² для 12-вольтового мотора ~20 мм, нужен разгонный опыт.
+rotor_inertia_kg_m2 = 3.0e-8
+gear_input_inertia_kg_m2 = 0.0
+# Гипотеза стенда: люфт 0.25°, прогиб 0.5° под Tstall. K=Tstall/rad(0.5°).
+# Нужен замер люфта и жёсткости на собранной серве.
+backlash = 0.004363323129985824
+coupling_stiffness = 337.12779369718123
+# c=2ζ√(K·Jприв), ζ=1/√2, Jприв=(1/Jнагр+1/(Jрот·N²))⁻¹, Jнагр=0.000123 кг·м² в вертикальной позе по эскизу.
+coupling_damping = 0.2831462446992534
+# Внутренний регулятор: такт 1 кГц и задержка шины 0.5 мс — оценки, снять осциллографом.
+control_hz = 1000.0
+bus_delay_s = 0.0005
+# Рабочий диапазон вала по эскизу.
+position_min = -2.6179938779914944
+position_max = 2.6179938779914944
+# Мёртвая зона — один шаг энкодера. Усиления подобраны опытом на отсутствие звона в контуре 1 кГц с люфтом; у реальной сервы снять заново.
+position_deadband = 0.0015339807878856412
+position_gain = 10
+speed_limit = 4.71238898038469
+speed_kp = 0.2
+speed_ki = 3
+
+[[drives]]
+name = "серва-плеча"
+part = "feetech-sts3215-12v-c018"
+effort = "плечо"
+
+[drives.params]
+# Ремень 1:3 свёрнут в передаточное число привода: N = 345·3. Обход дефекта Д1
+# (проверка шага не видит инерцию за передачей). КПД ремня 0.95 — оценка.
+# Паспорт C018 (catalog/drives/feetech-sts3215-12v-c018.toml): U=12 В, Istall=2.7 А,
+# Tstall=2.941995 Н·м, 45 об/мин без нагрузки. Мост без падения: R=U/Istall.
+resistance_ohm = 4.444444444444444
+# Ток защиты штатной прошивки неизвестен, предел опыта равен Istall.
+current_limit_a = 2.7
+# Индуктивность не следует из паспорта. Оценка: L/R = 0.1 мс, нужен LCR-метр.
+inductance_h = 0.000444444444444
+# Передаточное число 1:345 по маркировке C018 в заметках владельца (ARM.md), не по паспорту.
+gear_ratio = 1035.0
+# I0 ≈ Istall·0.066/0.91 (та же гипотеза, что у MG90S), k=(U−R·I0)/(N·ω0).
+motor_constant = 0.006845766368889806
+# η=Tstall/(Istall·k·N). Обратный КПД принят равным прямому, это допущение.
+gear_efficiency = 0.43828903207319836
+backward_efficiency = 0.43828903207319836
+# B=k·I0/(N·ω0). Сухое трение не выделить из двух паспортных точек.
+viscous_nm_per_rad_s = 8.245711849345113e-7
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 1625.774198232718
+friction_band_rad_s = 1625.774198232718
+# Инерция ротора — оценка 3e-8 кг·м² для 12-вольтового мотора ~20 мм, нужен разгонный опыт.
+rotor_inertia_kg_m2 = 3.0e-8
+gear_input_inertia_kg_m2 = 0.0
+# Последовательно: прогиб сервы 0.5° под Tstall (×3² на сустав) и ремня 1.0° под 3·Tstall.
+# Люфт: 0.25° сервы /3 + 0.1° зуба ремня. Всё — гипотезы до замера.
+backlash = 0.0031997702953229373
+coupling_stiffness = 433.45002046780445
+# c=2ζ√(K·Jприв), ζ=1/√2, Jприв=(1/Jнагр+1/(Jрот·N²))⁻¹, Jнагр=0.0116 кг·м² в вертикальной позе по эскизу.
+coupling_damping = 2.718261470686582
+# Внутренний регулятор: такт 1 кГц и задержка шины 0.5 мс — оценки, снять осциллографом.
+control_hz = 1000.0
+bus_delay_s = 0.0005
+# Рабочий диапазон вала по эскизу.
+position_min = -0.2617993877991494
+position_max = 1.6580627893946132
+# Мёртвая зона — один шаг энкодера. Усиления подобраны опытом на отсутствие звона в контуре 1 кГц с люфтом; у реальной сервы снять заново.
+position_deadband = 0.0005113269292952137
+position_gain = 10
+speed_limit = 1.5707963267948966
+speed_kp = 0.5
+speed_ki = 8
+
+[[drives]]
+name = "серва-локтя"
+part = "feetech-sts3215-12v-c018"
+effort = "локоть"
+
+[drives.params]
+# Ремень 1:2 свёрнут в передаточное число привода: N = 345·2. Обход дефекта Д1
+# (проверка шага не видит инерцию за передачей). КПД ремня 0.95 — оценка.
+# Паспорт C018 (catalog/drives/feetech-sts3215-12v-c018.toml): U=12 В, Istall=2.7 А,
+# Tstall=2.941995 Н·м, 45 об/мин без нагрузки. Мост без падения: R=U/Istall.
+resistance_ohm = 4.444444444444444
+# Ток защиты штатной прошивки неизвестен, предел опыта равен Istall.
+current_limit_a = 2.7
+# Индуктивность не следует из паспорта. Оценка: L/R = 0.1 мс, нужен LCR-метр.
+inductance_h = 0.000444444444444
+# Передаточное число 1:345 по маркировке C018 в заметках владельца (ARM.md), не по паспорту.
+gear_ratio = 690.0
+# I0 ≈ Istall·0.066/0.91 (та же гипотеза, что у MG90S), k=(U−R·I0)/(N·ω0).
+motor_constant = 0.006845766368889806
+# η=Tstall/(Istall·k·N). Обратный КПД принят равным прямому, это допущение.
+gear_efficiency = 0.43828903207319836
+backward_efficiency = 0.43828903207319836
+# B=k·I0/(N·ω0). Сухое трение не выделить из двух паспортных точек.
+viscous_nm_per_rad_s = 8.245711849345113e-7
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 1625.774198232718
+friction_band_rad_s = 1625.774198232718
+# Инерция ротора — оценка 3e-8 кг·м² для 12-вольтового мотора ~20 мм, нужен разгонный опыт.
+rotor_inertia_kg_m2 = 3.0e-8
+gear_input_inertia_kg_m2 = 0.0
+# Последовательно: прогиб сервы 0.5° под Tstall (×2² на сустав) и ремня 1.0° под 2·Tstall.
+# Люфт: 0.25° сервы /2 + 0.1° зуба ремня. Всё — гипотезы до замера.
+backlash = 0.003926990816987242
+coupling_stiffness = 269.702234957745
+# c=2ζ√(K·Jприв), ζ=1/√2, Jприв=1/(M⁻¹ᵢᵢ+1/(Jрот·N²))=9.4808e-05 кг·м² в начальной позе (сочленённая инерция).
+coupling_damping = 0.22614122041563162
+# Внутренний регулятор: такт 1 кГц и задержка шины 0.5 мс — оценки, снять осциллографом.
+control_hz = 1000.0
+bus_delay_s = 0.0005
+# Рабочий диапазон вала по эскизу.
+position_min = -0.3490658503988659
+position_max = 2.6179938779914944
+# Мёртвая зона — один шаг энкодера. Усиления подобраны опытом на отсутствие звона в контуре 1 кГц с люфтом; у реальной сервы снять заново.
+position_deadband = 0.0007669903939428206
+position_gain = 10
+speed_limit = 2.356194490192345
+speed_kp = 0.3
+speed_ki = 5
+
+[[drives]]
+name = "серва-запястья"
+part = "feetech-sts3215-12v-c018"
+effort = "запястье"
+
+[drives.params]
+# Запястье напрямую, ±110°.
+# Паспорт C018 (catalog/drives/feetech-sts3215-12v-c018.toml): U=12 В, Istall=2.7 А,
+# Tstall=2.941995 Н·м, 45 об/мин без нагрузки. Мост без падения: R=U/Istall.
+resistance_ohm = 4.444444444444444
+# Ток защиты штатной прошивки неизвестен, предел опыта равен Istall.
+current_limit_a = 2.7
+# Индуктивность не следует из паспорта. Оценка: L/R = 0.1 мс, нужен LCR-метр.
+inductance_h = 0.000444444444444
+# Передаточное число 1:345 по маркировке C018 в заметках владельца (ARM.md), не по паспорту.
+gear_ratio = 345.0
+# I0 ≈ Istall·0.066/0.91 (та же гипотеза, что у MG90S), k=(U−R·I0)/(N·ω0).
+motor_constant = 0.006845766368889806
+# η=Tstall/(Istall·k·N). Обратный КПД принят равным прямому, это допущение.
+gear_efficiency = 0.46135687586652463
+backward_efficiency = 0.46135687586652463
+# B=k·I0/(N·ω0). Сухое трение не выделить из двух паспортных точек.
+viscous_nm_per_rad_s = 8.245711849345113e-7
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 1625.774198232718
+friction_band_rad_s = 1625.774198232718
+# Инерция ротора — оценка 3e-8 кг·м² для 12-вольтового мотора ~20 мм, нужен разгонный опыт.
+rotor_inertia_kg_m2 = 3.0e-8
+gear_input_inertia_kg_m2 = 0.0
+# Гипотеза стенда: люфт 0.25°, прогиб 0.5° под Tstall. K=Tstall/rad(0.5°).
+# Нужен замер люфта и жёсткости на собранной серве.
+backlash = 0.004363323129985824
+coupling_stiffness = 337.12779369718123
+# c=2ζ√(K·Jприв), ζ=1/√2, Jприв=(1/Jнагр+1/(Jрот·N²))⁻¹, Jнагр=0.00014 кг·м² в вертикальной позе по эскизу.
+coupling_damping = 0.30138745362364694
+# Внутренний регулятор: такт 1 кГц и задержка шины 0.5 мс — оценки, снять осциллографом.
+control_hz = 1000.0
+bus_delay_s = 0.0005
+# Рабочий диапазон вала по эскизу.
+position_min = -1.9198621771937625
+position_max = 1.9198621771937625
+# Мёртвая зона — один шаг энкодера. Усиления подобраны опытом на отсутствие звона в контуре 1 кГц с люфтом; у реальной сервы снять заново.
+position_deadband = 0.0015339807878856412
+position_gain = 10
+speed_limit = 4.71238898038469
+speed_kp = 0.2
+speed_ki = 3
+
+[[drives]]
+name = "серва-вращения"
+part = "feetech-sts3215-12v-c018"
+effort = "вращение"
+
+[drives.params]
+# Вращение кисти напрямую, ±170°.
+# Паспорт C018 (catalog/drives/feetech-sts3215-12v-c018.toml): U=12 В, Istall=2.7 А,
+# Tstall=2.941995 Н·м, 45 об/мин без нагрузки. Мост без падения: R=U/Istall.
+resistance_ohm = 4.444444444444444
+# Ток защиты штатной прошивки неизвестен, предел опыта равен Istall.
+current_limit_a = 2.7
+# Индуктивность не следует из паспорта. Оценка: L/R = 0.1 мс, нужен LCR-метр.
+inductance_h = 0.000444444444444
+# Передаточное число 1:345 по маркировке C018 в заметках владельца (ARM.md), не по паспорту.
+gear_ratio = 345.0
+# I0 ≈ Istall·0.066/0.91 (та же гипотеза, что у MG90S), k=(U−R·I0)/(N·ω0).
+motor_constant = 0.006845766368889806
+# η=Tstall/(Istall·k·N). Обратный КПД принят равным прямому, это допущение.
+gear_efficiency = 0.46135687586652463
+backward_efficiency = 0.46135687586652463
+# B=k·I0/(N·ω0). Сухое трение не выделить из двух паспортных точек.
+viscous_nm_per_rad_s = 8.245711849345113e-7
+coulomb_nm = 0.0
+static_friction_nm = 0.0
+stribeck_rad_s = 1625.774198232718
+friction_band_rad_s = 1625.774198232718
+# Инерция ротора — оценка 3e-8 кг·м² для 12-вольтового мотора ~20 мм, нужен разгонный опыт.
+rotor_inertia_kg_m2 = 3.0e-8
+gear_input_inertia_kg_m2 = 0.0
+# Гипотеза стенда: люфт 0.25°, прогиб 0.5° под Tstall. K=Tstall/rad(0.5°).
+# Нужен замер люфта и жёсткости на собранной серве.
+backlash = 0.004363323129985824
+coupling_stiffness = 337.12779369718123
+# c=2ζ√(K·Jприв), ζ=1/√2, Jприв=1/(M⁻¹ᵢᵢ+1/(Jрот·N²))=5.0854e-06 кг·м² в начальной позе (сочленённая инерция).
+coupling_damping = 0.058556227688514775
+# Внутренний регулятор: такт 1 кГц и задержка шины 0.5 мс — оценки, снять осциллографом.
+control_hz = 1000.0
+bus_delay_s = 0.0005
+# Рабочий диапазон вала по эскизу.
+position_min = -2.9670597283903604
+position_max = 2.9670597283903604
+# Мёртвая зона — один шаг энкодера. Усиления подобраны опытом на отсутствие звона в контуре 1 кГц с люфтом; у реальной сервы снять заново.
+position_deadband = 0.0015339807878856412
+position_gain = 10
+speed_limit = 4.71238898038469
+speed_kp = 0.2
+speed_ki = 3
+
+[[sensors]]
+name = "энкодер-поворота"
+part = "as5600"
+link = "башня"
+joint = "поворот"
+
+[sensors.params]
+# Магнитный энкодер внутри сервы, 12 бит на оборот выходного вала. Опрос по шине 500 Гц, доставка через такт.
+rate_hz = 500.0
+latency_s = 0.002
+encoder_mode = 0.0
+encoder_zero = 0.0
+quantum = 0.0015339807878856412
+bias = 0.0
+noise_std = 0.0
+drift_per_s = 0.0
+drift_rw_std = 0.0
+drop_probability = 0.0
+fault = 0.0
+saturation = 0.0
+
+[[sensors]]
+name = "энкодер-плеча"
+part = "as5600"
+link = "плечо"
+joint = "плечо"
+
+[sensors.params]
+# Магнитный энкодер внутри сервы, 12 бит на оборот выходного вала. Опрос по шине 500 Гц, доставка через такт.
+rate_hz = 500.0
+latency_s = 0.002
+encoder_mode = 0.0
+encoder_zero = 0.0
+# Энкодер на валу сервы до ремня: шаг на суставе 2π/4096/3.
+quantum = 0.0005113269292952137
+bias = 0.0
+noise_std = 0.0
+drift_per_s = 0.0
+drift_rw_std = 0.0
+drop_probability = 0.0
+fault = 0.0
+saturation = 0.0
+
+[[sensors]]
+name = "энкодер-локтя"
+part = "as5600"
+link = "предплечье"
+joint = "локоть"
+
+[sensors.params]
+# Магнитный энкодер внутри сервы, 12 бит на оборот выходного вала. Опрос по шине 500 Гц, доставка через такт.
+rate_hz = 500.0
+latency_s = 0.002
+encoder_mode = 0.0
+encoder_zero = 0.0
+# Энкодер на валу сервы до ремня: шаг на суставе 2π/4096/2.
+quantum = 0.0007669903939428206
+bias = 0.0
+noise_std = 0.0
+drift_per_s = 0.0
+drift_rw_std = 0.0
+drop_probability = 0.0
+fault = 0.0
+saturation = 0.0
+
+[[sensors]]
+name = "энкодер-запястья"
+part = "as5600"
+link = "запястье"
+joint = "запястье"
+
+[sensors.params]
+# Магнитный энкодер внутри сервы, 12 бит на оборот выходного вала. Опрос по шине 500 Гц, доставка через такт.
+rate_hz = 500.0
+latency_s = 0.002
+encoder_mode = 0.0
+encoder_zero = 0.0
+quantum = 0.0015339807878856412
+bias = 0.0
+noise_std = 0.0
+drift_per_s = 0.0
+drift_rw_std = 0.0
+drop_probability = 0.0
+fault = 0.0
+saturation = 0.0
+
+[[sensors]]
+name = "энкодер-вращения"
+part = "as5600"
+link = "кисть"
+joint = "вращение"
+
+[sensors.params]
+# Магнитный энкодер внутри сервы, 12 бит на оборот выходного вала. Опрос по шине 500 Гц, доставка через такт.
+rate_hz = 500.0
+latency_s = 0.002
+encoder_mode = 0.0
+encoder_zero = 0.0
+quantum = 0.0015339807878856412
+bias = 0.0
+noise_std = 0.0
+drift_per_s = 0.0
+drift_rw_std = 0.0
+drop_probability = 0.0
+fault = 0.0
+saturation = 0.0

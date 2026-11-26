@@ -228,6 +228,7 @@ fn run_case(
     })?;
     let mut report = result.run.report().clone();
     report.process_metrics = result.process_metrics;
+    report.missing.extend(result.process_blockers);
     if execution.physics.contains_key(&case.mode) && report.process_metrics.is_empty() {
         report.completed = false;
     }

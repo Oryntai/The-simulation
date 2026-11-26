@@ -1138,8 +1138,15 @@ fn free_coupling_conserves_momentum_and_bounds_energy_over_many_periods() {
     assert!(impulse_error < 16.0 * f64::EPSILON * 1e-6);
     // После внешнего толчка Δx в координате x=q−hv/2 равно h/2.
     let initial_shadow_energy = 1.0 + (4.8 / 1e-6) * (h / 2.0).powi(2);
+    // Проба держит внешнюю силу прошлого шага, поэтому шаг [h, 2h], где толчка
+    // уже нет, привод считает с толчком. Сверка отклика ограничивает невязку
+    // импульса этого шага 1% масштаба J·1 рад/с: скорости меняются не больше
+    // чем на 0.01, теневая энергия — не больше 2·0.01 + 0.01². С момента 2h
+    // внешних сил нет, проба точна, и теневая энергия сохраняется до округления.
+    let free_from = rate.tick(2);
+    let mut free_shadow_energy = None;
     let mut errors = [0.0_f64; 3];
-    for ((((.., q), (.., v)), (.., qm)), (.., vm)) in trace(&r, "qpos[0]")
+    for ((((at, q), (.., v)), (.., qm)), (.., vm)) in trace(&r, "qpos[0]")
         .into_iter()
         .zip(trace(&r, "qvel[0]"))
         .zip(trace(&r, "блок/привод/motor_rad"))
@@ -1150,10 +1157,14 @@ fn free_coupling_conserves_momentum_and_bounds_energy_over_many_periods() {
         errors[1] = errors[1].max((v * v + vm * vm + 4.8 / 1e-6 * (q - qm).powi(2) - 1.0).abs());
         let x = (q - qm) - 0.5 * h * (v - vm);
         let shadow = v * v + vm * vm + 4.8 / 1e-6 * x * x;
-        errors[2] = errors[2].max((shadow / initial_shadow_energy - 1.0).abs());
+        if at >= free_from {
+            let reference = *free_shadow_energy.get_or_insert(shadow);
+            errors[2] = errors[2].max((shadow / reference - 1.0).abs());
+        }
     }
+    let release = (free_shadow_energy.unwrap() / initial_shadow_energy - 1.0).abs();
     println!(
-        "300 периодов: max Δp/p={:.9e}, max ΔE/E={:.9e}, max ΔE(x)/E(x)={:.9e}",
+        "300 периодов: max Δp/p={:.9e}, max ΔE/E={:.9e}, max ΔE(x)/E(x)={:.9e}, снятие толчка ΔE(x)/E(x)={release:.9e}",
         errors[0], errors[1], errors[2]
     );
     // Округление сумм импульса и колебание энергии симплектического шага.
@@ -1161,6 +1172,7 @@ fn free_coupling_conserves_momentum_and_bounds_energy_over_many_periods() {
         errors[0] < 1e-10 && errors[1] < 0.01 && errors[2] < 1e-9,
         "{errors:?}"
     );
+    assert!(release < 2.0 * 0.01 + 0.01 * 0.01, "{release}");
 }
 
 #[test]

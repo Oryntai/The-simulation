@@ -1,0 +1,75 @@
+# Щуп: стальной стержень 8 мм со сферой 6 мм на конце, 45 мм от фланца до центра сферы.
+# Ось z насадки направлена от фланца руки. Хвостовик начинается в 1 мм от фланца, чтобы
+# замкнутый стык не давил насадку в кисть. Размеры и массы — эскиз, не чертёж.
+format = 3
+name = "щуп"
+
+[[links]]
+name = "основание"
+
+[links.joint]
+kind = "free"
+name = "основание"
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.015
+com_m = [0.0, 0.0, 0.02]
+inertia_kg_m2 = [2.8e-06, 2.8e-06, 1e-06, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA и сталь по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.015, length_m = 0.01 }
+pose = { position_m = [0.0, 0.0, 0.006] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0152, length_m = 0.002 }
+pose = { position_m = [0.0, 0.0, 0.006] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.006, length_m = 0.008 }
+pose = { position_m = [0.0, 0.0, 0.015] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0025, length_m = 0.026 }
+pose = { position_m = [0.0, 0.0, 0.032] }
+rgba = [0.66, 0.68, 0.72, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "sphere", radius_m = 0.003 }
+pose = { position_m = [0.0, 0.0, 0.045] }
+rgba = [0.78, 0.08, 0.15, 1.0]
+
+# хвостовик: воротник, которым насадка лежит на вилке
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.015, length_m = 0.01 }
+pose = { position_m = [0.0, 0.0, 0.006] }
+friction = [0.8, 0.005, 0.0001]
+
+# стержень
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.004, length_m = 0.034 }
+pose = { position_m = [0.0, 0.0, 0.028] }
+friction = [0.8, 0.005, 0.0001]
+
+# сфера щупа
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.003 }
+pose = { position_m = [0.0, 0.0, 0.045] }
+friction = [0.8, 0.005, 0.0001]
+
+[[links.mounts]]
+name = "фланец"
+kind = "mechanical"
+interface = "эскизный фланец инструмента, 4 винта M3 на окружности 25 мм"

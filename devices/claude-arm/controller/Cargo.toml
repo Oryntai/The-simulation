@@ -1,0 +1,11 @@
+[package]
+name = "claude-arm-controller"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+sim-control = { path = "../../../crates/sim-control" }
+sim-signal = { path = "../../../crates/sim-signal" }

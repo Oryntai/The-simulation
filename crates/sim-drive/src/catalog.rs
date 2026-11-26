@@ -78,6 +78,15 @@ options!(ControlMode {
     StepRate
 });
 options!(InertiaMode { Internal, Mjcf });
+// Где регулятор положения и скорости берёт обратную связь: на выходе сустава
+// (серва с датчиком на выходном валу) или на валу мотора (драйвер с энкодером мотора).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Feedback {
+    #[default]
+    Output,
+    Motor,
+}
 options!(BackdriveMode {
     Reversible,
     SelfLocking,
@@ -279,6 +288,9 @@ pub struct DriveEntry {
     pub kind: DriveKind,
     pub mode: ControlMode,
     pub inertia: InertiaMode,
+    /// Обратная связь регулятора; по умолчанию выход сустава.
+    #[serde(default)]
+    pub regulator_feedback: Feedback,
     pub backdrive: BackdriveMode,
     pub brake: BrakeMode,
     pub stop: StopMode,

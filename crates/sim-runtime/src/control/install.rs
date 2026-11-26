@@ -440,6 +440,8 @@ fn build(
             kind: item.target_kind,
             max_age: item.max_age_ns,
             fallback: item.fallback,
+            hold_last: item.hold_last,
+            last_value: None,
             driver: item.driver.clone(),
             latest: None,
             fallback_value: None,

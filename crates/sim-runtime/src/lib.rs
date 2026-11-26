@@ -684,10 +684,34 @@ impl Runtime {
         Ok(TruthId(id.0))
     }
 
+    /// Прореживать ряды истины в журнале: из каждого окна по каналу остаются первое
+    /// значение, минимум и максимум. Проверки диапазонов видят те же экстремумы.
+    pub fn set_truth_log_rate(&mut self, rate: Rate) -> Result<(), String> {
+        self.ensure_configurable()?;
+        if rate.as_hz() > self.physics_rate().as_hz() {
+            return Err("частота журнала истины выше частоты физики".into());
+        }
+        let period = rate.tick(1).0;
+        if period == 0 || rate.tick(2).0 != 2 * period {
+            return Err("период журнала истины должен быть целым числом наносекунд".into());
+        }
+        self.state.log.set_truth_period(period);
+        Ok(())
+    }
+
     /// Записывать координаты и скорости всех соединений на тактах физики,
     /// включая начальное состояние. Имена каналов содержат индексы MJCF.
     pub fn record_joint_state(&mut self, name: &str) -> Result<(), String> {
+        self.record_joint_state_at(name, self.physics_rate())
+    }
+
+    /// То же с заданной частотой записи. На высокой частоте физики запись на
+    /// каждом такте занимает сотни мегабайт на секунду модели.
+    pub fn record_joint_state_at(&mut self, name: &str, rate: Rate) -> Result<(), String> {
         self.ensure_configurable()?;
+        if rate.as_hz() > self.physics_rate().as_hz() {
+            return Err("частота записи состояния выше частоты физики".into());
+        }
         self.check_component_name(name)?;
         let mut coordinates = vec![""; self.sim.nq()];
         let mut velocities = vec![""; self.sim.nv()];
@@ -731,7 +755,7 @@ impl Runtime {
             qpos: register(qpos)?,
             qvel: register(qvel)?,
         };
-        self.register_evaluator(name, self.physics_rate(), recorder)
+        self.register_evaluator(name, rate, recorder)
     }
 
     pub fn register_sensor(
@@ -1399,6 +1423,7 @@ impl Runtime {
             self.state.log.end.time = until;
         }
         self.state.log.end.state_hash = self.process_state_hash(self.sim.state_hash());
+        self.state.log.flush();
         self.state
             .log
             .set_process_ticks(Some(self.state.work.journal.clone()));

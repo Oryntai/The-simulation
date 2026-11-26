@@ -1,0 +1,191 @@
+# Пары материалов контакта. Пишет tools/make_task.py. Всё — оценки до замера пар.
+version = 1
+
+[[entries]]
+materials = ["сталь", "сталь"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["сталь", "алюминий"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["сталь", "резина"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["сталь", "ПЭТ"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["сталь", "керамика"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["сталь", "дерево"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["алюминий", "алюминий"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["алюминий", "резина"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["алюминий", "ПЭТ"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["алюминий", "керамика"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["алюминий", "дерево"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["резина", "резина"]
+sliding = [{ value = 1.0, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 1.0, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["резина", "ПЭТ"]
+sliding = [{ value = 0.9, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.9, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["резина", "керамика"]
+sliding = [{ value = 0.9, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.9, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["резина", "дерево"]
+sliding = [{ value = 0.9, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.9, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["ПЭТ", "ПЭТ"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["ПЭТ", "керамика"]
+sliding = [{ value = 0.3, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.3, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["ПЭТ", "дерево"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["керамика", "керамика"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["керамика", "дерево"]
+sliding = [{ value = 0.5, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.5, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }
+
+[[entries]]
+materials = ["дерево", "дерево"]
+sliding = [{ value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }, { value = 0.4, source = { estimate = "Справочный порядок трения пары, не замер." } }]
+
+[entries.normal]
+kind = "direct"
+stiffness_per_s2 = { value = 160000.0, source = { estimate = "Контакт ω = 400 рад/с: жёстче шага 30 кГц не нужно; нужна идентификация пары." } }
+damping_per_s = { value = 800.0, source = { estimate = "Критическое затухание ζ = 1 при ω = 400 рад/с; нужна идентификация пары." } }

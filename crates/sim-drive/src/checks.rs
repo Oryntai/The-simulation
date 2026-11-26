@@ -38,6 +38,7 @@ fn fixture() -> Config {
         },
         thermal: None,
         mode: Mode::Pwm,
+        motor_feedback: false,
         control: Cadence::new(1000.0).unwrap(),
         delay: Time::ZERO,
         bus_range: None,

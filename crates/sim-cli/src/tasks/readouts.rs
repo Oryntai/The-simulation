@@ -26,6 +26,27 @@ enum Formula {
     ContactNormal {
         geoms: Option<[usize; 2]>,
     },
+    /// Мировая координата точки, жёстко связанной с телом: `axis` 0, 1, 2 — x, y, z.
+    BodyPoint {
+        body: String,
+        local_m: [f64; 3],
+        axis: usize,
+    },
+}
+
+/// Поворот вектора кватернионом (w, x, y, z): v + 2w(u×v) + 2u×(u×v).
+fn rotate([w, x, y, z]: [f64; 4], v: [f64; 3]) -> [f64; 3] {
+    let u = [x, y, z];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let t = cross(u, v).map(|c| 2.0 * c);
+    let s = cross(u, t);
+    [0, 1, 2].map(|i| v[i] + w * t[i] + s[i])
 }
 
 #[derive(Deserialize)]
@@ -89,6 +110,22 @@ impl Channel {
                     .map(|contact| contact.normal_force)
                     .sum()
             }
+            Formula::BodyPoint {
+                body,
+                local_m,
+                axis,
+            } => {
+                let engine = truth.engine();
+                let id = engine
+                    .id(sim_mujoco::ffi::mjtObj::mjOBJ_BODY, body)
+                    .ok_or_else(|| {
+                        format!(
+                            "нет тела «{body}» для расчётной точки: звено устройства — «устройство/звено», предмет мира — «имя/имя»"
+                        )
+                    })?;
+                let (position, quat) = engine.body_pose(id);
+                position[*axis] + rotate(quat, *local_m)[*axis]
+            }
         };
         Ok(value)
     }
@@ -129,6 +166,13 @@ impl Readout {
                 ..
             } if !min.is_finite() || !max.is_finite() || min > max => {
                 return Err("неверный диапазон координаты".into());
+            }
+            Formula::BodyPoint {
+                ref body,
+                local_m,
+                axis,
+            } if body.trim().is_empty() || axis > 2 || !local_m.iter().all(|v| v.is_finite()) => {
+                return Err("для точки тела нужны имя тела, конечное смещение и ось 0, 1 или 2".into());
             }
             _ => {}
         }

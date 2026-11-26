@@ -27,11 +27,14 @@ impl DriveGroup {
 
     fn bind(&mut self, truth: &Truth<'_>) -> Result<(), String> {
         let joints = truth.engine().joints();
+        let couplings = truth.engine().joint_couplings();
         for drive in &mut self.drives {
             let joint = joints
                 .iter()
                 .find(|joint| joint.name == drive.joint)
                 .ok_or_else(|| format!("нет оси «{}»", drive.joint))?;
+            drive.limit.transmission_input =
+                couplings.iter().any(|c| c.q2 == Some(joint.qpos_adr));
             let dof = joint.dof_adr + drive.limit.dof;
             drive.limit.axis = self
                 .dofs
@@ -72,12 +75,22 @@ struct Forecast {
     effort: Effort,
 }
 
+/// Масштаб импульса оси для сверки отклика: импульс скорости и импульс усилия за шаг.
+fn impulse_scale(forecast: &Forecast, actual: Motion, h: f64, inverse: f64) -> f64 {
+    let velocity = forecast.from.v.abs().max(forecast.to.v.abs()).max(actual.v.abs());
+    (velocity / inverse).max(h * forecast.effort.total().abs())
+}
+
+/// `group` — наибольший масштаб импульса в группе. Связанный пробный шаг ошибается в
+/// масштабе самых нагруженных осей; у почти ненагруженной оси собственный масштаб ниже
+/// этого шума (Д11 руки-кронштейна для решателя, здесь то же для сверки).
 fn verify_response(
     drive: &DriveObject,
     forecast: Forecast,
     actual: Motion,
     h: f64,
     inverse: f64,
+    group: f64,
 ) -> Result<(), String> {
     let velocity_scale = forecast
         .from
@@ -103,7 +116,8 @@ fn verify_response(
         + (checked.support - forecast.effort.support).abs();
     let impulse_scale = (velocity_scale / inverse)
         .max(h * checked.total().abs())
-        .max(h * forecast.effort.total().abs());
+        .max(h * forecast.effort.total().abs())
+        .max(group);
     let budget = crate::step_size::ACCURACY * impulse_scale;
     let impulse_error = h * error;
     if !budget.is_finite() || !impulse_error.is_finite() {
@@ -142,6 +156,21 @@ impl Object for DriveGroup {
             .iter()
             .map(|drive| drive.motion(truth))
             .collect::<Result<Vec<_>, _>>()?;
+        // Внешняя часть сил прошлого шага без собственных усилий группы: стимулы,
+        // усилия без привода, процессы, другие группы. Проба держит её на следующем
+        // шаге. Изменение после фазы приводов проба не знает: такой шаг проверяет
+        // сверка отклика.
+        let mut external = sim.qfrc_applied().to_vec();
+        for (drive, forecast) in self.drives.iter().zip(&self.forecasts) {
+            external[self.dofs[drive.limit.axis]] -= forecast.effort.total();
+        }
+        let group = self
+            .drives
+            .iter()
+            .zip(&start)
+            .zip(&self.forecasts)
+            .map(|((drive, &actual), forecast)| impulse_scale(forecast, actual, dt, self.inertia[drive.limit.axis].1))
+            .fold(0.0, f64::max);
         for ((drive, &actual), &forecast) in self.drives.iter().zip(&start).zip(&self.forecasts) {
             verify_response(
                 drive,
@@ -149,6 +178,7 @@ impl Object for DriveGroup {
                 actual,
                 dt,
                 self.inertia[drive.limit.axis].1,
+                group,
             )?;
         }
         for (drive, &motion) in self.drives.iter_mut().zip(&start) {
@@ -164,6 +194,7 @@ impl Object for DriveGroup {
         }
         self.probe.measure(sim, &self.dofs, &mut self.inertia)?;
         self.check_accuracy(dt, sim.model().opt.integrator as u32)?;
+        self.probe.set_external(&external);
         let free = self.probe.free_velocity(sim, &self.dofs)?;
         let mut efforts = if self.forecasts.is_empty() {
             vec![Effort::default(); self.drives.len()]
@@ -189,7 +220,7 @@ impl Object for DriveGroup {
         // При коэффициенте сжатия 1/2 за 64 итерации остаётся 2⁻⁶⁴
         // начальной невязки. Для переключений без сходимости — отказ.
         let mut residuals = [0.0_f64; 3];
-        for _ in 0..64 {
+        for iteration in 0..64 {
             residuals = [0.0; 3];
             sum.fill(0.0);
             for (drive, effort) in self.drives.iter().zip(&efforts) {
@@ -197,7 +228,7 @@ impl Object for DriveGroup {
             }
             let velocity = self.probe.respond(sim, &self.dofs, &free, &sum)?;
             next.clear();
-            let mut converged = true;
+            let mut scales = Vec::with_capacity(self.drives.len());
             for ((drive, &initial), &trial) in self.drives.iter().zip(&start).zip(&efforts) {
                 let v = velocity[drive.limit.axis];
                 let end = Motion {
@@ -211,12 +242,24 @@ impl Object for DriveGroup {
                     "привод «{}»: {reason}. Нужна частота физики ≥ {:.0} Гц для повторной проверки",
                     drive.id.name, (2.0 / dt).ceil()
                 ))?;
-                let scale = result.scale;
+                scales.push(result.scale.max(trial.scale));
+                next.push(result);
+            }
+            // Пробный шаг решает связанную систему группы: его округление
+            // пропорционально самым большим усилиям группы, а не усилию
+            // почти ненагруженного привода. Масштаб группы — нижняя граница.
+            let group = scales.iter().copied().fold(0.0, f64::max);
+            let mut converged = true;
+            for (((drive, &initial), &trial), result) in
+                self.drives.iter().zip(&start).zip(&efforts).zip(&next)
+            {
+                let v = velocity[drive.limit.axis];
+                let scale = result.scale.max(group);
                 // Около нулевой скорости разность упругого и полного усилий
                 // может терять значащие разряды. Бюджет потерь в Вт.
                 let speed_scale = drive.model.motor.v.abs() / drive.model.config.mechanical.ratio
                     + initial.v.abs()
-                    + end.v.abs();
+                    + v.abs();
                 let loss_scale = (scale * speed_scale)
                     .max(result.loss_w.abs())
                     .max(trial.loss_w.abs());
@@ -230,7 +273,6 @@ impl Object for DriveGroup {
                     smaller_error(result.transmission, trial.transmission, scale, tolerance)
                         && smaller_error(result.support, trial.support, scale, tolerance)
                         && (result.loss_w - trial.loss_w).abs() <= f64::EPSILON.sqrt() * loss_scale;
-                next.push(result);
             }
             if converged {
                 self.forecasts.clear();
@@ -262,6 +304,18 @@ impl Object for DriveGroup {
                     drive.publish(joint, out)?;
                 }
                 return Ok(());
+            }
+            // При коэффициенте петли около −1 простая подстановка застревает в
+            // двухтактном колебании на уровне округления. После 16 итераций
+            // берём среднее соседних приближений (Красносельский–Манн): для
+            // коэффициента −1 оно сходится за шаг. Раньше 16 итераций схема
+            // прежняя, поэтому сходящиеся случаи не меняются.
+            if iteration >= 16 {
+                for (next, trial) in next.iter_mut().zip(&efforts) {
+                    next.transmission = 0.5 * (next.transmission + trial.transmission);
+                    next.support = 0.5 * (next.support + trial.support);
+                    next.loss_w = 0.5 * (next.loss_w + trial.loss_w);
+                }
             }
             std::mem::swap(&mut efforts, &mut next);
         }

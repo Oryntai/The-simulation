@@ -12,6 +12,9 @@ pub(crate) struct MassProbe {
     tendon_inertia: Option<bool>,
     projection: Vec<f64>,
     response: Option<ResponseData>,
+    /// Обобщённые силы шага вне этой группы приводов (стимулы, усилия без привода,
+    /// процессы, другие группы). Пустой вектор означает нули.
+    external: Vec<f64>,
 }
 
 impl Clone for MassProbe {
@@ -81,7 +84,7 @@ impl MassProbe {
         // SAFETY: все указатели относятся к живым данным той же модели;
         // массивы qfrc_applied, qacc и dof_damping имеют nv элементов.
         let velocities = unsafe {
-            reset_response(sim, ptr, dofs, &[]);
+            reset_response(sim, ptr, dofs, &[], &self.external);
             ffi::mj_forward(m, ptr);
             let d = ptr.as_ref().expect("mjData существует");
             check_response(d)?;
@@ -95,6 +98,12 @@ impl MassProbe {
             return Err("неконечный отклик оси в MuJoCo".into());
         }
         Ok(velocities)
+    }
+
+    /// Внешние силы, которые подействуют на следующем шаге вместе с усилиями группы.
+    pub(crate) fn set_external(&mut self, forces: &[f64]) {
+        self.external.clear();
+        self.external.extend_from_slice(forces);
     }
 
     pub(crate) fn uses_trial_step(&self) -> bool {
@@ -130,10 +139,10 @@ impl MassProbe {
                     ] {
                         std::ptr::copy_nonoverlapping(src, dst, len);
                     }
-                    set_trial_efforts(d, sim.nv(), dofs, efforts);
+                    set_trial_efforts(d, sim.nv(), dofs, efforts, &self.external);
                     ffi::mj_step2(m, ptr);
                 } else {
-                    reset_response(sim, ptr, dofs, efforts);
+                    reset_response(sim, ptr, dofs, efforts, &self.external);
                     ffi::mj_step(m, ptr);
                 }
                 let d = ptr.as_ref().expect("mjData существует");
@@ -277,21 +286,38 @@ impl MassProbe {
 
 // Независимый пробный шаг. Runtime добавляет свои обобщённые
 // силы отдельно; их будущее значение интерфейс Object не передаёт.
-unsafe fn reset_response(sim: &Sim, ptr: *mut ffi::mjData, dofs: &[usize], efforts: &[f64]) {
+unsafe fn reset_response(
+    sim: &Sim,
+    ptr: *mut ffi::mjData,
+    dofs: &[usize],
+    efforts: &[f64],
+    external: &[f64],
+) {
     // SAFETY: ptr создан для этой модели, индексы dofs проверены при привязке.
     unsafe {
         ffi::mj_copyData(ptr, from_ref(sim.model()), from_ref(sim.data()));
-        set_trial_efforts(&*ptr, sim.nv(), dofs, efforts);
+        set_trial_efforts(&*ptr, sim.nv(), dofs, efforts, external);
     }
 }
 
-unsafe fn set_trial_efforts(d: &ffi::mjData, nv: usize, dofs: &[usize], efforts: &[f64]) {
+unsafe fn set_trial_efforts(
+    d: &ffi::mjData,
+    nv: usize,
+    dofs: &[usize],
+    efforts: &[f64],
+    external: &[f64],
+) {
     // SAFETY: для пробного mjData этот массив имеет nv элементов и принадлежит только пробе.
     unsafe {
         let forces = std::slice::from_raw_parts_mut(d.qfrc_applied, nv);
-        forces.fill(0.0);
+        // Внешние силы шага входят в пробу так же, как в основной шаг рантайма.
+        if external.len() == nv {
+            forces.copy_from_slice(external);
+        } else {
+            forces.fill(0.0);
+        }
         for (&dof, &effort) in dofs.iter().zip(efforts) {
-            forces[dof] = effort;
+            forces[dof] += effort;
         }
     }
 }

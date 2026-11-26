@@ -1,0 +1,73 @@
+# Литровая ПЭТ-бутылка с 1 л воды, крышка снята. Пишет tools/make_arm.py.
+# Вода входит в массу тела неподвижно (уровень 207 мм, центр 102.1 мм от внутреннего дна);
+# процесс «жидкость» прикладывает разницу с фактической водой.
+format = 3
+name = "бутылка"
+
+[[links]]
+name = "корпус"
+
+[links.joint]
+kind = "free"
+name = "корпус"
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+
+[links.mass]
+kind = "explicit"
+mass_kg = 1.0332
+com_m = [0.0, 0.0, 0.103643105]
+inertia_kg_m2 = [0.004187752, 0.004187752, 0.000834721, 0.0, 0.0, 0.0]
+provenance = { estimate = "вода 998.2 кг/м³ при 20 °C, 1 л; ПЭТ 35 г — типичная литровая бутылка, не взвешено" }
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.195 }
+pose = { position_m = [0.0, 0.0, 0.0975] }
+rgba = [0.5, 0.75, 0.95, 0.35]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0395, length_m = 0.2068 }
+pose = { position_m = [0.0, 0.0, 0.1044] }
+rgba = [0.35, 0.6, 0.95, 0.55]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.026, length_m = 0.04 }
+pose = { position_m = [0.0, 0.0, 0.215] }
+rgba = [0.5, 0.75, 0.95, 0.35]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0135, length_m = 0.035 }
+pose = { position_m = [0.0, 0.0, 0.2525] }
+rgba = [0.5, 0.75, 0.95, 0.35]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0165, length_m = 0.003 }
+pose = { position_m = [0.0, 0.0, 0.237] }
+rgba = [0.9, 0.9, 0.95, 0.8]
+
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0405, length_m = 0.06 }
+pose = { position_m = [0.0, 0.0, 0.11] }
+rgba = [0.2, 0.45, 0.75, 0.9]
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.04, length_m = 0.195 }
+pose = { position_m = [0.0, 0.0, 0.0975] }
+friction = [0.5, 0.005, 0.0001]
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.026, length_m = 0.04 }
+pose = { position_m = [0.0, 0.0, 0.215] }
+friction = [0.5, 0.005, 0.0001]
+
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.0135, length_m = 0.035 }
+pose = { position_m = [0.0, 0.0, 0.2525] }
+friction = [0.5, 0.005, 0.0001]
+
+[[links.mounts]]
+name = "хват"
+kind = "mechanical"
+interface = "центр захвата ладони"
+pose = { position_m = [0.0, 0.0, 0.11], rpy_deg = [90.0, 0.0, 90.0] }

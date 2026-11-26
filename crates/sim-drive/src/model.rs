@@ -245,12 +245,20 @@ impl Model {
                 Some(self.power != Some(false) && request == BridgeCommand::Drive)
             })
         };
+        // Драйвер с энкодером мотора видит вал ротора, приведённый к выходу.
+        let feedback = match self.config.mechanical.coupling {
+            Some(_) if self.config.motor_feedback => {
+                let ratio = self.config.mechanical.ratio;
+                Motion { q: self.motor.q / ratio, v: self.motor.v / ratio }
+            }
+            _ => joint,
+        };
         self.control.update(
             self.config,
             time,
             target.map(|value| (value, sequence)),
-            joint.q,
-            joint.v,
+            feedback.q,
+            feedback.v,
             regulator_power,
         )?;
         self.bridge = match self.bridge_request {

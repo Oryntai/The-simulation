@@ -62,6 +62,16 @@ pub struct LogHeader {
     pub truth: Vec<SignalSpec>,
 }
 
+/// Прореживание рядов истины: из каждого окна `period_ns` по каждому каналу остаются
+/// первое значение, минимум и максимум. Прочие записи журнала не трогаются, порядок по
+/// времени сохраняется: окно копится и сбрасывается целиком.
+#[derive(Clone, Debug)]
+struct Thinning {
+    period_ns: u64,
+    window: Option<u64>,
+    buffer: Vec<LogEntry>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Log {
     pub(crate) header: LogHeader,
@@ -71,6 +81,7 @@ pub struct Log {
     processes: Rc<Vec<(Time, String)>>,
     process_ticks: Option<Rc<Vec<ProcessTick>>>,
     rendered_processes: OnceCell<Rc<Vec<(Time, String)>>>,
+    thinning: Option<Thinning>,
 }
 
 enum ProcessRow<'a> {
@@ -104,7 +115,47 @@ impl Log {
             processes: Rc::default(),
             process_ticks: None,
             rendered_processes: OnceCell::new(),
+            thinning: None,
         }
+    }
+
+    /// Включает прореживание рядов истины окнами `period_ns`.
+    pub(crate) fn set_truth_period(&mut self, period_ns: u64) {
+        self.thinning = Some(Thinning { period_ns, window: None, buffer: Vec::new() });
+    }
+
+    /// Период прореживания рядов истины, если включено.
+    pub(crate) fn truth_period(&self) -> Option<u64> {
+        self.thinning.as_ref().map(|t| t.period_ns)
+    }
+
+    /// Сбрасывает накопленное окно прореживания в журнал.
+    pub(crate) fn flush(&mut self) {
+        let Some(thinning) = &mut self.thinning else { return };
+        let buffer = std::mem::take(&mut thinning.buffer);
+        thinning.window = None;
+        let mut keep = vec![false; buffer.len()];
+        let mut channels: std::collections::BTreeMap<u32, [usize; 3]> = std::collections::BTreeMap::new();
+        for (i, entry) in buffer.iter().enumerate() {
+            if entry.kind != LogKind::Truth || !entry.valid {
+                keep[i] = true;
+                continue;
+            }
+            let slot = channels.entry(entry.id).or_insert([i; 3]);
+            if entry.value < buffer[slot[1]].value {
+                slot[1] = i;
+            }
+            if entry.value > buffer[slot[2]].value {
+                slot[2] = i;
+            }
+        }
+        for slot in channels.values() {
+            for &i in slot {
+                keep[i] = true;
+            }
+        }
+        let entries = Rc::make_mut(&mut self.entries);
+        entries.extend(buffer.into_iter().zip(keep).filter(|(_, k)| *k).map(|(e, _)| e));
     }
 
     pub fn header(&self) -> &LogHeader {
@@ -182,6 +233,16 @@ impl Log {
     }
 
     pub(crate) fn push(&mut self, entry: LogEntry) {
+        if let Some(thinning) = &mut self.thinning {
+            let window = entry.at.0 / thinning.period_ns;
+            if thinning.window.is_some_and(|current| current != window) {
+                self.flush();
+            }
+            let thinning = self.thinning.as_mut().expect("прореживание включено");
+            thinning.window = Some(window);
+            thinning.buffer.push(entry);
+            return;
+        }
         Rc::make_mut(&mut self.entries).push(entry);
     }
 
@@ -415,6 +476,7 @@ impl Log {
             processes: Rc::new(processes),
             process_ticks: None,
             rendered_processes: OnceCell::new(),
+            thinning: None,
         })
     }
 
@@ -534,5 +596,46 @@ impl<W: Write> Write for Hasher<W> {
 
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
+    }
+}
+
+#[cfg(test)]
+mod thinning_tests {
+    use super::*;
+
+    fn entry(at: u64, kind: LogKind, id: u32, value: f64) -> LogEntry {
+        LogEntry { at: Time(at), kind, id, value, valid: true }
+    }
+
+    #[test]
+    fn прореживание_истины_хранит_первое_минимум_максимум_и_порядок() {
+        let header = LogHeader { world_hash: 0, seed: 0, observations: vec![], commands: vec![], truth: vec![] };
+        let end = LogEnd { time: Time::ZERO, steps: 0, state_hash: 0, status: Status::Running, started: false, failed_controller: None };
+        let mut log = Log::new(header, end);
+        log.set_truth_period(10);
+        // Окно 0..10: истина 0 — 5, 1, 9, 3; истина 1 постоянна; наблюдение посередине.
+        for (at, v) in [(0, 5.0), (2, 1.0), (4, 9.0), (6, 3.0)] {
+            log.push(entry(at, LogKind::Truth, 0, v));
+            log.push(entry(at, LogKind::Truth, 1, 7.0));
+        }
+        log.push(entry(5, LogKind::Observation, 0, 42.0));
+        // Окно 10..20 начинается — прошлое сбрасывается.
+        log.push(entry(10, LogKind::Truth, 0, 2.0));
+        log.push(entry(14, LogKind::Truth, 0, 2.5));
+        log.flush();
+        let kept: Vec<_> = log.entries().iter().map(|e| (e.at.0, e.kind == LogKind::Truth, e.id, e.value)).collect();
+        assert_eq!(
+            kept,
+            [
+                (0, true, 0, 5.0),
+                (0, true, 1, 7.0),
+                (2, true, 0, 1.0),
+                (4, true, 0, 9.0),
+                (5, false, 0, 42.0),
+                (10, true, 0, 2.0),
+                (14, true, 0, 2.5),
+            ]
+        );
+        assert!(log.entries().windows(2).all(|p| p[0].at <= p[1].at));
     }
 }

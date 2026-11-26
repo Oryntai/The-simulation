@@ -432,6 +432,11 @@ impl Sim {
     }
 
     /// Внешние обобщённые силы, действуют на следующих шагах.
+    /// Обобщённые силы последнего шага, заданные извне MuJoCo.
+    pub fn qfrc_applied(&self) -> &[f64] {
+        unsafe { std::slice::from_raw_parts((*self.d).qfrc_applied, self.nv()) }
+    }
+
     pub fn qfrc_applied_mut(&mut self) -> &mut [f64] {
         let n = self.nv();
         unsafe { std::slice::from_raw_parts_mut((*self.d).qfrc_applied, n) }

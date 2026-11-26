@@ -1,6 +1,7 @@
 mod balance;
 mod constitutive;
 mod docking;
+mod liquid;
 mod mechanical_monitor;
 mod rotary;
 mod thread;
@@ -136,8 +137,20 @@ pub(super) enum Spec {
     Coupler {
         carrier: Point,
         stations: BTreeMap<String, docking::Dock>,
+        /// Расписание опыта. Взаимоисключается с `lock`.
+        #[serde(default)]
         commands: Vec<docking::DockCommand>,
+        /// Замок, которым командует контур через шину.
+        lock: Option<docking::LockSignal>,
         bounds: [f64; 4],
+        source: String,
+    },
+    /// Жидкость в сосудах: объём, слив через горло, струя и пролив.
+    Liquid {
+        vessels: BTreeMap<String, liquid::Vessel>,
+        fluid: liquid::Fluid,
+        gravity_m_s2: [f64; 3],
+        goal: Option<liquid::Goal>,
         source: String,
     },
     ElasticAxis {
@@ -582,15 +595,26 @@ impl Spec {
             Self::StoredEnergy(config) => config.install(name, subject, rt),
             Self::MechanicalMonitor(config) => config.install(name, world, rt),
             Self::SharpEdge(config) => config.install(name, subject, world, rt),
+            Self::Liquid {
+                vessels,
+                fluid,
+                gravity_m_s2,
+                goal,
+                source,
+            } => {
+                validate_source(rt, name, &source)?;
+                liquid::install(name, world, rt, vessels, fluid, gravity_m_s2, goal)
+            }
             Self::Coupler {
                 carrier,
                 stations,
                 commands,
+                lock,
                 bounds,
                 source,
             } => {
                 validate_source(rt, name, &source)?;
-                docking::install(name, world, rt, carrier, stations, commands, bounds)
+                docking::install(name, world, rt, carrier, stations, commands, lock, bounds)
             }
             Self::Effort {
                 channel,

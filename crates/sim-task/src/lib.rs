@@ -199,6 +199,21 @@ impl RunResult {
     pub fn report(&self) -> &CaseReport {
         &self.report
     }
+
+    /// Свидетель и причины недоступности физики режима, посчитанные исполнителем
+    /// задания после прогона. Режим с физикой без свидетеля не завершён.
+    pub fn attach_mode_physics(
+        &mut self,
+        metrics: BTreeMap<String, [f64; 2]>,
+        blockers: Vec<String>,
+        required: bool,
+    ) {
+        if required && metrics.is_empty() {
+            self.report.completed = false;
+        }
+        self.report.process_metrics = metrics;
+        self.report.missing.extend(blockers);
+    }
 }
 
 pub(crate) fn validate_world_numbers(world: &CompiledWorld) -> Result<(), Error> {

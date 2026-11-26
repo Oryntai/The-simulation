@@ -30,6 +30,8 @@ pub(crate) struct DriveLimit {
     pub(crate) dof: usize,
     pub(crate) axis: usize,
     terms: Vec<Contribution>,
+    /// Ось привода — вход передачи (ремня, шестерни, винта) из `[[transmissions]]`.
+    pub(crate) transmission_input: bool,
 }
 
 impl DriveLimit {
@@ -113,6 +115,7 @@ impl DriveLimit {
             dof,
             axis: 0,
             terms,
+            transmission_input: false,
         })
     }
 }
@@ -179,7 +182,16 @@ impl DriveGroup {
                 inverse,
                 required.ceil(),
                 1.0 / dt,
-            ));
+            ) + if drive.limit.transmission_input {
+                // Лёгкий вал между жёсткостью привода и мягкой связью передачи
+                // даёт быструю моду; инерция за передачей в оценку не входит.
+                ". Ось — вход передачи из [[transmissions]]: опишите привод на выходной оси, \
+                 gear_ratio умножьте на 1/ratio передачи, КПД привода — на КПД передачи, \
+                 податливость передачи сложите с coupling_stiffness последовательно, \
+                 шаг энкодера на валу привода умножьте на ratio (README, «Привод за передачей»)"
+            } else {
+                ""
+            });
         }
         Ok(())
     }

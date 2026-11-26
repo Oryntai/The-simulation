@@ -1,0 +1,38 @@
+# Рука Claude, эскиз 2, на краю стола; литровая бутылка воды и кружка. Пишет tools/make_arm.py.
+format = 3
+name = "Кронштейн, бутылка и кружка"
+seed = 11
+physics_hz = 30000
+gravity_m_s2 = [0.0, 0.0, -9.80665]
+
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+
+# Столешница 0.8 × 1.0 × 0.04 м, край у x = 0, верх на z = 0.
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.8, 1.0, 0.04] }
+pose = { position_m = [0.4, 0.0, -0.02] }
+friction = [0.4, 0.005, 0.0001]
+
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.8, 1.0, 0.04] }
+pose = { position_m = [0.4, 0.0, -0.02] }
+rgba = [0.8, 0.74, 0.64, 1.0]
+
+[[devices]]
+name = "рука"
+file = "device.toml"
+pose = { position_m = [0.0, 0.0, 0.0] }
+
+[[devices]]
+name = "бутылка"
+file = "bottle.toml"
+pose = { position_m = [0.45, -0.1, 0.0] }
+
+[[devices]]
+name = "кружка"
+file = "mug.toml"
+pose = { position_m = [0.45, 0.1, 0.0], rpy_deg = [0.0, 0.0, 0.0] }
+

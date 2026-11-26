@@ -1,0 +1,40 @@
+version = 1
+control = "control-pick.toml"
+profile = "profile-pick.toml"
+
+[[modes]]
+id = "перенос"
+horizon_ns = 9000000000
+before_ns = 100000000
+after_ns = 300000000
+max_gap_ns = 2000000
+source = { kind = "derived", reference = "Подвести, опустить, сжать, поднять, перенести на 120 мм, поставить, разжать, отойти." }
+# Лёгкий толчок по плечу после отхода: проверка, что рука держит позу.
+excitation = "толчок"
+stimuli = [
+  { id = "толчок", signal = { name = "рука/толчок-плеча", unit = "N*m" }, at_ns = 8600000000, value = 0.1, comparison_value = 0.0, source = { kind = "estimate", reference = "Касание рукой человека." } },
+]
+
+[[criteria]]
+case = { path = "поворот", mode = "перенос" }
+limits = [{ kind = "range", signal = { name = "угол поворот", unit = "rad" }, min = -2.6179938779914944, max = 2.6179938779914944, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кубик z", unit = "m" }, min = 0.0, max = 0.2, source = { kind = "estimate", reference = "Кубик не проваливается под стол и не улетает." } }, { kind = "range", signal = { name = "кубик x", unit = "m" }, min = 0.0, max = 0.4, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }, { kind = "range", signal = { name = "кубик y", unit = "m" }, min = -0.2, max = 0.2, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }]
+
+[[criteria]]
+case = { path = "плечо", mode = "перенос" }
+limits = [{ kind = "range", signal = { name = "угол плечо", unit = "rad" }, min = -0.2617993877991494, max = 1.6580627893946132, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кубик z", unit = "m" }, min = 0.0, max = 0.2, source = { kind = "estimate", reference = "Кубик не проваливается под стол и не улетает." } }, { kind = "range", signal = { name = "кубик x", unit = "m" }, min = 0.0, max = 0.4, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }, { kind = "range", signal = { name = "кубик y", unit = "m" }, min = -0.2, max = 0.2, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }]
+
+[[criteria]]
+case = { path = "локоть", mode = "перенос" }
+limits = [{ kind = "range", signal = { name = "угол локоть", unit = "rad" }, min = -0.3490658503988659, max = 2.6179938779914944, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кубик z", unit = "m" }, min = 0.0, max = 0.2, source = { kind = "estimate", reference = "Кубик не проваливается под стол и не улетает." } }, { kind = "range", signal = { name = "кубик x", unit = "m" }, min = 0.0, max = 0.4, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }, { kind = "range", signal = { name = "кубик y", unit = "m" }, min = -0.2, max = 0.2, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }]
+
+[[criteria]]
+case = { path = "запястье", mode = "перенос" }
+limits = [{ kind = "range", signal = { name = "угол запястье", unit = "rad" }, min = -1.9198621771937625, max = 1.9198621771937625, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кубик z", unit = "m" }, min = 0.0, max = 0.2, source = { kind = "estimate", reference = "Кубик не проваливается под стол и не улетает." } }, { kind = "range", signal = { name = "кубик x", unit = "m" }, min = 0.0, max = 0.4, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }, { kind = "range", signal = { name = "кубик y", unit = "m" }, min = -0.2, max = 0.2, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }]
+
+[[criteria]]
+case = { path = "вращение", mode = "перенос" }
+limits = [{ kind = "range", signal = { name = "угол вращение", unit = "rad" }, min = -2.9670597283903604, max = 2.9670597283903604, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кубик z", unit = "m" }, min = 0.0, max = 0.2, source = { kind = "estimate", reference = "Кубик не проваливается под стол и не улетает." } }, { kind = "range", signal = { name = "кубик x", unit = "m" }, min = 0.0, max = 0.4, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }, { kind = "range", signal = { name = "кубик y", unit = "m" }, min = -0.2, max = 0.2, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }]
+
+[[criteria]]
+case = { path = "схват", mode = "перенос" }
+limits = [{ kind = "range", signal = { name = "ход губы", unit = "m" }, min = -0.0005, max = 0.0305, source = { kind = "estimate", reference = "Ход губы 0–30 мм по эскизу; упор MuJoCo мягкий, допуск 0.5 мм." } }, { kind = "range", signal = { name = "кубик z", unit = "m" }, min = 0.0, max = 0.2, source = { kind = "estimate", reference = "Кубик не проваливается под стол и не улетает." } }, { kind = "range", signal = { name = "кубик x", unit = "m" }, min = 0.0, max = 0.4, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }, { kind = "range", signal = { name = "кубик y", unit = "m" }, min = -0.2, max = 0.2, source = { kind = "estimate", reference = "Кубик остаётся на столе перед рукой." } }]

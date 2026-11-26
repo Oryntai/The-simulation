@@ -1,0 +1,106 @@
+# Рука Claude, два держателя-вилки и две насадки. Пишет tools/make_tools.py.
+format = 3
+name = "Рука Claude со сменщиком насадок"
+seed = 8
+# Как в world.toml: сверка привода на шаге толчка требует 240 кГц (DEFECTS.md, Д5).
+physics_hz = 240000
+gravity_m_s2 = [0.0, 0.0, -9.80665]
+
+[environment]
+density_kg_m3 = 0.0
+viscosity_pa_s = 0.0
+wind_m_s = [0.0, 0.0, 0.0]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [1.2, 0.8, 0.04] }
+pose = { position_m = [0.15, 0.0, -0.02] }
+friction = [0.8, 0.005, 0.0001]
+
+# Вилка держателя «щуп»: два бруска 30×8 мм, щель 16 мм, верх на 64 мм.
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, -0.092, 0.032] }
+friction = [0.8, 0.005, 0.0001]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, -0.068, 0.032] }
+friction = [0.8, 0.005, 0.0001]
+
+# Вилка держателя «маркер»: два бруска 30×8 мм, щель 16 мм, верх на 64 мм.
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, 0.068, 0.032] }
+friction = [0.8, 0.005, 0.0001]
+
+[[environment.collision]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, 0.092, 0.032] }
+friction = [0.8, 0.005, 0.0001]
+
+# вид: tools/make_visuals.py
+[[environment.visual]]
+shape = { kind = "box", size_m = [1.2, 0.8, 0.04] }
+pose = { position_m = [0.15, 0.0, -0.02] }
+rgba = [0.8, 0.74, 0.64, 1.0]
+
+# вид: tools/make_visuals.py
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.05, 0.05, 0.004] }
+pose = { position_m = [0.16, -0.08, 0.002] }
+rgba = [0.32, 0.34, 0.38, 1.0]
+
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, -0.092, 0.032] }
+rgba = [0.32, 0.34, 0.38, 1.0]
+
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, -0.068, 0.032] }
+rgba = [0.32, 0.34, 0.38, 1.0]
+
+# вид: tools/make_visuals.py
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.05, 0.05, 0.004] }
+pose = { position_m = [0.16, 0.08, 0.002] }
+rgba = [0.32, 0.34, 0.38, 1.0]
+
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, 0.068, 0.032] }
+rgba = [0.32, 0.34, 0.38, 1.0]
+
+[[environment.visual]]
+shape = { kind = "box", size_m = [0.03, 0.008, 0.064] }
+pose = { position_m = [0.16, 0.092, 0.032] }
+rgba = [0.32, 0.34, 0.38, 1.0]
+
+[[devices]]
+name = "рука"
+file = "device.toml"
+pose = { position_m = [0.0, 0.0, 0.0] }
+
+# «щуп» стоит в держателе воротником на вилке, повёрнут как фланец над ним.
+[[devices]]
+name = "щуп"
+file = "tool-probe.toml"
+pose = { position_m = [0.16, -0.08, 0.075], quat_wxyz = [0.000000000000, 0.229752920547, 0.973248989468, 0.000000000000] }
+
+[[attachments]]
+name = "щуп"
+first = "рука/кисть/фланец"
+second = "щуп/основание/фланец"
+mode = "runtime"
+
+# «маркер» стоит в держателе воротником на вилке, повёрнут как фланец над ним.
+[[devices]]
+name = "маркер"
+file = "tool-marker.toml"
+pose = { position_m = [0.16, 0.08, 0.075], quat_wxyz = [0.000000000000, -0.229752920547, 0.973248989468, 0.000000000000] }
+
+[[attachments]]
+name = "маркер"
+first = "рука/кисть/фланец"
+second = "маркер/основание/фланец"
+mode = "runtime"

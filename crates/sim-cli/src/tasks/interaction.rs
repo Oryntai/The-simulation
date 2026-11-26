@@ -1326,6 +1326,8 @@ impl Experiment<'_> {
             .collect();
         let setup = Setup {
             world: &compiled,
+            joint_state: None,
+                    truth: None,
             readouts: &w.control.readouts,
             measurements: &w.control.measurements,
             sampled: w.sampled.clone(),

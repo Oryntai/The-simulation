@@ -18,6 +18,8 @@ use super::{
 
 // Рабочее разрешение обзорной текстуры. При увеличении окна egui масштабирует её.
 const SIZE: [u32; 2] = [480, 360];
+/// Наибольшая ширина обзорного кадра в точках экрана: растеризация идёт на процессоре.
+const MAX_WIDTH: u32 = 1600;
 
 #[derive(Default)]
 pub(super) struct Slot {
@@ -148,6 +150,10 @@ struct Studio {
     elevation: f64,
     zoom: f64,
     dirty: bool,
+    /// Размер обзорного кадра в точках экрана и их плотность. Панель задаёт его
+    /// по ширине колонки, без панели остаётся SIZE.
+    render: [u32; 2],
+    pixels_per_point: f32,
 }
 
 impl Studio {
@@ -187,6 +193,8 @@ impl Studio {
             elevation: 0.5,
             zoom: 1.0,
             dirty: true,
+            render: SIZE,
+            pixels_per_point: 1.0,
         }
     }
 
@@ -514,7 +522,7 @@ impl Studio {
             slot.texture = None;
         }
         for slot in &mut self.slots {
-            let image = match slot.frame(self.time, view, SIZE, &self.force)? {
+            let image = match slot.frame(self.time, view, self.render, &self.force)? {
                 Some(SlotFrame::Recorded(frame, force)) => display_image(frame, force.as_ref())?,
                 Some(SlotFrame::Rendered(frame)) => {
                     let size = frame.size.map(|n| n as usize);
@@ -968,6 +976,17 @@ fn panel(mut contexts: EguiContexts, mut st: NonSendMut<Studio>, time: Res<TimeS
             }
         });
         choose_views(ui,&mut st);
+        // Кадр рисуется в точках экрана под ширину колонки, иначе на ретине он растянут вдвое.
+        let columns = st.slots.iter().filter(|slot| slot.scene.is_some()).count().max(1) as f32;
+        let ppp = ctx.pixels_per_point();
+        let width = ((ui.available_width() / columns - 8.0).max(160.0) * ppp).round() as u32;
+        let width = width.min(MAX_WIDTH) & !1;
+        let render = [width, width * SIZE[1] / SIZE[0]];
+        if render != st.render || ppp != st.pixels_per_point {
+            st.render = render;
+            st.pixels_per_point = ppp;
+            st.dirty = true;
+        }
         if let Err(e) = st.redraw(ctx) { st.message = e; }
         egui::ScrollArea::vertical().show(ui, |ui| {
             let slots: Vec<_> = st.slots.iter().enumerate().filter(|(_, slot)| slot.scene.is_some()).collect();
@@ -995,7 +1014,9 @@ fn panel(mut contexts: EguiContexts, mut st: NonSendMut<Studio>, time: Res<TimeS
                         if !slot.fingerprint_matches { ui.colored_label(egui::Color32::YELLOW,"Поза из журнала на проектной геометрии. Точная сцена прогона не выгружена"); }
                     }
                     if let Some(texture) = &slot.texture {
-                        let size = texture.size_vec2();
+                        // Обзорный кадр нарисован в точках экрана, записанный кадр камеры — в своих пикселях.
+                        let rendered = texture.size() == st.render.map(|n| n as usize);
+                        let size = texture.size_vec2() / if rendered { st.pixels_per_point } else { 1.0 };
                         let width = ui.available_width().min(size.x);
                         ui.image((texture.id(),size*(width/size.x)));
                     }

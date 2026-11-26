@@ -70,6 +70,10 @@ struct Profile {
     deferred_modes: BTreeMap<String, String>,
     #[serde(default)]
     hazard_witnesses: Vec<control_witness::Spec>,
+    /// Частота записи координат и скоростей соединений. Без неё — каждый такт физики.
+    joint_state_hz: Option<u64>,
+    /// Окна прореживания рядов истины: по каналу остаются первое значение, минимум и максимум.
+    truth_hz: Option<u64>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -84,6 +88,8 @@ struct SampledMode {
 struct ModePhysicsRef {
     case: PathBuf,
     witness: String,
+    /// Частота хранения журнала процессов режима. Без неё журнал хранит каждый шаг физики.
+    journal_hz: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -265,6 +271,8 @@ pub(crate) fn install_live_measurements(
 
 struct Setup<'a> {
     world: &'a CompiledWorld,
+    joint_state: Option<sim_signal::Rate>,
+    truth: Option<sim_signal::Rate>,
     readouts: &'a [readouts::Readout],
     measurements: &'a [measurements::Measurement],
     sampled: BTreeMap<String, sim_drive::sampled::Spec>,
@@ -365,7 +373,13 @@ impl Setup<'_> {
         for measurement in self.measurements {
             measurement.install(rt, compiled, &sampled)?;
         }
-        rt.record_joint_state("запись состояния")?;
+        match self.joint_state {
+            Some(rate) => rt.record_joint_state_at("запись состояния", rate)?,
+            None => rt.record_joint_state("запись состояния")?,
+        }
+        if let Some(rate) = self.truth {
+            rt.set_truth_log_rate(rate)?;
+        }
         for readout in self.readouts {
             readout.install(rt)?;
         }
@@ -604,6 +618,7 @@ struct ExecutedCase {
     comparison: Option<reference::Comparison>,
     observations: Vec<control_witness::Observation>,
     process_metrics: BTreeMap<String, [f64; 2]>,
+    process_blockers: Vec<String>,
 }
 
 impl Execution<'_> {
@@ -617,6 +632,7 @@ impl Execution<'_> {
         let mut archive_error = None;
         let mut observations = Vec::new();
         let mut process_metrics = BTreeMap::new();
+        let mut process_blockers = Vec::new();
         let plan = self.assessor.plan(case).ok_or("нет плана опыта")?;
         let result = self
             .assessor
@@ -662,8 +678,9 @@ impl Execution<'_> {
                     }
                     if kind == RunKind::Live {
                         if let Some(physics) = self.physics.get(&case.mode) {
-                            let (name, bounds) = physics.observe(rt)?;
+                            let (name, bounds, blockers) = physics.observe(rt)?;
                             process_metrics.insert(name.to_owned(), bounds);
+                            process_blockers = blockers;
                         }
                         match control_witness::collect(self.witnesses, &plan, rt) {
                             Ok(values) => observations = values,
@@ -710,6 +727,7 @@ impl Execution<'_> {
             comparison,
             observations,
             process_metrics,
+            process_blockers,
         })
     }
 }
@@ -820,6 +838,14 @@ fn run_control(
     let control_path = task_dir.join(task.control());
     let mut setup = Setup {
         world: &world,
+        joint_state: profile
+            .joint_state_hz
+            .map(|hz| sim_signal::Rate::hz(hz).ok_or("joint_state_hz: нужна положительная частота"))
+            .transpose()?,
+        truth: profile
+            .truth_hz
+            .map(|hz| sim_signal::Rate::hz(hz).ok_or("truth_hz: нужна положительная частота"))
+            .transpose()?,
         readouts: &profile.readouts,
         measurements: &profile.measurements,
         sampled: BTreeMap::new(),
@@ -904,7 +930,7 @@ fn run_control(
         let mode = task.modes().iter().find(|mode| &mode.id == id)
             .ok_or_else(|| format!("физика объявлена для неизвестного режима «{id}»"))?;
         let mut value = processes::ModePhysics::load(
-            &task_dir.join(&reference.case), &reference.witness,
+            &task_dir.join(&reference.case), &reference.witness, reference.journal_hz,
             &options.world, world.seed, world.physics, mode.horizon_ns, &mut physics_files,
         )?;
         if let Some(sample) = sample {
@@ -1094,7 +1120,9 @@ fn run_control(
     let mut exported = false;
     let mut comparisons = BTreeMap::new();
     for case in assessor.required_cases().iter().filter(|case| {
-        options.case.as_ref().is_none_or(|mode| mode == &case.mode) && assessor.plan(case).is_some()
+        options.case.as_ref().is_none_or(|mode| mode == &case.mode)
+            && options.path.as_ref().is_none_or(|path| path == &case.path)
+            && assessor.plan(case).is_some()
     }) {
         let result = execution.run_case(case, options.view.is_some() && !exported, |runtime| {
             if !exported && case.fault.is_none() {
@@ -1113,7 +1141,13 @@ fn run_control(
         if let Some(comparison) = result.comparison {
             comparisons.insert(case.mode.clone(), comparison);
         }
-        runs.push(result.run);
+        let mut run = result.run;
+        run.attach_mode_physics(
+            result.process_metrics,
+            result.process_blockers,
+            execution.physics.contains_key(&case.mode),
+        );
+        runs.push(run);
     }
     if options.view.is_some() && !exported {
         return Err("для просмотра нет завершившего наблюдение штатного прогона".into());

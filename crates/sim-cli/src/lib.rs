@@ -17,7 +17,7 @@ use sim_runtime::{Log, LogEnd, LogEntry, LogKind, Runtime, Status};
 use sim_signal::{Command, Time};
 use sim_world::CompiledWorld;
 
-const USAGE: &str = "sim-run <world.toml> --duration <с> [--electrical профиль.toml] [--catalog папка] [--commands файл.csv] [--seed N] [--log файл] [--csv файл] [--view файл [--peak канал]] [--mode fast|realtime|step] [--snapshot-at <с>] [--replay файл] [--json]\nsim-run <world.toml> --task <task.toml> [--case режим | --matrix full [--jobs N] [--checkpoint папка]] [--seed N] [--catalog папка] [--view файл [--peak канал]] [--json]\nsim-run --campaign <manifest.toml> [--jobs N] [--checkpoint папка] [--repeat ключ [--view файл | --log файл]] [--measurements файл] [--json]
+const USAGE: &str = "sim-run <world.toml> --duration <с> [--electrical профиль.toml] [--catalog папка] [--commands файл.csv] [--seed N] [--log файл] [--csv файл] [--view файл [--peak канал]] [--mode fast|realtime|step] [--snapshot-at <с>] [--replay файл] [--json]\nsim-run <world.toml> --task <task.toml> [--case режим [--path путь] | --matrix full [--jobs N] [--checkpoint папка]] [--seed N] [--catalog папка] [--view файл [--peak канал]] [--json]\nsim-run --campaign <manifest.toml> [--jobs N] [--checkpoint папка] [--repeat ключ [--view файл | --log файл]] [--measurements файл] [--json]
 Для кампании --jobs ограничивает общее число исполнителей. По умолчанию используются до четырёх доступных логических ядер.";
 
 #[derive(Clone, Copy, Default)]
@@ -48,6 +48,8 @@ struct Options {
     campaign: Option<PathBuf>,
     repeat: Option<String>,
     case: Option<String>,
+    /// Только случай этого пути режима: отладочный прогон, отчёт неполон по покрытию.
+    path: Option<String>,
     matrix_full: bool,
     selected_control_case: Option<sim_task::Case>,
     linked_grid_hz: Option<u64>,
@@ -109,6 +111,7 @@ impl Options {
                     | "--campaign"
                     | "--repeat"
                     | "--case"
+                    | "--path"
                     | "--matrix"
                     | "--jobs"
                     | "--checkpoint"
@@ -164,6 +167,7 @@ impl Options {
                 "--campaign" => options.campaign = Some(value.into()),
                 "--repeat" => options.repeat = Some(as_text()?.into()),
                 "--case" => options.case = Some(as_text()?.into()),
+                "--path" => options.path = Some(as_text()?.into()),
                 "--matrix" => {
                     if as_text()? != "full" {
                         return Err("--matrix: допустимо только full".into());
@@ -230,6 +234,9 @@ impl Options {
         }
         if options.task.is_none() && options.case.is_some() {
             return Err("--case требуется --task".into());
+        }
+        if options.path.is_some() && (options.case.is_none() || options.matrix_full) {
+            return Err("--path требуется вместе с --case и без --matrix".into());
         }
         if options.matrix_full
             && (options.task.is_none() || options.case.is_some() || options.exports_run())

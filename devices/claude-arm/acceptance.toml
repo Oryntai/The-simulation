@@ -1,0 +1,62 @@
+version = 1
+control = "control.toml"
+profile = "profile.toml"
+
+[[modes]]
+id = "обход"
+horizon_ns = 9000000000
+before_ns = 100000000
+after_ns = 500000000
+max_gap_ns = 2000000
+source = { kind = "derived", reference = "Шесть точек: переезд 0.8 с, выдержка 0.5 с; затем толчок." }
+# Толчок по плечу после обхода: человек нажимает на руку.
+excitation = "толчок"
+stimuli = [
+  { id = "толчок", signal = { name = "рука/толчок-плеча", unit = "N*m" }, at_ns = 8200000000, value = 0.3, comparison_value = 0.0, source = { kind = "estimate", reference = "Нажим около 1 Н на вылете 0.3 м: человек толкает руку." } },
+]
+
+# Компьютер с Claude зависает, когда рука стоит в третьем углу коробки над столом.
+[[modes.faults]]
+fault = { node = "controller:компьютер", kind = "controller_halted" }
+at_ns = 4100000000
+source = { kind = "derived", reference = "Конец выдержки в точке (200, −80, 30) мм." }
+
+[[criteria]]
+case = { path = "поворот", mode = "обход" }
+limits = [{ kind = "range", signal = { name = "угол поворот", unit = "rad" }, min = -2.6179938779914944, max = 2.6179938779914944, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "плечо", mode = "обход" }
+limits = [{ kind = "range", signal = { name = "угол плечо", unit = "rad" }, min = -0.2617993877991494, max = 1.6580627893946132, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "локоть", mode = "обход" }
+limits = [{ kind = "range", signal = { name = "угол локоть", unit = "rad" }, min = -0.3490658503988659, max = 2.6179938779914944, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "запястье", mode = "обход" }
+limits = [{ kind = "range", signal = { name = "угол запястье", unit = "rad" }, min = -1.9198621771937625, max = 1.9198621771937625, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "вращение", mode = "обход" }
+limits = [{ kind = "range", signal = { name = "угол вращение", unit = "rad" }, min = -2.9670597283903604, max = 2.9670597283903604, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "поворот", mode = "обход", fault = { node = "controller:компьютер", kind = "controller_halted" } }
+limits = [{ kind = "range", signal = { name = "угол поворот", unit = "rad" }, min = -2.6179938779914944, max = 2.6179938779914944, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "плечо", mode = "обход", fault = { node = "controller:компьютер", kind = "controller_halted" } }
+limits = [{ kind = "range", signal = { name = "угол плечо", unit = "rad" }, min = -0.2617993877991494, max = 1.6580627893946132, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "локоть", mode = "обход", fault = { node = "controller:компьютер", kind = "controller_halted" } }
+limits = [{ kind = "range", signal = { name = "угол локоть", unit = "rad" }, min = -0.3490658503988659, max = 2.6179938779914944, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "запястье", mode = "обход", fault = { node = "controller:компьютер", kind = "controller_halted" } }
+limits = [{ kind = "range", signal = { name = "угол запястье", unit = "rad" }, min = -1.9198621771937625, max = 1.9198621771937625, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]
+
+[[criteria]]
+case = { path = "вращение", mode = "обход", fault = { node = "controller:компьютер", kind = "controller_halted" } }
+limits = [{ kind = "range", signal = { name = "угол вращение", unit = "rad" }, min = -2.9670597283903604, max = 2.9670597283903604, source = { kind = "estimate", reference = "Рабочий диапазон сустава по эскизу." } }, { kind = "range", signal = { name = "кончик z", unit = "m" }, min = 0.0, max = 0.5, source = { kind = "estimate", reference = "Фланец не уходит ниже столешницы z = 0." } }]

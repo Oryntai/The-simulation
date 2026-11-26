@@ -533,6 +533,8 @@ pub(super) struct OutputSpec {
     pub unit: String,
     pub max_age_ns: u64,
     pub fallback: Option<f64>,
+    /// `fallback = "hold"`: при пропуске держать последнее значение, ушедшее на выход.
+    pub hold_last: bool,
     pub ack: Option<String>,
     pub driver: Option<DriverSpec>,
 }
@@ -614,7 +616,17 @@ pub(super) fn output(mut t: Table) -> Result<OutputSpec, String> {
     };
     let unit = t.text("unit")?;
     let max_age_ns = t.number("max_age_ns")?;
-    let fallback = t.opt_finite("fallback")?;
+    // Число — подстановка значения, строка "hold" — последнее значение выхода.
+    let hold_last = t
+        .fields
+        .get("fallback")
+        .is_some_and(|raw| quoted(raw).as_deref() == Some("hold"));
+    let fallback = if hold_last {
+        t.text("fallback")?;
+        None
+    } else {
+        t.opt_finite("fallback")?
+    };
     let ack = t.opt_text("ack")?;
     if (target_kind == TargetKind::Drive) != ack.is_some() {
         return Err(t.error("для входа привода требуется канал подтверждения"));
@@ -622,8 +634,11 @@ pub(super) fn output(mut t: Table) -> Result<OutputSpec, String> {
     if target_kind == TargetKind::Power && fallback.is_some_and(|v| v != 0.0 && v != 1.0) {
         return Err(t.error("резерв питания должен быть 0 или 1"));
     }
-    if matches!(target_kind, TargetKind::Drive) && fallback.is_none() {
+    if matches!(target_kind, TargetKind::Drive) && fallback.is_none() && !hold_last {
         return Err(t.error("для привода нужна явная реакция на пропуск команды"));
+    }
+    if hold_last && !matches!(target_kind, TargetKind::Drive) {
+        return Err(t.error("резерв «hold» допустим только для привода"));
     }
     t.source()?;
     t.finish()?;
@@ -635,6 +650,7 @@ pub(super) fn output(mut t: Table) -> Result<OutputSpec, String> {
         unit,
         max_age_ns,
         fallback,
+        hold_last,
         ack,
         driver,
     })

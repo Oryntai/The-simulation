@@ -119,6 +119,9 @@ struct Output {
     kind: TargetKind,
     max_age: u64,
     fallback: Option<f64>,
+    hold_last: bool,
+    /// Последнее значение, ушедшее на выход из действующей команды.
+    last_value: Option<f64>,
     driver: Option<DriverSpec>,
     latest: Option<TimedCommand>,
     fault_value: Option<TimedCommand>,
@@ -548,12 +551,18 @@ impl Engine {
         Ok(())
     }
 
+    /// Резервное значение выхода: число из данных или последнее ушедшее значение.
+    fn fallback(&self, index: usize) -> Option<f64> {
+        let out = &self.outputs[index];
+        if out.hold_last { out.last_value } else { out.fallback }
+    }
+
     fn choice(&mut self, at: Time, index: usize) -> Result<Option<TimedCommand>, String> {
         let action = self.output_fault(at, index)?;
         let (value, fault) = match action {
             Some(FaultAction::Stuck(value)) => (Some(value), true),
             Some(FaultAction::PowerOff) => (Some(0.0), true),
-            Some(FaultAction::Drop) => (self.outputs[index].fallback, false),
+            Some(FaultAction::Drop) => (self.fallback(index), false),
             Some(FaultAction::Pause | FaultAction::Delay(_)) => {
                 unreachable!("проверено при установке")
             }
@@ -561,6 +570,7 @@ impl Engine {
                 if let Some(command) = self.outputs[index].latest {
                     if command.expires_at.is_none_or(|expires| at <= expires) {
                         self.outputs[index].fallback_value = None;
+                        self.outputs[index].last_value = Some(command.value);
                         return Ok(Some(command));
                     }
                     // При проверке с такта исполнительного объекта отдельный такт цели не нужен.
@@ -573,7 +583,7 @@ impl Engine {
                         },
                     );
                 }
-                (self.outputs[index].fallback, false)
+                (self.fallback(index), false)
             }
         };
         let Some(value) = value else {

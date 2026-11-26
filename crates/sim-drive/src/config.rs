@@ -6,7 +6,7 @@ use sim_signal::{Rate, Time};
 use crate::input::PulseCalibration;
 
 use crate::catalog::{
-    BackdriveMode, BrakeMode, ControlMode, DriveEntry, DriveKind, InertiaMode, Parameter as P,
+    BackdriveMode, BrakeMode, ControlMode, DriveEntry, DriveKind, Feedback, InertiaMode, Parameter as P,
     Quantity, Source, StopMode,
 };
 
@@ -112,6 +112,8 @@ pub(crate) struct Config {
     pub mechanical: Mechanics,
     pub thermal: Option<Thermal>,
     pub mode: Mode,
+    /// Регулятор видит вал мотора, приведённый к выходу.
+    pub motor_feedback: bool,
     pub control: Cadence,
     pub delay: Time,
     pub bus_range: Option<[f64; 2]>,
@@ -454,8 +456,13 @@ pub(crate) fn resolve(
         r.notes
             .push("нулевая индуктивность: переходный процесс тока не рассчитан".into());
     }
+    // Вращательный привод с ходом за оборот в params ведёт поступательную ось.
+    let converted = entry.kind != DriveKind::Linear && r.overrides.contains_key(&P::LinearTravel);
+    if converted {
+        r.notes.push("вращение выходного вала переведено в ход по linear_travel_m_per_rev: КПД, люфт и податливость преобразователя входят в параметры привода и требуют замера на собранной оси".into());
+    }
     let ratio = r.positive(P::Ratio)?
-        / if entry.kind == DriveKind::Linear {
+        / if entry.kind == DriveKind::Linear || converted {
             r.positive(P::LinearTravel)? / TAU
         } else {
             1.0 // Радиан выхода вращательного привода уже выражен в СИ.
@@ -661,11 +668,23 @@ pub(crate) fn resolve(
     {
         r.notes.push("срабатывание механических пределов проверяется на сетке физики; моменты переключения, пики усилия и тепловые потери удержания требуют отдельной сверки".into());
     }
+    let motor_feedback = entry.regulator_feedback == Feedback::Motor;
+    if motor_feedback {
+        if matches!(mode, Mode::Pwm | Mode::Current | Mode::StepRate { .. }) {
+            return Err("regulator_feedback = motor нужен только регулятору скорости или положения".into());
+        }
+        if coupling.is_none() {
+            r.notes.push("вал мотора жёстко связан с выходом: обратная связь мотора совпадает с выходной".into());
+        } else {
+            r.notes.push("регулятор замкнут по валу мотора: люфт и податливость передачи вне контура и дают ошибку выхода".into());
+        }
+    }
     let config = Config {
         electrical,
         mechanical,
         thermal: r.thermal()?,
         mode,
+        motor_feedback,
         control,
         delay,
         bus_range,

@@ -1,0 +1,25 @@
+# Шестиосевой датчик ATI Mini40 с калибровкой SI-40-2: силовая половина.
+# Вторая половина — ati-mini40-si-40-2-torque.toml. Источники: ATI Mini40, калибровка SI-40-2: https://www.ati-ia.com/products/ft/ft_models.aspx?id=Mini40; ATI/Novanta Mini40: https://ati.novanta.com/product/mini40-force-torque-sensor/.
+id = "ati-mini40-si-40-2-force"
+kind = "force"
+name = "ATI Mini40 SI-40-2, силы"
+
+[model]
+rate_hz = { value = 1000.0, provenance = "estimate", source = "Опрос компьютером 1 кГц, вместе с суставами руки" }
+latency_s = { value = 0.001, provenance = "estimate", source = "Один такт опроса до доставки, до замера" }
+quantum = { value = 0.02, provenance = "datasheet", source = "Разрешение по Fz 1/50 Н (по Fx, Fy 1/100 Н, взят худший шаг): ATI/Novanta Mini40: https://ati.novanta.com/product/mini40-force-torque-sensor/" }
+noise_std = { value = 0.01, provenance = "estimate", source = "Разрешение ATI — наименьшее различимое изменение; шум принят половиной шага" }
+bias = { value = 0.0, provenance = "estimate", source = "Нуль датчика снимается перед опытом без груза" }
+drift_per_s = { value = 0.0, provenance = "estimate", source = "Тепловой дрейф за минуту опыта не учтён" }
+drift_rw_std = { value = 0.0, provenance = "estimate", source = "Тепловой дрейф за минуту опыта не учтён" }
+saturation = { value = 1.0, provenance = "datasheet", source = "Диапазон Fx, Fy ±40 Н (Fz ±120 Н, взята меньшая граница для всех осей): ATI Mini40, калибровка SI-40-2: https://www.ati-ia.com/products/ft/ft_models.aspx?id=Mini40" }
+min = { value = -40.0, provenance = "datasheet", source = "Диапазон Fx, Fy ±40 Н (Fz ±120 Н, взята меньшая граница для всех осей): ATI Mini40, калибровка SI-40-2: https://www.ati-ia.com/products/ft/ft_models.aspx?id=Mini40" }
+max = { value = 40.0, provenance = "datasheet", source = "Диапазон Fx, Fy ±40 Н (Fz ±120 Н, взята меньшая граница для всех осей): ATI Mini40, калибровка SI-40-2: https://www.ati-ia.com/products/ft/ft_models.aspx?id=Mini40" }
+drop_probability = { value = 0.0, provenance = "estimate", source = "Проводной опрос без потерь" }
+fault = { value = 0.0, provenance = "estimate", source = "Штатная работа" }
+mount_dx_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление" }
+mount_dy_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление" }
+mount_dz_m = { value = 0.0, provenance = "estimate", source = "Номинальное крепление" }
+mount_roll_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление" }
+mount_pitch_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление" }
+mount_yaw_rad = { value = 0.0, provenance = "estimate", source = "Номинальное крепление" }

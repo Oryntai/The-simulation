@@ -5355,6 +5355,7 @@ dependencies = [
  "serde_json",
  "sim-drive",
  "sim-human",
+ "sim-mujoco",
  "sim-process",
  "sim-reality",
  "sim-runtime",

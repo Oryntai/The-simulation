@@ -1,0 +1,90 @@
+# Маркер: корпус 10 мм, пишущий узел 3 мм, 55 мм от фланца до центра узла.
+# Ось z насадки направлена от фланца руки. Хвостовик начинается в 1 мм от фланца, чтобы
+# замкнутый стык не давил насадку в кисть. Размеры и массы — эскиз, не чертёж.
+# Узел жёсткий. Подпружиненный узел на ползуне (2 г) пробовали: мягкость ограничений MuJoCo по
+# умолчанию масштабируется массой тела, и упор ползуна под прижимом 1.6 Н уходил на 6 мм, а
+# задать жёсткость упора в файле устройства нельзя (README, «Сменные насадки»).
+format = 3
+name = "маркер"
+
+[[links]]
+name = "основание"
+
+[links.joint]
+kind = "free"
+name = "основание"
+damping = 0.0
+friction_loss = 0.0
+armature = 0.0
+
+[links.mass]
+kind = "explicit"
+mass_kg = 0.02
+com_m = [0.0, 0.0, 0.025]
+inertia_kg_m2 = [5.4e-06, 5.4e-06, 1.3e-06, 0.0, 0.0, 0.0]
+provenance = { estimate = "PLA и пластик корпуса маркера по эскизу, не взвешено" }
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.015, length_m = 0.01 }
+pose = { position_m = [0.0, 0.0, 0.006] }
+rgba = [0.78, 0.79, 0.82, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0152, length_m = 0.002 }
+pose = { position_m = [0.0, 0.0, 0.006] }
+rgba = [0.25, 0.26, 0.29, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.005, length_m = 0.03 }
+pose = { position_m = [0.0, 0.0, 0.026] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0052, length_m = 0.006 }
+pose = { position_m = [0.0, 0.0, 0.016] }
+rgba = [0.15, 0.35, 0.8, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0035, length_m = 0.01 }
+pose = { position_m = [0.0, 0.0, 0.046] }
+rgba = [0.94, 0.92, 0.87, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "cylinder", radius_m = 0.0015, length_m = 0.004 }
+pose = { position_m = [0.0, 0.0, 0.053] }
+rgba = [0.15, 0.35, 0.8, 1.0]
+
+# вид: tools/make_visuals.py
+[[links.visual]]
+shape = { kind = "sphere", radius_m = 0.0015 }
+pose = { position_m = [0.0, 0.0, 0.055] }
+rgba = [0.15, 0.35, 0.8, 1.0]
+
+# хвостовик: воротник, которым насадка лежит на вилке
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.015, length_m = 0.01 }
+pose = { position_m = [0.0, 0.0, 0.006] }
+friction = [0.8, 0.005, 0.0001]
+
+# корпус
+[[links.collision]]
+shape = { kind = "cylinder", radius_m = 0.005, length_m = 0.044 }
+pose = { position_m = [0.0, 0.0, 0.033] }
+friction = [0.8, 0.005, 0.0001]
+
+# пишущий узел маркера
+[[links.collision]]
+shape = { kind = "sphere", radius_m = 0.0015 }
+pose = { position_m = [0.0, 0.0, 0.055] }
+friction = [0.8, 0.005, 0.0001]
+
+[[links.mounts]]
+name = "фланец"
+kind = "mechanical"
+interface = "эскизный фланец инструмента, 4 винта M3 на окружности 25 мм"

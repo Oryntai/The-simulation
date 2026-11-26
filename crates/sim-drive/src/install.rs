@@ -599,8 +599,21 @@ fn prepare<'a>(
         }
         _ => return Err("неверная степень свободы привода".into()),
     };
-    if (entry.kind == DriveKind::Linear) != linear {
-        return Err("тип привода и размерность степени свободы не совпадают".into());
+    // Вращательный привод ведёт поступательную ось через рейку, винт или ремень с
+    // кареткой, если в params задан ход за оборот выходного вала.
+    let converted = entry.kind != DriveKind::Linear
+        && drive.params.contains_key("linear_travel_m_per_rev");
+    if converted && !linear {
+        return Err(
+            "linear_travel_m_per_rev задан для вращательной оси: ход за оборот нужен только поступательной"
+                .into(),
+        );
+    }
+    if (entry.kind == DriveKind::Linear || converted) != linear {
+        return Err(
+            "тип привода и размерность степени свободы не совпадают. Для вращательного привода на поступательной оси (рейка, винт, ремень с кареткой) задайте linear_travel_m_per_rev в params"
+                .into(),
+        );
     }
     let armature = runtime
         .joint_armature(&joint.name, dof)

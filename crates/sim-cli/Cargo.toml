@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 sim-signal.workspace = true
+sim-mujoco.workspace = true
 sim-world.workspace = true
 sim-runtime.workspace = true
 sim-drive.workspace = true

@@ -324,12 +324,15 @@ pub(super) struct ModePhysics {
     models: ModelSet,
     window: Interval,
     criterion: Criterion,
+    journal: Option<(u64, u64)>,
 }
 
 impl ModePhysics {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn load(
         path: &Path,
         witness: &str,
+        journal_hz: Option<u64>,
         fallback_world: &Path,
         seed: u64,
         rate: Rate,
@@ -354,8 +357,17 @@ impl ModePhysics {
         if !case.model_mounts.is_empty() {
             return Err("сменные насадки в физике режима требуют отдельной привязки".into());
         }
-        let criterion = case.criteria.into_iter().find(|c| c.name == witness)
+        let criterion: Criterion = case.criteria.into_iter().find(|c| c.name == witness)
             .ok_or_else(|| format!("в постановке нет метрики «{witness}»"))?.into();
+        let journal = journal_hz.map(|hz| {
+            // Слитые строки не хранят контакты, реакции и измерения промежуточных шагов.
+            let state = matches!(criterion.series,
+                Series::Position(_) | Series::Velocity(_) | Series::Displacement(_));
+            if hz == 0 || 1_000_000_000 % hz != 0 || hz > rate.as_hz() as u64 || !state {
+                return Err("journal_hz: делитель 1 ГГц не выше частоты физики, свидетель — координата, скорость или смещение".to_string());
+            }
+            Ok((hz, 1_000_000_000 / hz))
+        }).transpose()?;
         Ok(Self {
             world,
             resolved,
@@ -364,6 +376,7 @@ impl ModePhysics {
             models: ModelSet(case.models),
             criterion,
             window: interval(case.window_ns),
+            journal,
         })
     }
 
@@ -382,6 +395,14 @@ impl ModePhysics {
     pub(super) fn install(&self, runtime: &mut Runtime) -> Result<(), String> {
         runtime.record_process_contacts(self.pairs.clone())?;
         self.models.install(&self.world, runtime, &self.resolved.world, &self.resolved.path)?;
+        if let Some((hz, period)) = self.journal {
+            runtime.set_process_journal_period(period)?;
+            runtime.add_simplification(sim_world::Simplification {
+                subject: "журнал физики режима".into(),
+                text: format!("Журнал процессов хранится с частотой {hz} Гц: свидетель считается по этим отсчётам, пики между ними не видны."),
+                blocks_proof: true,
+            })?;
+        }
         runtime.add_simplification(sim_world::Simplification {
             subject: "физика режима".into(),
             text: "Проверка сочетаний на базовой сетке; сходимость и разброс каждой строки требуют отдельной серии.".into(),
@@ -389,10 +410,16 @@ impl ModePhysics {
         })
     }
 
-    pub(super) fn observe(&self, runtime: &Runtime) -> Result<(&str, [f64; 2]), String> {
+    /// Свидетель режима и причины недоступности моделей за прогон. Строки журнала
+    /// с причинами не сливаются при прореживании, поэтому список полный.
+    pub(super) fn observe(&self, runtime: &Runtime) -> Result<(&str, [f64; 2], Vec<String>), String> {
+        let blockers: BTreeSet<_> = runtime.process_journal().iter()
+            .flat_map(|row| row.outputs.values().flat_map(|out| &out.blockers))
+            .map(|reason| format!("физика режима: {reason}"))
+            .collect();
         sim_task::process::sample_criterion(runtime, self.window, &self.criterion)
             .map_err(|e| e.to_string())?
-            .map(|bounds| (self.criterion.name.as_str(), bounds))
+            .map(|bounds| (self.criterion.name.as_str(), bounds, blockers.into_iter().collect()))
             .ok_or_else(|| format!("нет полного ряда процесса «{}»", self.criterion.name))
     }
 }
@@ -1460,6 +1487,8 @@ fn run_case(
             if let Some(w) = &wiring {
                 let setup = Setup {
                     world: &compiled,
+                    joint_state: None,
+                    truth: None,
                     readouts: &w.control.readouts,
                     measurements: &w.control.measurements,
                     sampled: w.sampled.clone(),
