@@ -26,7 +26,15 @@ pub(super) struct Slot {
     pub(super) scene: Option<Scene>,
     pub(super) replay: Option<Replay>,
     report: Option<Report>,
+    /// Последний нарисованный кадр.
     texture: Option<egui::TextureHandle>,
+    /// Кадр, который показывается: создан на прошлых кадрах интерфейса, значит уже загружен в
+    /// видеокарту. bevy_egui готовит изображение новой текстуры не раньше следующего кадра и до
+    /// этого молча её не рисует; при воспроизведении текстура меняется каждый кадр, и без этой
+    /// задержки обзор пустой.
+    ready: Option<egui::TextureHandle>,
+    /// Номер кадра интерфейса, на котором создан `texture`.
+    made: u64,
     fingerprint_matches: bool,
     source: Option<Input>,
 }
@@ -154,6 +162,8 @@ struct Studio {
     /// по ширине колонки, без панели остаётся SIZE.
     render: [u32; 2],
     pixels_per_point: f32,
+    /// Номер кадра интерфейса.
+    frame: u64,
 }
 
 impl Studio {
@@ -195,6 +205,7 @@ impl Studio {
             dirty: true,
             render: SIZE,
             pixels_per_point: 1.0,
+            frame: 0,
         }
     }
 
@@ -532,6 +543,9 @@ impl Studio {
             };
             slot.texture =
                 Some(ctx.load_texture("кадр прогона", image, egui::TextureOptions::LINEAR));
+            slot.made = self.frame;
+            // Следующий кадр интерфейса покажет его, даже если воспроизведение стоит.
+            ctx.request_repaint();
         }
         Ok(())
     }
@@ -780,6 +794,16 @@ fn panel(mut contexts: EguiContexts, mut st: NonSendMut<Studio>, time: Res<TimeS
     if st.worker.is_some() {
         ctx.request_repaint();
     }
+    // Показывается кадр, нарисованный на прошлых кадрах интерфейса: он уже в видеокарте.
+    st.frame += 1;
+    let frame = st.frame;
+    for slot in &mut st.slots {
+        match &slot.texture {
+            Some(texture) if slot.made < frame => slot.ready = Some(texture.clone()),
+            Some(_) => ctx.request_repaint(),
+            None => slot.ready = None,
+        }
+    }
     let end = st.end();
     if st.playing {
         // Часы интерфейса влияют только на положение курсора при воспроизведении.
@@ -1013,7 +1037,7 @@ fn panel(mut contexts: EguiContexts, mut st: NonSendMut<Studio>, time: Res<TimeS
                         }
                         if !slot.fingerprint_matches { ui.colored_label(egui::Color32::YELLOW,"Поза из журнала на проектной геометрии. Точная сцена прогона не выгружена"); }
                     }
-                    if let Some(texture) = &slot.texture {
+                    if let Some(texture) = &slot.ready {
                         // Обзорный кадр нарисован в точках экрана, записанный кадр камеры — в своих пикселях.
                         let rendered = texture.size() == st.render.map(|n| n as usize);
                         let size = texture.size_vec2() / if rendered { st.pixels_per_point } else { 1.0 };
