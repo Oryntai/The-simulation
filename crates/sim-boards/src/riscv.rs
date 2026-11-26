@@ -753,16 +753,13 @@ mod tests {
         let rom = read("SIM_ESP_BOOT_ROM");
         let readback = read("SIM_ESP_BOOT_READBACK");
         let pcs = String::from_utf8(read("SIM_ESP_BOOT_QEMU_PC")).unwrap();
+        let words: Vec<_> = readback
+            .chunks_exact(size_of::<u32>())
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
         let mut memory = EspMemory::default();
         memory.install_rom(&rom).unwrap();
-        memory
-            .install_efuse_readback(
-                &readback
-                    .chunks_exact(size_of::<u32>())
-                    .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
-                    .collect::<Vec<_>>(),
-            )
-            .unwrap();
+        memory.install_efuse_readback(&words).unwrap();
         memory.latch_straps(true, true, true);
         let mut bus = Bus::new(
             BoardId::Esp32C3,
@@ -774,8 +771,9 @@ mod tests {
         .unwrap();
         bus.esp_memory = Some(memory);
         let mut cpu = Riscv::boot(&bus, RESET_VECTOR).unwrap();
-        // Измерение QEMU 9.2.2: PC с one-insn-per-tb, от вектора до RTC_CNTL_RESET_STATE_REG.
-        const STOP_AT: usize = 5523;
+        // QEMU 9.2.2, one-insn-per-tb: на индексе 5629 ROM читает
+        // EXTMEM_ICACHE_CTRL1_REG. Документированный кэш есть только с raw flash.
+        const STOP_AT: usize = 5629;
         let mut trace = pcs.lines();
         for index in 0..=STOP_AT {
             let expected = u32::from_str_radix(trace.next().unwrap(), 16).unwrap();
@@ -785,8 +783,8 @@ mod tests {
                 assert!(matches!(
                     step,
                     Err(BoardFault::UnsupportedRegister {
-                        pc: 0x4004_8a94,
-                        addr: 0x6000_8038, // ESP-IDF esp32c3/register/soc/rtc_cntl_reg.h.
+                        pc: 0x4005_113c,
+                        addr: 0x600c_4004, // ESP-IDF esp32c3/register/soc/extmem_reg.h.
                         write: false,
                         size: 4,
                         ..
@@ -796,5 +794,32 @@ mod tests {
                 bus.hw.tick(step.unwrap());
             }
         }
+
+        // На штатной шине тот же документированный регистр кэша доступен.
+        // Первый частично смоделированный регистр — UART_STATUS (TRM рег. 26.19).
+        // QEMU №391182, BoardSim №6196 на том же PC после развилки USB.
+        let mut board = crate::new_board(BoardId::Esp32C3);
+        board
+            .load_esp_flash(
+                &read("SIM_ESP_BOOT_FLASH"),
+                crate::esp_image::DEFAULT_PARTITION_TABLE_OFFSET,
+                &rom,
+                &words,
+                [true; 3],
+            )
+            .unwrap();
+        const UART_READ: u64 = 6195;
+        assert_eq!(board.run_cycles(UART_READ).unwrap().cycle, UART_READ);
+        assert_eq!(
+            board.run_cycles(1),
+            Err(BoardFault::UnsupportedRegister {
+                pc: 0x4004_c0d4,
+                addr: 0x6000_001c,
+                write: false,
+                size: 4,
+                block: "UART: не заданы уровни линий UART_STATUS",
+            })
+        );
+        assert_eq!(board.cycles(), UART_READ);
     }
 }

@@ -401,7 +401,7 @@ impl Hardware {
                 now,
                 &mut self.uart,
                 &mut self.adc,
-                self.esp_boot.as_deref(),
+                self.esp_boot.as_deref_mut(),
                 esp_memory,
             ),
             _ => Ok(None),

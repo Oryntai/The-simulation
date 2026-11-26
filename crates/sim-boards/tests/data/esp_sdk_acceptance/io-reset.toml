@@ -7,6 +7,14 @@ value = 0
 source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/gpio/esp32_gpio.c#L23-L34"
 kind = "qemu"
 
+# UART1 у QEMU использует тот же обработчик STATUS, что UART0.
+[[reset]]
+address = 0x6001001c
+field = "UART_STATUS_LINES"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/char/esp32_uart.c#L68-L87"
+kind = "qemu"
+
 [[reset]]
 address = 0x6000400c
 field = "GPIO_OUT_W1TC"

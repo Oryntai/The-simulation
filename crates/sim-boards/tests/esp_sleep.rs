@@ -650,11 +650,11 @@ fn штатный_образ_2_21_показывает_барьер_сквозн
         .expect("чтение ROM");
     let mut board = board(&rom);
     let failure = board.run_cycles(1_000_000).unwrap_err(); // Бюджет диагностического прогона.
-    // ROM Espressif rev. 3, esp32c3_rev3_rom.elf: esp_rom_spi_flash_update_id.
-    // Этот опыт сохраняет прежние входы загрузки без профиля от QEMU.
+    // ROM Espressif rev. 3, esp32c3_rev3_rom.elf: UART_STATUS_REG.
+    // Трасса QEMU 9.2.2 даёт тот же PC на инструкции №391182.
     let position = EspBootPosition {
-        step: 103_036,
-        pc: 0x4004_db3c,
+        step: 6195,
+        pc: 0x4004_c0d4,
     };
     assert_eq!(board.esp_boot_position(), Some(position));
     eprintln!(
@@ -670,7 +670,13 @@ fn штатный_образ_2_21_показывает_барьер_сквозн
     );
     assert_eq!(
         failure,
-        BoardFault::Unsupported("не задан профиль ответов JEDEC/status flash".into())
+        BoardFault::UnsupportedRegister {
+            pc: position.pc,
+            addr: 0x6000_001c,
+            size: 4,
+            write: false,
+            block: "UART: не заданы уровни линий UART_STATUS",
+        }
     );
     assert_eq!(board.run_cycles(1), Err(failure));
 }

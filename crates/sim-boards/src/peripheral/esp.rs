@@ -40,6 +40,9 @@ pub(super) fn gpio_write_trigger_field(address: u32) -> Option<&'static str> {
 pub(super) fn supports_reset_value(address: u32, field: &str, value: u32) -> bool {
     gpio_write_trigger_field(address) == Some(field) && value & !GPIO_MASK == 0
         || (address, field) == super::esp_system::WFI_STALL_PROFILE && value <= 1
+        || UART_STATUS_ADDRESS.contains(&address)
+            && field == UART_STATUS_LINES_FIELD
+            && value & !UART_STATUS_LINES_MASK == 0
 }
 
 const TIMER_MASK: u64 = (1 << 54) - 1;
@@ -62,6 +65,10 @@ const PERIP_EN1_RW: u32 = 0x1fe | (1 << 10); // system_reg.h: биты 1…8 и 
 const SPI01_GATE: u32 = 1 << 1;
 const UART_GATE: [u32; 2] = [1 << 2, 1 << 5];
 const UART_MEM: u32 = 1 << 24;
+// uart_reg.h, UART_STATUS_REG: счётчики FIFO и уровни шести внутренних линий.
+const UART_STATUS_ADDRESS: [u32; 2] = [0x6000_001c, 0x6001_001c];
+const UART_STATUS_LINES_FIELD: &str = "UART_STATUS_LINES";
+const UART_STATUS_LINES_MASK: u32 = (0b111 << 29) | (0b111 << 13);
 const I2C_GATE: u32 = 1 << 7;
 const LEDC_GATE: u32 = 1 << 11;
 const SPI_GATE: u32 = 1 << 6;
@@ -1356,7 +1363,7 @@ impl Esp {
         now: u64,
         uart: &mut Uart,
         adc: &mut Adc,
-        boot: Option<&BootPeripherals>,
+        boot: Option<&mut BootPeripherals>,
         memory: Option<&mut EspMemory>,
     ) -> Access {
         let o = addr & 0xfff;
@@ -1468,6 +1475,7 @@ impl Esp {
             0x6002_0000 => self.groups[1].access(o, v, now),
             0x6001_3000 | 0x6002_4000 => {
                 let i2c = block == 0x6001_3000;
+                let boot = boot.as_deref();
                 if let Some(boot) = boot {
                     let gate = if i2c { I2C_GATE } else { SPI_GATE };
                     // INT_ST читается матрицей IRQ даже при остановленном блоке.
@@ -1508,6 +1516,7 @@ impl Esp {
                 )
             }
             0x6001_9000 => {
+                let boot = boot.as_deref();
                 if boot.is_some_and(|b| !b.enabled(LEDC_GATE)) {
                     return Err(invalid("LEDC: нет тактов SYSREG или активен сброс"));
                 }
@@ -1714,6 +1723,21 @@ impl Esp {
                         }
                         return Err(invalid("UART: нет тактов SYSREG или активен сброс"));
                     }
+                    let status_lines = if v.is_none() && addr == UART_STATUS_ADDRESS[i] {
+                        // TRM рег. 26.19: STATUS сообщает текущие уровни, а модель
+                        // кадров UART считает только FIFO. Уровни берём из явного профиля.
+                        boot.reset_values
+                            .read(addr, UART_STATUS_LINES_FIELD)?
+                            .ok_or(BoardFault::UnsupportedRegister {
+                                pc: boot.pc,
+                                addr,
+                                size: size_of::<u32>() as u8,
+                                write: false,
+                                block: "UART: не заданы уровни линий UART_STATUS",
+                            })?
+                    } else {
+                        0
+                    };
                     let at = self.uart_time[i];
                     if o == 0 && v.is_some() {
                         if !self.output_pad(UART_DATA[i], false) {
@@ -1758,7 +1782,7 @@ impl Esp {
                     if let Some(source) = source {
                         self.uart_source[i] = source;
                     }
-                    return Ok(result);
+                    return Ok(result.map(|word| word | status_lines));
                 }
                 let serial = &mut self.serial[i];
                 let tx = &mut uart.ports[i];

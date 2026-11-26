@@ -88,6 +88,15 @@ source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/r
 kind = "qemu"
 
 # SPI1 W0 в трассе QEMU: после RDSFDP по адресу 0x10 младший байт 0.
+# UART_STATUS в трассе ROM: QEMU подставляет только счётчики FIFO.
+# ESP-IDF uart_reg.h: остальные поля задают уровни линий. Нули относятся к QEMU.
+[[reset]]
+address = 0x6000001c
+field = "UART_STATUS_LINES"
+value = 0
+source = "https://github.com/espressif/qemu/blob/esp-develop-9.2.2-20260417/hw/char/esp32_uart.c#L68-L87"
+kind = "qemu"
+
 [[reset]]
 address = 0x60002058
 field = "SFDP.0x10"

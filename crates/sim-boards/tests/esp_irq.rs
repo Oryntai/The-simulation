@@ -25,19 +25,26 @@ fn штатная_rom_проходит_настройку_csr() {
             [true; 3],
         )
         .unwrap();
-    // QEMU 9.2.2, потактовая трасса до чтения RTC_CNTL_RESET_STATE_REG.
+    // QEMU 9.2.2, потактовая трасса до чтения RTC_CNTL_RESET_STATE_REG
+    // (rtc_cntl_reg.h). После настройки CSR чтение возвращает причину сброса.
     board.run_cycles(5523).unwrap();
     assert_eq!(board.cycles(), 5523);
+    assert_eq!(board.esp_boot_position().unwrap().pc, 0x4004_8a94);
+    assert_eq!(board.run_cycles(1).unwrap().cycle, 5524);
+    // uart_reg.h: UART_STATUS_REG на общем PC, QEMU №391182.
+    const UART_READ: u64 = 6195;
+    board.run_cycles(UART_READ - board.cycles()).unwrap();
     assert!(matches!(
         board.run_cycles(1),
         Err(BoardFault::UnsupportedRegister {
-            pc: 0x4004_8a94,
-            addr: 0x6000_8038, // ESP-IDF esp32c3/register/soc/rtc_cntl_reg.h.
+            pc: 0x4004_c0d4,
+            addr: 0x6000_001c,
             write: false,
             size: 4,
-            ..
+            block: "UART: не заданы уровни линий UART_STATUS",
         })
     ));
+    assert_eq!(board.cycles(), UART_READ);
 }
 
 // TRM §3.3.2, начало SRAM1 на IBUS. Вектор на следующей границе 256 байт (§1.4.2).

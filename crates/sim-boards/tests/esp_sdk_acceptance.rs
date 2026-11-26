@@ -203,13 +203,13 @@ fn отвергаются_раздел_efuse_и_чтение_mmio_без_про�
     assert_eq!(board.run_cycles(1), Err(bad_fuse));
     assert_eq!(board.cycles(), 0);
     load(&mut *board, HELLO, &rom, &fuse, false).unwrap();
-    // Т2.10, esp_sdk_boot: первое чтение ANA_CONFIG_REG загрузчиком v6.1.1.
+    // ROM rev. 3, QEMU №391182: UART_STATUS_REG (uart_reg.h, TRM рег. 26.19).
     let err = BoardFault::UnsupportedRegister {
-        pc: 0x403c_ca60,
-        addr: 0x6000_e044,
+        pc: 0x4004_c0d4,
+        addr: 0x6000_001c,
         size: 4,
         write: false,
-        block: "RTC REGI2C: состояние холодного сброса не задокументировано",
+        block: "UART: не заданы уровни линий UART_STATUS",
     };
     // Внешний лимит исполнения, не допуск измерения.
     assert_eq!(board.run_cycles(1_000_000), Err(err.clone()));

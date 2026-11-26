@@ -396,31 +396,44 @@ fn штатная_rom_проходит_прямой_mux_uart0() {
         })
     );
     assert_eq!(board.run_cycles(1).unwrap().cycle, PREVIOUS + 1);
-    let fault = board.run_cycles(100_000).unwrap_err();
-    let position = board.esp_boot_position().unwrap();
-    println!(
-        "QEMU: {MATCHED} общих PC; BoardSim: инструкция №{} на {:#010x}, {fault}; UART {} байт",
-        position.step + 1,
-        position.pc,
-        board.uart_take().len()
-    );
-    assert_eq!(board.run_cycles(1), Err(fault));
-    // usb_serial_jtag_reg.h, USB_SERIAL_JTAG_EP1_CONF_REG.
+    // usb_serial_jtag_reg.h: USB_SERIAL_JTAG_EP1_CONF_REG, свободный IN FIFO.
+    const USB_READ: u64 = 6157;
+    board.run_cycles(USB_READ - board.cycles()).unwrap();
     assert_eq!(
-        position,
-        EspBootPosition {
-            step: 6157,
+        board.esp_boot_position(),
+        Some(EspBootPosition {
+            step: USB_READ,
             pc: 0x4004_c90e
-        }
-    );
-    assert_eq!(
-        board.run_cycles(1),
-        Err(BoardFault::UnsupportedRegister {
-            pc: position.pc,
-            addr: 0x6004_3004,
-            size: 4,
-            write: false,
-            block: "периферии",
         })
     );
+    assert_eq!(board.run_cycles(1).unwrap().cycle, USB_READ + 1);
+
+    // QEMU ждёт USB, пустой EP1 в BoardSim принимает байт. Обе ветви
+    // доходят до первого чтения UART_STATUS_REG (uart_reg.h).
+    const UART_READ: u64 = 6195;
+    const UART_PC: u32 = 0x4004_c0d4;
+    assert_eq!(
+        pcs.enumerate()
+            .find(|&(_, pc)| pc == UART_PC)
+            .map(|(index, _)| MATCHED + 2 + index as u64),
+        Some(391_182)
+    );
+    board.run_cycles(UART_READ - board.cycles()).unwrap();
+    assert_eq!(
+        board.esp_boot_position(),
+        Some(EspBootPosition {
+            step: UART_READ,
+            pc: UART_PC,
+        })
+    );
+    let fault = BoardFault::UnsupportedRegister {
+        pc: UART_PC,
+        addr: 0x6000_001c,
+        size: 4,
+        write: false,
+        block: "UART: не заданы уровни линий UART_STATUS",
+    };
+    assert_eq!(board.run_cycles(1), Err(fault.clone()));
+    assert_eq!(board.run_cycles(1), Err(fault));
+    assert_eq!(board.cycles(), UART_READ);
 }

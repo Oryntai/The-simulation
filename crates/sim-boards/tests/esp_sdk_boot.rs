@@ -975,6 +975,56 @@ const RESET_PROFILE: &str =
     include_str!("../firmware-tests/esp_sdk/reference/esp32c3-qemu-reset.toml");
 
 #[test]
+fn уровни_uart_status_требуют_профиль_и_не_подменяют_счётчики_fifo() {
+    // TRM регистр 26.19: два счётчика сброшены в 0, линии — в отдельном поле.
+    const STATUS: u32 = 0x6000_001c;
+    const RESET_LINES: u32 = 0xe000_c000;
+    let mut probe = Probe::default();
+    let pc = probe.pc() + 2 * size_of::<u32>() as u32; // LUI и ADDI перед LW.
+    probe.expect_read(STATUS, RESET_LINES);
+    let end = probe.pc();
+    probe.0.push(EBREAK);
+    let mut strict = board_for(&probe, None);
+    assert_eq!(
+        strict.run_cycles(probe.0.len() as u64),
+        Err(BoardFault::UnsupportedRegister {
+            pc,
+            addr: STATUS,
+            size: 4,
+            write: false,
+            block: "UART: не заданы уровни линий UART_STATUS",
+        })
+    );
+    assert!(strict.esp_reset_value_uses().is_empty());
+
+    let input = format!(
+        "[[reset]]\naddress = {STATUS}\nfield = \"UART_STATUS_LINES\"\nvalue = {RESET_LINES}\nsource = \"ESP32-C3 TRM, рег. 26.19\"\nkind = \"doc\""
+    );
+    // Бит UART_RXFIFO_CNT меняет модельную величину и потому недопустим в профиле.
+    assert!(EspResetProfile::parse(&input.replace("value = ", "# value = ")).is_err());
+    assert!(
+        EspResetProfile::parse(&input.replace(
+            &format!("value = {RESET_LINES}"),
+            &format!("value = {}", RESET_LINES | 1)
+        ))
+        .is_err()
+    );
+    let profile = EspResetProfile::parse(&input).unwrap();
+    let mut profiled = probe_board(&probe, None, &[EBREAK], &[EBREAK], Some(profile));
+    assert_eq!(
+        profiled.run_cycles(probe.0.len() as u64),
+        Err(BoardFault::Breakpoint { pc: end })
+    );
+    let [used] = profiled.esp_reset_value_uses() else {
+        panic!("нужна одна запись использования профиля")
+    };
+    assert_eq!(
+        (used.entry.address, used.entry.value, used.reads),
+        (STATUS, RESET_LINES, 1)
+    );
+}
+
+#[test]
 fn профиль_сброса_проверяет_адрес_поле_значение_и_источник() {
     let valid = RESET_PROFILE.split("[[reset]]").nth(1).unwrap();
     let valid = format!("[[reset]]{valid}");
@@ -1997,7 +2047,13 @@ fn read_fixture(key: &str) -> Vec<u8> {
 }
 
 fn qemu_rom_board() -> Box<dyn BoardSim> {
-    qemu_board(&read_fixture("SIM_ESP_BOOT_ROM"))
+    // Продолжаем сверку до REGI2C, разрешая только уровни линий UART.
+    let uart = RESET_PROFILE
+        .split("[[reset]]")
+        .find(|entry| entry.contains("field = \"UART_STATUS_LINES\""))
+        .unwrap();
+    let profile = EspResetProfile::parse(&format!("[[reset]]{uart}")).unwrap();
+    qemu_board_with_profile(&read_fixture("SIM_ESP_BOOT_ROM"), Some(profile))
 }
 
 fn qemu_board(rom: &[u8]) -> Box<dyn BoardSim> {

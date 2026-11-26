@@ -282,7 +282,7 @@ fn вторая_ступень_не_может_занять_стек_rom_или_
 
 #[test]
 #[ignore = "требуются установленный дамп ROM QEMU, штатный raw flash ESP-IDF и readback eFuse из QEMU"]
-fn штатный_дамп_проходит_чтение_rtc_и_останавливается_на_кэше() {
+fn штатный_дамп_проходит_rtc_и_кэш_и_останавливается_на_uart_status() {
     let read = |key| std::fs::read(std::env::var(key).expect(key)).expect(key);
     let dump = read("SIM_ESP_BOOT_ROM");
     let flash = read("SIM_ESP_BOOT_FLASH");
@@ -295,7 +295,7 @@ fn штатный_дамп_проходит_чтение_rtc_и_останавл
     let mut board = load(&flash, &dump, &words);
     // QEMU Espressif 9.2.2, -d exec,nochain, one-insn-per-tb=on:
     // индекс 5523 — lw a0,56(a5), RTC_CNTL_RESET_STATE_REG;
-    // индекс 5629 — lw a5,4(a4), EXTMEM_ICACHE_CTRL1_REG.
+    // индекс 5629 — lw a5,4(a4), EXTMEM_ICACHE_CTRL1_REG (extmem_reg.h).
     const RTC_READ: u64 = 5523;
     const PREFIX: u64 = 5629;
     board.run_cycles(RTC_READ).unwrap();
@@ -303,15 +303,23 @@ fn штатный_дамп_проходит_чтение_rtc_и_останавл
     assert_eq!(board.cycles(), RTC_READ + 1);
     board.run_cycles(PREFIX - RTC_READ - 1).unwrap();
     assert_eq!(board.cycles(), PREFIX);
+    assert_eq!(board.esp_boot_position().unwrap().pc, 0x4005_113c);
+    // EXTMEM_ICACHE_SHUT_{IBUS,DBUS} сброшены в 1, extmem_reg.h.
+    assert_eq!(board.run_cycles(1).unwrap().cycle, PREFIX + 1);
+
+    // Первый UART_STATUS_REG (TRM рег. 26.19, uart_reg.h): QEMU
+    // инструкция №391182 на том же PC. Число итераций USB ожидания различается.
+    const UART_READ: u64 = 6195;
+    board.run_cycles(UART_READ - PREFIX - 1).unwrap();
+    assert_eq!(board.cycles(), UART_READ);
     let stop = BoardFault::UnsupportedRegister {
-        pc: 0x4005_113c,
-        // ESP-IDF soc/esp32c3/register/soc/extmem_reg.h: EXTMEM_ICACHE_CTRL1_REG.
-        addr: 0x600c_4004,
+        pc: 0x4004_c0d4,
+        addr: 0x6000_001c,
         write: false,
         size: size_of::<u32>() as u8,
-        block: "периферии",
+        block: "UART: не заданы уровни линий UART_STATUS",
     };
     assert_eq!(board.run_cycles(1), Err(stop.clone()));
-    assert_eq!(board.cycles(), PREFIX);
+    assert_eq!(board.cycles(), UART_READ);
     assert_eq!(board.run_cycles(1), Err(stop));
 }
